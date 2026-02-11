@@ -1,0 +1,737 @@
+{
+  "meta": {
+    "model_name": {
+      "value": "HIV Transmission Model v4",
+      "notes": "Discrete-time stochastic population model with childhood pool and sexual debut"
+    },
+    "version": {
+      "value": "4.0",
+      "notes": "Added pre-sexual childhood pool, sexual debut mechanism, probabilistic orientation/activity assignment"
+    },
+    "author": {
+      "value": "Thesis Research",
+      "notes": "Academic use - inspired by STDSIM framework"
+    }
+  },
+  "time": {
+    "unit": {
+      "value": "months",
+      "notes": "Base simulation unit: 'days', 'months', or 'years'"
+    },
+    "step_size": {
+      "value": 12,
+      "notes": "Number of units per timestep (12 months = 1 year timestep)"
+    },
+    "start_year": {
+      "value": 1970,
+      "notes": "Calendar year when simulation begins"
+    },
+    "end_year": {
+      "value": 2020,
+      "notes": "Calendar year when simulation ends"
+    }
+  },
+  "output": {
+    "enabled": {
+      "value": true,
+      "notes": "Master switch for writing output files"
+    },
+    "format": {
+      "value": "csv",
+      "notes": "'csv' or 'xlsx' - file format for outputs"
+    },
+    "directory": {
+      "value": "outputs",
+      "notes": "Where to write output files"
+    },
+    "run_tag": {
+      "value": "baseline",
+      "notes": "Used in output filenames (e.g., baseline_run_001.csv)"
+    },
+    "write_per_run_files": {
+      "value": true,
+      "notes": "If true, write one file per run; else aggregate only"
+    },
+    "write_aggregated_files": {
+      "value": true,
+      "notes": "Write mean/quantiles across runs (requires n_runs > 1)"
+    },
+    "write_state_counts": {
+      "value": true,
+      "notes": "Write detailed state counts (can be very large files)"
+    },
+    "terminal_summary": {
+      "value": true,
+      "notes": "Print summary to terminal at end of simulation"
+    },
+    "summary_years": {
+      "value": [
+        1970,
+        1975,
+        1980,
+        1985,
+        1990,
+        1995,
+        2000,
+        2005,
+        2010,
+        2015,
+        2020
+      ],
+      "notes": "Which years to include in terminal summary"
+    },
+    "quantiles": {
+      "value": [
+        0.05,
+        0.5,
+        0.95
+      ],
+      "notes": "Quantiles for aggregated outputs (median and 90% interval)"
+    }
+  },
+  "population": {
+    "initial_hiv_prevalence": {
+      "value": 0.2,
+      "notes": "Proportion of initial sexually active population with chronic HIV (to seed epidemic)"
+    },
+    "initial_distribution": {
+      "value": {
+        "Female": {
+          "15-19": {
+            "Low": 50000,
+            "Medium": 30000,
+            "High": 10000
+          },
+          "20-24": {
+            "Low": 45000,
+            "Medium": 35000,
+            "High": 15000
+          },
+          "25-29": {
+            "Low": 40000,
+            "Medium": 40000,
+            "High": 20000
+          },
+          "30-34": {
+            "Low": 35000,
+            "Medium": 35000,
+            "High": 15000
+          },
+          "35-39": {
+            "Low": 30000,
+            "Medium": 30000,
+            "High": 10000
+          },
+          "40-44": {
+            "Low": 25000,
+            "Medium": 25000,
+            "High": 5000
+          },
+          "45-49": {
+            "Low": 20000,
+            "Medium": 20000,
+            "High": 3000
+          }
+        },
+        "Heterosexual_Male": {
+          "15-19": {
+            "Low": 50000,
+            "Medium": 30000,
+            "High": 10000
+          },
+          "20-24": {
+            "Low": 45000,
+            "Medium": 35000,
+            "High": 15000
+          },
+          "25-29": {
+            "Low": 40000,
+            "Medium": 40000,
+            "High": 20000
+          },
+          "30-34": {
+            "Low": 35000,
+            "Medium": 35000,
+            "High": 15000
+          },
+          "35-39": {
+            "Low": 30000,
+            "Medium": 30000,
+            "High": 10000
+          },
+          "40-44": {
+            "Low": 25000,
+            "Medium": 25000,
+            "High": 5000
+          },
+          "45-49": {
+            "Low": 20000,
+            "Medium": 20000,
+            "High": 3000
+          }
+        },
+        "MSM": {
+          "15-19": {
+            "Low": 4000,
+            "Medium": 3000,
+            "High": 2000
+          },
+          "20-24": {
+            "Low": 3500,
+            "Medium": 3500,
+            "High": 2500
+          },
+          "25-29": {
+            "Low": 3000,
+            "Medium": 4000,
+            "High": 3000
+          },
+          "30-34": {
+            "Low": 2500,
+            "Medium": 3500,
+            "High": 2500
+          },
+          "35-39": {
+            "Low": 2000,
+            "Medium": 3000,
+            "High": 2000
+          },
+          "40-44": {
+            "Low": 1500,
+            "Medium": 2500,
+            "High": 1500
+          },
+          "45-49": {
+            "Low": 1000,
+            "Medium": 2000,
+            "High": 1000
+          }
+        }
+      },
+      "notes": "Initial sexually active population by orientation, age group, and activity level"
+    }
+  },
+  "demography": {
+    "enabled": {
+      "value": true,
+      "notes": "If false, no demographic changes except aging and mortality"
+    },
+    "mode": {
+      "value": "fertility_table",
+      "notes": "'closed' (no births), 'fixed_net_addition' (constant entrants into childhood), or 'fertility_table' (use ASFR)"
+    },
+    "fixed_net_addition": {
+      "annual_entrants": {
+        "value": 20000,
+        "notes": "Number of births per year (enter childhood pool at age 0-4, only used if mode='fixed_net_addition')"
+      }
+    },
+    "background_mortality": {
+      "value": 0.008,
+      "notes": "Annual non-HIV death rate for sexually active population (used if life_table not enabled)"
+    }
+  },
+  "childhood": {
+    "enabled": {
+      "value": true,
+      "notes": "Pre-sexual childhood pool. Children age through 0-4, 5-9, 10-14 before sexual debut."
+    },
+    "age_bins": {
+      "value": [
+        "0-4",
+        "5-9",
+        "10-14"
+      ],
+      "notes": "Childhood age groups (5-year bins from birth to sexual debut age). NOT part of the HIV transmission system."
+    },
+    "background_mortality_annual": {
+      "value": 0.005,
+      "notes": "Annual background mortality rate for children (used if life_table not enabled for childhood ages)"
+    },
+    "initial_per_bin": {
+      "value": "auto",
+      "notes": "Initial childhood population per 5-year bin. 'auto' computes from adult population size and sex ratio. Or provide {\"male\": N, \"female\": N} per bin."
+    }
+  },
+  "sexual_debut": {
+    "debut_age": {
+      "value": 15,
+      "notes": "(Documentation only - not used by code, hard-coded to first age bin)"
+    },
+    "p_msm": {
+      "value": 0.10,
+      "notes": "Proportion of males assigned MSM at debut"
+    },
+    "use_population_activity_distribution": {
+      "value": true,
+      "notes": "Use same distribution as population (recommended)"
+    },
+    "life_table": {
+      "enabled": {
+        "value": true,
+        "notes": "If true, override background mortality with life-table survival probabilities"
+      },
+      "source_notes": {
+        "value": "Example life table - replace with actual data for your population",
+        "notes": "Citation for life table data source"
+      },
+      "survival_by_age_limit": {
+        "value": [
+          {
+            "age_limit": 1,
+            "male_survival": 0.99622,
+            "female_survival": 0.99687
+          },
+          {
+            "age_limit": 5,
+            "male_survival": 0.99913,
+            "female_survival": 0.99943
+          },
+          {
+            "age_limit": 10,
+            "male_survival": 0.99964,
+            "female_survival": 0.99977
+          },
+          {
+            "age_limit": 15,
+            "male_survival": 0.99957,
+            "female_survival": 0.99975
+          },
+          {
+            "age_limit": 20,
+            "male_survival": 0.99932,
+            "female_survival": 0.99965
+          },
+          {
+            "age_limit": 25,
+            "male_survival": 0.99916,
+            "female_survival": 0.99957
+          },
+          {
+            "age_limit": 30,
+            "male_survival": 0.99899,
+            "female_survival": 0.99947
+          },
+          {
+            "age_limit": 35,
+            "male_survival": 0.99862,
+            "female_survival": 0.99931
+          },
+          {
+            "age_limit": 40,
+            "male_survival": 0.99794,
+            "female_survival": 0.99899
+          },
+          {
+            "age_limit": 45,
+            "male_survival": 0.99654,
+            "female_survival": 0.99836
+          },
+          {
+            "age_limit": 50,
+            "male_survival": 0.99401,
+            "female_survival": 0.99703
+          }
+        ],
+        "notes": "Piecewise survival probabilities up to each age_limit (probability of surviving from birth to that age)"
+      }
+    },
+    "fertility": {
+      "enabled": {
+        "value": true,
+        "notes": "Enable births via age-specific fertility rates (ASFR)"
+      },
+      "fraction_male_newborns": {
+        "value": 0.512195,
+        "notes": "Sex ratio at birth (proportion male)"
+      },
+      "asfr_by_age_limit": {
+        "value": [
+          {
+            "age_limit": 15,
+            "birth_rate": 0.0
+          },
+          {
+            "age_limit": 20,
+            "birth_rate": 0.0028
+          },
+          {
+            "age_limit": 25,
+            "birth_rate": 0.0850
+          },
+          {
+            "age_limit": 30,
+            "birth_rate": 0.1150
+          },
+          {
+            "age_limit": 35,
+            "birth_rate": 0.0920
+          },
+          {
+            "age_limit": 40,
+            "birth_rate": 0.0380
+          },
+          {
+            "age_limit": 45,
+            "birth_rate": 0.0045
+          },
+          {
+            "age_limit": 50,
+            "birth_rate": 0.0001
+          }
+        ],
+        "notes": "Births per woman-year, piecewise by age band (age-specific fertility rates)"
+      },
+      "year_multipliers": {
+        "enabled": {
+          "value": false,
+          "notes": "If true, apply year-specific multipliers to baseline ASFR"
+        },
+        "values": {
+          "value": {
+            "1980": 1.0,
+            "1990": 0.98,
+            "2000": 0.95,
+            "2010": 0.92,
+            "2020": 0.90
+          },
+          "notes": "Fertility multipliers by calendar year (interpolated between years)"
+        }
+      }
+    },
+    "population_adjustments": {
+      "enabled": {
+        "value": false,
+        "notes": "If true, apply exogenous multipliers to population totals over time (for calibration)"
+      },
+      "apply_to": {
+        "value": "total",
+        "notes": "'total', 'by_age', 'by_orientation', or 'by_age_and_orientation'"
+      },
+      "year_multipliers": {
+        "value": {
+          "1980": 1.0,
+          "1990": 1.02,
+          "2000": 1.05,
+          "2010": 1.08,
+          "2020": 1.10
+        },
+        "notes": "Population scaling multipliers by year (interpolated)"
+      }
+    },
+    "groups": {
+      "orientations": {
+        "value": [
+          {
+            "name": "Female",
+            "notes": "Cisgender female"
+          },
+          {
+            "name": "Heterosexual_Male",
+            "notes": "Cisgender heterosexual male"
+          },
+          {
+            "name": "MSM",
+            "notes": "Men who have sex with men"
+          }
+        ],
+        "notes": "Sexual orientation groups - assigned at sexual debut, NOT at birth"
+      },
+      "age_groups": {
+        "value": [
+          {
+            "name": "15-19",
+            "min": 15,
+            "max": 19
+          },
+          {
+            "name": "20-24",
+            "min": 20,
+            "max": 24
+          },
+          {
+            "name": "25-29",
+            "min": 25,
+            "max": 29
+          },
+          {
+            "name": "30-34",
+            "min": 30,
+            "max": 34
+          },
+          {
+            "name": "35-39",
+            "min": 35,
+            "max": 39
+          },
+          {
+            "name": "40-44",
+            "min": 40,
+            "max": 44
+          },
+          {
+            "name": "45-49",
+            "min": 45,
+            "max": 49
+          }
+        ],
+        "notes": "Sexually active age groups in 5-year bins. Children (0-14) are in the separate childhood pool."
+      },
+      "sexual_activity_groups": {
+        "value": [
+          {
+            "name": "Low",
+            "contact_rate": 3.0,
+            "notes": "3 sexual acts per year (with ~1 partner)"
+          },
+          {
+            "name": "Medium",
+            "contact_rate": 10.0,
+            "notes": "10 sexual acts per year (with ~3 partners)"
+          },
+          {
+            "name": "High",
+            "contact_rate": 50.0,
+            "notes": "50 sexual acts per year (with ~8 partners)"
+          }
+        ],
+        "notes": "Sexual activity levels. contact_rate = acts per year (combined with per-act beta for transmission). Assigned at sexual debut, NOT at birth."
+      },
+      "hiv_stages": {
+        "value": [
+          {
+            "name": "Susceptible",
+            "notes": "HIV-negative"
+          },
+          {
+            "name": "Acute",
+            "notes": "Recent infection, high viral load"
+          },
+          {
+            "name": "Chronic",
+            "notes": "Established infection"
+          },
+          {
+            "name": "AIDS",
+            "notes": "Advanced disease"
+          }
+        ],
+        "notes": "HIV disease stages - DO NOT MODIFY ORDER"
+      }
+    },
+    "mixing": {
+      "heterosexual": {
+        "value": {
+          "Low": {
+            "Low": 0.7,
+            "Medium": 0.25,
+            "High": 0.05
+          },
+          "Medium": {
+            "Low": 0.25,
+            "Medium": 0.6,
+            "High": 0.15
+          },
+          "High": {
+            "Low": 0.1,
+            "Medium": 0.3,
+            "High": 0.6
+          }
+        },
+        "notes": "Mixing matrix for heterosexual contacts (Female to Heterosexual_Male). Rows must sum to 1.0."
+      },
+      "msm": {
+        "value": {
+          "Low": {
+            "Low": 0.6,
+            "Medium": 0.3,
+            "High": 0.1
+          },
+          "Medium": {
+            "Low": 0.3,
+            "Medium": 0.5,
+            "High": 0.2
+          },
+          "High": {
+            "Low": 0.10,
+            "Medium": 0.20,
+            "High": 0.7
+          }
+        },
+        "notes": "Mixing matrix for MSM contacts. Rows must sum to 1.0."
+      },
+      "condom_usage": {
+        "value": {
+          "Low": 1.0,
+          "Medium": 1.0,
+          "High": 1.0
+        },
+        "notes": "Condom risk multiplier by activity group. Applied as: effective_beta = beta * condom_mod. Values: 1.0 = no condom effect (baseline), 0.5 = 50% risk reduction. Lower = more protection."
+      }
+    },
+    "disease": {
+      "transmission": {
+        "beta_acute": {
+          "value": 0.08,
+          "notes": "Per-act transmission probability during acute infection"
+        },
+        "beta_chronic": {
+          "value": 0.004,
+          "notes": "Per-act transmission probability during chronic infection"
+        },
+        "beta_aids": {
+          "value": 0.008,
+          "notes": "Per-act transmission probability during AIDS stage"
+        }
+      },
+      "progression": {
+        "acute_to_chronic": {
+          "value": 0.5,
+          "notes": "Annual probability of progressing from acute to chronic HIV"
+        },
+        "chronic_to_aids": {
+          "value": 0.05,
+          "notes": "Annual probability of progressing from chronic to AIDS"
+        }
+      },
+      "diagnosis": {
+        "annual_rate": {
+          "value": 0.15,
+          "notes": "Annual probability of HIV diagnosis (if undiagnosed)"
+        }
+      },
+      "treatment": {
+        "art_initiation_rate": {
+          "value": 0.8,
+          "notes": "Annual probability of starting ART (if diagnosed but not on treatment)"
+        },
+        "art_dropout_rate": {
+          "value": 0.05,
+          "notes": "Annual probability of discontinuing ART (if on treatment)"
+        },
+        "art_transmission_reduction": {
+          "value": 0.96,
+          "notes": "Reduction in transmission probability when on ART (96% = U=U)"
+        },
+        "art_mortality_reduction": {
+          "value": 0.9,
+          "notes": "Reduction in HIV mortality when on ART (90% reduction)"
+        }
+      },
+      "mortality": {
+        "acute": {
+          "value": 0.01,
+          "notes": "Annual HIV mortality during acute stage"
+        },
+        "chronic": {
+          "value": 0.02,
+          "notes": "Annual HIV mortality during chronic stage"
+        },
+        "aids": {
+          "value": 0.25,
+          "notes": "Annual HIV mortality during AIDS stage"
+        },
+        "combine_with_background": {
+          "value": "excess",
+          "notes": "'excess' (HIV mortality added to background) or 'override' (HIV mortality replaces background)"
+        }
+      }
+    },
+    "interventions": {
+      "Oral_PrEP": {
+        "enabled": {
+          "value": false,
+          "notes": "Whether this intervention is active in the simulation"
+        },
+        "dosing_interval": {
+          "value": 3,
+          "unit": "months",
+          "notes": "Prescription renewal every 3 months (quarterly)"
+        },
+        "efficacy": {
+          "value": 0.86,
+          "notes": "Protection per dosing cycle (86% effectiveness with adherence)"
+        },
+        "uptake_rate": {
+          "value": 0.05,
+          "notes": "Annual probability of starting PrEP (susceptible only)"
+        },
+        "dropout_rate": {
+          "value": 0.2,
+          "notes": "Annual probability of discontinuing PrEP"
+        },
+        "uptake_modifier_by_activity": {
+          "value": {
+            "Low": 0.5,
+            "Medium": 1.0,
+            "High": 1.5
+          },
+          "notes": "Multiplier for uptake rate by activity level"
+        }
+      },
+      "Lenacapavir": {
+        "enabled": {
+          "value": false,
+          "notes": "Whether this intervention is active in the simulation"
+        },
+        "dosing_interval": {
+          "value": 6,
+          "unit": "months",
+          "notes": "Injection every 6 months (twice yearly)"
+        },
+        "efficacy": {
+          "value": 0.99,
+          "notes": "Protection per dosing cycle (99% from PURPOSE trials)"
+        },
+        "uptake_rate": {
+          "value": 0.02,
+          "notes": "Annual probability of starting Lenacapavir"
+        },
+        "dropout_rate": {
+          "value": 0.05,
+          "notes": "Annual probability of discontinuing Lenacapavir"
+        },
+        "uptake_modifier_by_activity": {
+          "value": {
+            "Low": 0.3,
+            "Medium": 1.0,
+            "High": 2.0
+          },
+          "notes": "Multiplier for uptake rate by activity level"
+        }
+      }
+    },
+    "simulation_controls": {
+      "n_runs": {
+        "value": 1,
+        "notes": "Number of stochastic simulation runs (use 100+ for uncertainty analysis)"
+      },
+      "seed": {
+        "value": 42,
+        "notes": "Base random number generator seed for reproducibility"
+      },
+      "deterministic_mode": {
+        "value": true,
+        "notes": "If true, replace random draws with expected values (for debugging/testing)"
+      }
+    },
+    "notes": {
+      "calibration_status": "Example configuration - replace with calibrated parameters",
+      "intended_use": "Thesis research on HIV prevention interventions",
+      "academic_framing": "This model is inspired by STDSIM's conceptual framework but reimplemented as a discrete-time stochastic population model to enable flexible stratification of sexual behavior and modern PrEP interventions.",
+      "v4_features": [
+        "Pre-sexual childhood pool (children aged 0-14 outside transmission system)",
+        "Sexual debut mechanism at configurable age (default 15)",
+        "Probabilistic MSM orientation assignment at debut (not birth)",
+        "Probabilistic sexual activity assignment at debut (not birth)",
+        "All debutants enter as Susceptible/Undiagnosed/NoART/NoPrEP",
+        "Childhood mortality separate from adult mortality",
+        "Cohort turnover with delayed entry into risk",
+        "Robust file outputs (CSV/Excel)",
+        "Corrected two-step transmission formulation",
+        "Optional fertility tables (ASFR), life tables, population adjustments"
+      ],
+      "population_flow": "Birth -> Childhood pool (age 0-14, sex only) -> Sexual debut (age 15) -> Orientation + Activity assignment -> HIV transmission system"
+    }
+  }
+}

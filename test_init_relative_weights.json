@@ -1,0 +1,450 @@
+{
+  "meta": {
+    "model_name": {
+      "value": "HIV Model - Test Relative Weights Init",
+      "notes": "Test configuration"
+    },
+    "version": {
+      "value": "4.0",
+      "notes": "Option A initialization test"
+    }
+  },
+  "time": {
+    "unit": {
+      "value": "months",
+      "notes": "Base simulation unit"
+    },
+    "step_size": {
+      "value": 12,
+      "notes": "12 months = 1 year"
+    },
+    "start_year": {
+      "value": 1980,
+      "notes": "Start year"
+    },
+    "end_year": {
+      "value": 1982,
+      "notes": "End year (short test)"
+    }
+  },
+  "output": {
+    "enabled": {
+      "value": true,
+      "notes": "Enable output"
+    },
+    "format": {
+      "value": "csv",
+      "notes": "CSV format"
+    },
+    "directory": {
+      "value": "outputs",
+      "notes": "Output directory"
+    },
+    "run_tag": {
+      "value": "init_test",
+      "notes": "Test tag"
+    },
+    "write_per_run_files": {
+      "value": true,
+      "notes": "Write per-run files"
+    },
+    "write_aggregated_files": {
+      "value": false,
+      "notes": "No aggregation needed"
+    },
+    "write_state_counts": {
+      "value": true,
+      "notes": "Write state counts"
+    },
+    "terminal_summary": {
+      "value": true,
+      "notes": "Print summary"
+    },
+    "summary_years": {
+      "value": [
+        1980,
+        1982
+      ],
+      "notes": "Summary years"
+    },
+    "quantiles": {
+      "value": [
+        0.05,
+        0.5,
+        0.95
+      ],
+      "notes": "Quantiles"
+    }
+  },
+  "population": {
+    "initialization_method": {
+      "value": "relative_weights",
+      "notes": "Use Option A: Global MSM share (relative weights approach)"
+    },
+    "total_size": {
+      "value": 1000000,
+      "notes": "Target total population (includes children and adults)"
+    },
+    "age_sex_distribution": {
+      "value": {
+        "0-4": {
+          "female": 0.09,
+          "male": 0.09
+        },
+        "5-9": {
+          "female": 0.08,
+          "male": 0.08
+        },
+        "10-14": {
+          "female": 0.07,
+          "male": 0.07
+        },
+        "15-19": {
+          "female": 0.07,
+          "male": 0.07
+        },
+        "20-24": {
+          "female": 0.06,
+          "male": 0.06
+        },
+        "25-29": {
+          "female": 0.05,
+          "male": 0.05
+        },
+        "30-34": {
+          "female": 0.04,
+          "male": 0.04
+        },
+        "35-39": {
+          "female": 0.03,
+          "male": 0.03
+        },
+        "40-44": {
+          "female": 0.025,
+          "male": 0.025
+        },
+        "45-49": {
+          "female": 0.02,
+          "male": 0.02
+        }
+      },
+      "notes": "Relative weights by age and sex (auto-normalized, <15 goes to childhood pool)"
+    },
+    "p_msm": {
+      "value": 0.1,
+      "notes": "Proportion of males (\u226515) assigned to MSM orientation (global, deterministic)"
+    },
+    "activity_distribution": {
+      "value": {
+        "Low": 0.6,
+        "Medium": 0.3,
+        "High": 0.1
+      },
+      "notes": "Activity level proportions (applied to all orientations, must sum to 1.0)"
+    },
+    "initial_hiv_prevalence": {
+      "value": 0.001,
+      "notes": "Initial HIV seeding (1% of sexually active population)"
+    }
+  },
+  "groups": {
+    "orientations": {
+      "value": [
+        {
+          "name": "Female",
+          "notes": "Cisgender female"
+        },
+        {
+          "name": "Heterosexual_Male",
+          "notes": "Cisgender heterosexual male"
+        },
+        {
+          "name": "MSM",
+          "notes": "Men who have sex with men"
+        }
+      ],
+      "notes": "Sexual orientation groups"
+    },
+    "age_groups": {
+      "value": [
+        {
+          "name": "15-19",
+          "min": 15,
+          "max": 19
+        },
+        {
+          "name": "20-24",
+          "min": 20,
+          "max": 24
+        },
+        {
+          "name": "25-29",
+          "min": 25,
+          "max": 29
+        },
+        {
+          "name": "30-34",
+          "min": 30,
+          "max": 34
+        },
+        {
+          "name": "35-39",
+          "min": 35,
+          "max": 39
+        },
+        {
+          "name": "40-44",
+          "min": 40,
+          "max": 44
+        },
+        {
+          "name": "45-49",
+          "min": 45,
+          "max": 49
+        }
+      ],
+      "notes": "Age groups (5-year bins)"
+    },
+    "sexual_activity_groups": {
+      "value": [
+        {
+          "name": "Low",
+          "contact_rate": 3.0,
+          "notes": "3 acts/year"
+        },
+        {
+          "name": "Medium",
+          "contact_rate": 10.0,
+          "notes": "10 acts/year"
+        },
+        {
+          "name": "High",
+          "contact_rate": 26.0,
+          "notes": "26 acts/year"
+        }
+      ],
+      "notes": "Sexual activity levels"
+    },
+    "hiv_stages": {
+      "value": [
+        {
+          "name": "Susceptible",
+          "notes": "HIV-negative"
+        },
+        {
+          "name": "Acute",
+          "notes": "Recent infection"
+        },
+        {
+          "name": "Chronic",
+          "notes": "Established infection"
+        },
+        {
+          "name": "AIDS",
+          "notes": "Advanced disease"
+        }
+      ],
+      "notes": "HIV disease stages"
+    }
+  },
+  "childhood": {
+    "enabled": {
+      "value": true,
+      "notes": "Enable childhood pool for ages <15"
+    },
+    "age_bins": {
+      "value": [
+        "0-4",
+        "5-9",
+        "10-14"
+      ],
+      "notes": "Childhood age bins"
+    },
+    "background_mortality_annual": {
+      "value": 0.005,
+      "notes": "Annual childhood mortality rate"
+    }
+  },
+  "sexual_debut": {
+    "enabled": {
+      "value": true,
+      "notes": "Enable sexual debut mechanism"
+    },
+    "debut_age": {
+      "value": 15,
+      "notes": "Age at sexual debut"
+    },
+    "p_msm": {
+      "value": 0.1,
+      "notes": "Proportion of debuting males assigned to MSM (same as initialization)"
+    },
+    "per_timestep_prob": {
+      "value": 0.5,
+      "notes": "Probability of debut per timestep (for continuous flow)"
+    },
+    "use_population_activity_distribution": {
+      "value": true,
+      "notes": "Use same activity distribution as population initialization (recommended for consistency)"
+    }
+  },
+  "mixing": {
+    "heterosexual": {
+      "value": {
+        "Low": {
+          "Low": 0.7,
+          "Medium": 0.25,
+          "High": 0.05
+        },
+        "Medium": {
+          "Low": 0.25,
+          "Medium": 0.6,
+          "High": 0.15
+        },
+        "High": {
+          "Low": 0.1,
+          "Medium": 0.3,
+          "High": 0.6
+        }
+      },
+      "notes": "Heterosexual mixing matrix"
+    },
+    "msm": {
+      "value": {
+        "Low": {
+          "Low": 0.6,
+          "Medium": 0.3,
+          "High": 0.1
+        },
+        "Medium": {
+          "Low": 0.3,
+          "Medium": 0.5,
+          "High": 0.2
+        },
+        "High": {
+          "Low": 0.1,
+          "Medium": 0.2,
+          "High": 0.7
+        }
+      },
+      "notes": "MSM mixing matrix"
+    },
+    "condom_usage": {
+      "value": {
+        "Low": 1.0,
+        "Medium": 1.0,
+        "High": 1.0
+      },
+      "notes": "Condom effectiveness (1.0 = no protection)"
+    }
+  },
+  "disease": {
+    "transmission": {
+      "beta_acute": {
+        "value": 0.015,
+        "notes": "Per-act transmission (acute)"
+      },
+      "beta_chronic": {
+        "value": 0.004,
+        "notes": "Per-act transmission (chronic)"
+      },
+      "beta_aids": {
+        "value": 0.008,
+        "notes": "Per-act transmission (AIDS)"
+      }
+    },
+    "progression": {
+      "acute_to_chronic": {
+        "value": 0.5,
+        "notes": "Annual progression rate"
+      },
+      "chronic_to_aids": {
+        "value": 0.05,
+        "notes": "Annual progression rate"
+      }
+    },
+    "diagnosis": {
+      "annual_rate": {
+        "value": 0.15,
+        "notes": "Annual diagnosis rate"
+      }
+    },
+    "treatment": {
+      "art_initiation_rate": {
+        "value": 0.8,
+        "notes": "Annual ART initiation rate"
+      },
+      "art_dropout_rate": {
+        "value": 0.05,
+        "notes": "Annual ART dropout rate"
+      },
+      "art_transmission_reduction": {
+        "value": 0.96,
+        "notes": "Transmission reduction on ART"
+      },
+      "art_mortality_reduction": {
+        "value": 0.9,
+        "notes": "Mortality reduction on ART"
+      }
+    },
+    "mortality": {
+      "acute": {
+        "value": 0.01,
+        "notes": "Annual HIV mortality (acute)"
+      },
+      "chronic": {
+        "value": 0.02,
+        "notes": "Annual HIV mortality (chronic)"
+      },
+      "aids": {
+        "value": 0.25,
+        "notes": "Annual HIV mortality (AIDS)"
+      },
+      "combine_with_background": {
+        "value": "excess",
+        "notes": "How to combine HIV and background mortality"
+      }
+    }
+  },
+  "demography": {
+    "enabled": {
+      "value": true,
+      "notes": "Enable demographic processes"
+    },
+    "mode": {
+      "value": "closed",
+      "notes": "No births for this test"
+    },
+    "background_mortality": {
+      "value": 0.01,
+      "notes": "Annual background mortality"
+    }
+  },
+  "interventions": {
+    "Oral_PrEP": {
+      "enabled": {
+        "value": false,
+        "notes": "Disabled for test"
+      }
+    },
+    "Lenacapavir": {
+      "enabled": {
+        "value": false,
+        "notes": "Disabled for test"
+      }
+    }
+  },
+  "simulation_controls": {
+    "n_runs": {
+      "value": 1,
+      "notes": "Single run for test"
+    },
+    "seed": {
+      "value": 42,
+      "notes": "Random seed"
+    },
+    "deterministic_mode": {
+      "value": true,
+      "notes": "Deterministic for reproducibility"
+    }
+  }
+}

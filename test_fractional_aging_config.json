@@ -1,0 +1,212 @@
+{
+  "meta": {
+    "model_name": {"value": "Fractional Aging Test Config"},
+    "version": {"value": "test"},
+    "author": {"value": "Validation Tests"}
+  },
+
+  "time": {
+    "unit": {"value": "months"},
+    "step_size": {"value": 12},
+    "start_year": {"value": 1970},
+    "end_year": {"value": 1975}
+  },
+
+  "output": {
+    "enabled": {"value": false},
+    "terminal_summary": {"value": false}
+  },
+
+  "population": {
+    "initialization_method": {"value": "relative_weights"},
+    "total_size": {"value": 100000},
+    "age_sex_distribution": {
+      "value": {
+        "0-4":   {"female": 0.036, "male": 0.038},
+        "5-9":   {"female": 0.046, "male": 0.048},
+        "10-14": {"female": 0.044, "male": 0.046},
+        "15-19": {"female": 0.042, "male": 0.044},
+        "20-24": {"female": 0.044, "male": 0.047},
+        "25-29": {"female": 0.034, "male": 0.037},
+        "30-34": {"female": 0.030, "male": 0.032},
+        "35-39": {"female": 0.029, "male": 0.031},
+        "40-44": {"female": 0.029, "male": 0.029},
+        "45-49": {"female": 0.030, "male": 0.029},
+        "50-54": {"female": 0.025, "male": 0.024},
+        "55-59": {"female": 0.025, "male": 0.023},
+        "60-64": {"female": 0.023, "male": 0.020},
+        "65+":   {"female": 0.057, "male": 0.045}
+      }
+    },
+    "p_msm": {"value": 0.10},
+    "activity_distribution": {
+      "value": {"Low": 0.60, "Medium": 0.30, "High": 0.10}
+    },
+    "initial_hiv_prevalence": {"value": 0.001}
+  },
+
+  "demography": {
+    "enabled": {"value": true},
+    "mode": {"value": "fertility_table"},
+    "background_mortality": {"value": 0.008}
+  },
+
+  "childhood": {
+    "enabled": {"value": true},
+    "age_bins": {"value": ["0-4", "5-9", "10-14"]},
+    "background_mortality_annual": {"value": 0.005},
+    "initial_per_bin": {"value": "auto"}
+  },
+
+  "sexual_debut": {
+    "debut_age": {"value": 15},
+    "p_msm": {"value": 0.10},
+    "use_population_activity_distribution": {"value": true}
+  },
+
+  "life_table": {
+    "enabled": {"value": true},
+    "survival_by_age_limit": {
+      "value": [
+        {"age_limit": 1,  "male_survival": 0.99622, "female_survival": 0.99687},
+        {"age_limit": 5,  "male_survival": 0.99560, "female_survival": 0.99638},
+        {"age_limit": 10, "male_survival": 0.99527, "female_survival": 0.99605},
+        {"age_limit": 15, "male_survival": 0.99494, "female_survival": 0.99579},
+        {"age_limit": 20, "male_survival": 0.99357, "female_survival": 0.99499},
+        {"age_limit": 25, "male_survival": 0.99165, "female_survival": 0.99412},
+        {"age_limit": 30, "male_survival": 0.98948, "female_survival": 0.99298},
+        {"age_limit": 35, "male_survival": 0.98683, "female_survival": 0.99130},
+        {"age_limit": 40, "male_survival": 0.98321, "female_survival": 0.98891},
+        {"age_limit": 45, "male_survival": 0.97772, "female_survival": 0.98498},
+        {"age_limit": 50, "male_survival": 0.96900, "female_survival": 0.97840},
+        {"age_limit": 55, "male_survival": 0.95460, "female_survival": 0.96689},
+        {"age_limit": 60, "male_survival": 0.93049, "female_survival": 0.94800},
+        {"age_limit": 65, "male_survival": 0.89120, "female_survival": 0.91875},
+        {"age_limit": 110,"male_survival": 0.00001, "female_survival": 0.00003}
+      ]
+    }
+  },
+
+  "fertility": {
+    "enabled": {"value": true},
+    "fraction_male_newborns": {"value": 0.512},
+    "asfr_by_age_limit": {
+      "value": [
+        {"age_limit": 15, "birth_rate": 0.0},
+        {"age_limit": 20, "birth_rate": 0.003},
+        {"age_limit": 25, "birth_rate": 0.085},
+        {"age_limit": 30, "birth_rate": 0.115},
+        {"age_limit": 35, "birth_rate": 0.092},
+        {"age_limit": 40, "birth_rate": 0.038},
+        {"age_limit": 45, "birth_rate": 0.004},
+        {"age_limit": 50, "birth_rate": 0.0},
+        {"age_limit": 110, "birth_rate": 0.0}
+      ]
+    },
+    "year_multipliers": {
+      "enabled": {"value": false}
+    }
+  },
+
+  "groups": {
+    "orientations": {
+      "value": [
+        {"name": "Female"},
+        {"name": "Heterosexual_Male"},
+        {"name": "MSM"}
+      ]
+    },
+    "age_groups": {
+      "value": [
+        {"name": "15-19", "min": 15, "max": 19},
+        {"name": "20-24", "min": 20, "max": 24},
+        {"name": "25-29", "min": 25, "max": 29},
+        {"name": "30-34", "min": 30, "max": 34},
+        {"name": "35-39", "min": 35, "max": 39},
+        {"name": "40-44", "min": 40, "max": 44},
+        {"name": "45-49", "min": 45, "max": 49},
+        {"name": "50-54", "min": 50, "max": 54},
+        {"name": "55-59", "min": 55, "max": 59},
+        {"name": "60-64", "min": 60, "max": 64},
+        {"name": "65+",   "min": 65, "max": 110}
+      ]
+    },
+    "sexual_activity_groups": {
+      "value": [
+        {"name": "Low", "contact_rate": 3.0},
+        {"name": "Medium", "contact_rate": 10.0},
+        {"name": "High", "contact_rate": 50.0}
+      ]
+    },
+    "hiv_stages": {
+      "value": [
+        {"name": "Susceptible"},
+        {"name": "Acute"},
+        {"name": "Chronic"},
+        {"name": "AIDS"}
+      ]
+    },
+    "orientation_contact_multipliers": {
+      "value": {
+        "Female": 0.7,
+        "Heterosexual_Male": 1.0,
+        "MSM": 2.5
+      }
+    }
+  },
+
+  "mixing": {
+    "heterosexual": {
+      "value": {
+        "Low": {"Low": 0.7, "Medium": 0.25, "High": 0.05},
+        "Medium": {"Low": 0.25, "Medium": 0.6, "High": 0.15},
+        "High": {"Low": 0.1, "Medium": 0.3, "High": 0.6}
+      }
+    },
+    "msm": {
+      "value": {
+        "Low": {"Low": 0.6, "Medium": 0.3, "High": 0.1},
+        "Medium": {"Low": 0.3, "Medium": 0.5, "High": 0.2},
+        "High": {"Low": 0.1, "Medium": 0.2, "High": 0.7}
+      }
+    },
+    "condom_usage": {
+      "value": {"Low": 1.0, "Medium": 1.0, "High": 1.0}
+    }
+  },
+
+  "disease": {
+    "transmission": {
+      "beta_acute": {"value": 0.08},
+      "beta_chronic": {"value": 0.004},
+      "beta_aids": {"value": 0.008}
+    },
+    "progression": {
+      "acute_to_chronic": {"value": 0.5},
+      "chronic_to_aids": {"value": 0.05}
+    },
+    "diagnosis": {
+      "annual_rate": {"value": 0.15}
+    },
+    "treatment": {
+      "art_initiation_rate": {"value": 0.8},
+      "art_dropout_rate": {"value": 0.05},
+      "art_transmission_reduction": {"value": 0.96},
+      "art_mortality_reduction": {"value": 0.9}
+    },
+    "mortality": {
+      "acute": {"value": 0.01},
+      "chronic": {"value": 0.02},
+      "aids": {"value": 0.25},
+      "combine_with_background": {"value": "excess"}
+    }
+  },
+
+  "interventions": {},
+
+  "simulation_controls": {
+    "n_runs": {"value": 1},
+    "seed": {"value": 42},
+    "deterministic_mode": {"value": true}
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "_comment": "HIV Model V5 - Time-Scheduled ART/PrEP + Policy Scenario Forking",
+  "_v5_features": {
+    "policy_year_forking": "Run baseline to policy_start_year, then fork scenarios from frozen state",
+    "time_schedules": "ART and PrEP availability/uptake controlled by year-based schedules",
+    "scenario_comparison": "Multiple policy scenarios from identical baseline for HTA comparability"
+  },
+
+  "policy": {
+    "enabled": {
+      "value": true,
+      "notes": "Enable policy-year scenario forking (V5 feature)"
+    },
+    "baseline_freeze_year": {
+      "value": 2025,
+      "notes": "Calendar year at which to freeze baseline state for scenario forking. All scenarios start from identical state at this year."
+    },
+    "reuse_baseline": {
+      "value": true,
+      "notes": "If true, run baseline once and reuse for all scenarios. If false, rerun baseline for each scenario (slower but useful for debugging)."
+    }
+  },
+
+  "scenarios": {
+    "enabled": {
+      "value": true,
+      "notes": "Enable multi-scenario runs (V5 feature). If false, runs single scenario with base config."
+    },
+    "definitions": [
+      {
+        "name": "status_quo",
+        "description": "Baseline continuation - no policy changes post-freeze year",
+        "overrides": {}
+      },
+      {
+        "name": "no_prep",
+        "description": "PrEP unavailable from policy year onward",
+        "overrides": {
+          "prep_force_disable": true,
+          "comment": "This will set all PrEP uptake to 0 and remove existing PrEP users"
+        }
+      },
+      {
+        "name": "oral_prep_scaleup",
+        "description": "Oral PrEP scaled up from policy year",
+        "overrides": {
+          "prep_schedules": {
+            "Oral_PrEP": {
+              "initiation": {
+                "2025": 0.1,
+                "2030": 0.3,
+                "2035": 0.5
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "lenacapavir_scaleup",
+        "description": "Lenacapavir PrEP introduction and scale-up",
+        "overrides": {
+          "prep_schedules": {
+            "Lenacapavir": {
+              "initiation": {
+                "2025": 0.05,
+                "2030": 0.2,
+                "2035": 0.4
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+
+  "art_schedule": {
+    "notes": "Time-based ART availability and uptake rates. Before first year: ART unavailable (rate=0). Between years: use stepwise (carry-forward) or linear interpolation based on interpolation setting.",
+    "interpolation": {
+      "value": "stepwise",
+      "notes": "'stepwise' (carry forward last value) or 'linear' (interpolate between years)"
+    },
+    "initiation": {
+      "notes": "Annual probability of ART initiation for diagnosed individuals not on treatment",
+      "schedule": {
+        "1996": 0.1,
+        "2000": 0.3,
+        "2005": 0.5,
+        "2010": 0.7,
+        "2015": 0.8,
+        "2020": 0.85
+      }
+    },
+    "discontinuation": {
+      "notes": "Annual probability of ART discontinuation (optional, defaults to 0 if not specified)",
+      "schedule": {
+        "1996": 0.15,
+        "2000": 0.10,
+        "2010": 0.05,
+        "2020": 0.02
+      }
+    }
+  },
+
+  "prep_schedules": {
+    "notes": "Time-based PrEP availability and uptake rates per intervention type. Before first year: PrEP unavailable (rate=0).",
+    "interpolation": {
+      "value": "stepwise",
+      "notes": "'stepwise' or 'linear'"
+    },
+    "Oral_PrEP": {
+      "initiation": {
+        "notes": "Annual probability of PrEP initiation for eligible susceptible individuals",
+        "schedule": {
+          "2012": 0.01,
+          "2015": 0.05,
+          "2020": 0.10,
+          "2025": 0.15
+        }
+      },
+      "discontinuation": {
+        "notes": "Annual probability of PrEP discontinuation",
+        "schedule": {
+          "2012": 0.30,
+          "2020": 0.20,
+          "2025": 0.15
+        }
+      }
+    },
+    "Lenacapavir": {
+      "initiation": {
+        "notes": "Lenacapavir not available until 2025 in this scenario",
+        "schedule": {
+          "2025": 0.02,
+          "2030": 0.08
+        }
+      },
+      "discontinuation": {
+        "schedule": {
+          "2025": 0.10,
+          "2030": 0.05
+        }
+      }
+    }
+  },
+
+  "_rest_of_config": "... (standard V4 config continues below) ..."
+}
