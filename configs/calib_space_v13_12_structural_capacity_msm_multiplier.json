@@ -1,0 +1,387 @@
+{
+  "version": "1.4",
+  "description": "V13.12 STRUCTURAL CAPACITY STRESS-TEST SPACE — diagnostic only. Updated by V13.21 for unconstrained MSM relative diagnosis multipliers. Do NOT use as a production calibration space. Intended for a history-matching-style implausibility screen: can the current model architecture (shared seed staging + V13.10 MSM diagnosis multiplier) fit targets at all when parameter bounds are widened beyond academically defensible ranges? Uses population.epidemic_seed.stage_distribution (shared, not orientation-specific). V13.11 stage_distribution_by_orientation is NOT used here; if a base config contains that block, run from a V13.10 or V13.9.5 base. Bounds are intentionally wide; audit_structural_capacity.py scores how far each particle deviates from defensible V13.10 bounds.",
+  "notes": [
+    "STRESS-TEST ONLY. Do not run an ABC-SMC production calibration from this space.",
+    "orient_female sampled up to 2.00 but runner mask enforces <= 1.0; upper half of draw will be rejected.",
+    "orient_msm sampled from 0.50 but runner mask enforces >= 1.0; lower half of draw will be rejected.",
+    "activity_low (derived) can reach ~0.84 at extremes; runner mask enforces activity_low in [0.14, 0.81].",
+    "Wide diagnosis / ART / contact bounds exist to test model structural capacity, not as priors.",
+    "msm_relative_diagnosis_enabled fixed True activates the MSM relative diagnosis multiplier for all particles."
+  ],
+  "parameters": [
+    {
+      "name": "orient_female",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.Female",
+      "min": 0.10,
+      "max": 2.00,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "STRESS-TEST wide bound. Runner mask enforces <= 1.0; defensible V13.10 bound: 0.20-1.00.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "orient_msm",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.MSM",
+      "min": 0.50,
+      "max": 7.00,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "STRESS-TEST wide bound. Runner mask enforces >= 1.0; defensible V13.10 bound: 1.00-5.00.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "epsilon_hetero",
+      "config_path": "transmission_model.mixing.epsilon_hetero.value",
+      "min": 0.00,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "dimensionless",
+      "stages": ["joint"]
+    },
+    {
+      "name": "epsilon_msm",
+      "config_path": "transmission_model.mixing.epsilon_msm.value",
+      "min": 0.00,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "dimensionless",
+      "stages": ["joint"]
+    },
+    {
+      "name": "activity_med",
+      "config_path": "population.activity_distribution.value.Medium",
+      "min": 0.15,
+      "max": 0.55,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.20-0.45.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "activity_high",
+      "config_path": "population.activity_distribution.value.High",
+      "min": 0.01,
+      "max": 0.25,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.03-0.15.",
+      "derived_companion": {
+        "name": "activity_low",
+        "config_path": "population.activity_distribution.value.Low",
+        "formula": "1.0 - activity_med - activity_high",
+        "min": 0.20,
+        "max": 0.84
+      },
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_prevalence",
+      "config_path": "population.epidemic_seed.seed_prevalence.value",
+      "min": 0.0005,
+      "max": 0.006,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.001-0.0035.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_msm_fraction",
+      "config_path": "population.epidemic_seed.msm_fraction.value",
+      "min": 0.50,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST lower bound 0.50; defensible V13.10: 0.80-1.00.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "p_msm",
+      "config_path": "population.p_msm.value",
+      "min": 0.03,
+      "max": 0.12,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.053-0.09. Runner syncs demography.sexual_debut.p_msm.value.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_chronic_share",
+      "config_path": "population.epidemic_seed.stage_distribution.value.Chronic",
+      "min": 0.00,
+      "max": 0.60,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.00-0.40. Uses shared stage_distribution (not orientation-specific).",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_aids_share",
+      "config_path": "population.epidemic_seed.stage_distribution.value.AIDS",
+      "min": 0.00,
+      "max": 0.20,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.00-0.05.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "contact_low",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[0].contact_rate",
+      "min": 0.50,
+      "max": 8.00,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 1.00-6.00.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "contact_med",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[1].contact_rate",
+      "min": 3.00,
+      "max": 25.00,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 6.00-18.00.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "contact_high",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[2].contact_rate",
+      "min": 8.00,
+      "max": 80.00,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 18.00-60.00.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_1985",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1985",
+      "min": 0.01,
+      "max": 0.50,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.03-0.18.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_1990",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1990",
+      "min": 0.02,
+      "max": 0.70,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.08-0.30.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_1997",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1997",
+      "min": 0.05,
+      "max": 0.90,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.18-0.50.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_2015",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.2015",
+      "min": 0.10,
+      "max": 0.95,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.25-0.70.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "msm_diag_mult_1996",
+      "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.schedule.value.1996",
+      "min": 0.00,
+      "max": 2.00,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "STRESS-TEST wide bound; V13.21 relative ascertainment bound with no cross-era monotonicity.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "msm_diag_mult_2004",
+      "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.schedule.value.2004",
+      "min": 0.00,
+      "max": 2.00,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "STRESS-TEST wide bound; V13.21 relative ascertainment bound with no cross-era monotonicity.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "msm_diag_mult_2015",
+      "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.schedule.value.2015",
+      "min": 0.00,
+      "max": 2.00,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "STRESS-TEST wide bound; V13.21 relative ascertainment bound with no cross-era monotonicity.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_1996",
+      "config_path": "interventions.art.schedule.initiation.value.1996",
+      "min": 0.00,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.05-0.50.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_2000",
+      "config_path": "interventions.art.schedule.initiation.value.2000",
+      "min": 0.00,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.30-0.95.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_2015",
+      "config_path": "interventions.art.schedule.initiation.value.2015",
+      "min": 0.30,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.60-0.98.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_2020",
+      "config_path": "interventions.art.schedule.initiation.value.2020",
+      "min": 0.50,
+      "max": 1.00,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.75-0.995.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_dropout_rate",
+      "config_path": "interventions.art.advanced.art_dropout_rate.value",
+      "min": 0.00,
+      "max": 0.08,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.00-0.03.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "chronic_to_aids",
+      "config_path": "transmission_model.disease.progression.chronic_to_aids.value",
+      "min": 0.02,
+      "max": 0.15,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.045-0.085.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "chronic_to_aids_on_art",
+      "config_path": "transmission_model.disease.progression.chronic_to_aids_on_art.value",
+      "min": 0.00,
+      "max": 0.05,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.001-0.015.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "aids_mortality",
+      "config_path": "transmission_model.disease.mortality.aids.value",
+      "min": 0.05,
+      "max": 0.70,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.15-0.35.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_mortality_reduction",
+      "config_path": "transmission_model.disease.advanced.art_mortality_reduction.value",
+      "min": 0.40,
+      "max": 0.99,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "STRESS-TEST wide bound; defensible V13.10: 0.75-0.97.",
+      "stages": ["joint"]
+    }
+  ],
+  "fixed_parameters": [
+    {
+      "name": "orient_het_male",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.Heterosexual_Male",
+      "value": 1.0,
+      "unit": "multiplier",
+      "reason": "Reference orientation multiplier for calibration.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_1995",
+      "config_path": "interventions.art.schedule.initiation.value.1995",
+      "value": 0.0,
+      "unit": "annual probability",
+      "reason": "Hard no-ART anchor before the 1996 ART availability year.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "historical_oral_prep_enabled",
+      "config_path": "interventions.oral_prep.enabled.value",
+      "value": true,
+      "unit": "boolean",
+      "reason": "Historical oral PrEP remains active for 2019-2025 targets.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "historical_lenacapavir_disabled",
+      "config_path": "interventions.lenacapavir.enabled.value",
+      "value": false,
+      "unit": "boolean",
+      "reason": "Lenacapavir was unavailable during historical calibration.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "msm_relative_diagnosis_enabled",
+      "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.enabled.value",
+      "value": true,
+      "unit": "boolean",
+      "reason": "V13.12 structural capacity test uses the MSM relative diagnosis multiplier. This fixed parameter enables the feature for all particles. Not a production default.",
+      "stages": ["joint"]
+    }
+  ],
+  "excluded_parameters": [
+    {
+      "name": "seed_acute_share",
+      "config_path": "population.epidemic_seed.stage_distribution.value.Acute",
+      "value": "derived",
+      "reason": "Derived in runner as 1 - seed_chronic_share - seed_aids_share."
+    }
+  ],
+  "constraints": [
+    {
+      "description": "Contact rates must be strictly ordered: low < med < high (enforced by runner _valid_draw_mask).",
+      "expression": "contact_low < contact_med < contact_high"
+    },
+    {
+      "description": "Diagnosis schedule must be monotonically non-decreasing (enforced by runner _valid_draw_mask).",
+      "expression": "diagnosis_1985 <= diagnosis_1990 <= diagnosis_1997 <= diagnosis_2015"
+    },
+    {
+      "description": "ART initiation schedule must be non-decreasing (enforced by runner _valid_draw_mask).",
+      "expression": "art_init_1996 <= art_init_2000 <= art_init_2015 <= art_init_2020"
+    },
+    {
+      "description": "Seed acute share must be non-negative (simplex validity; enforced by runner _valid_draw_mask).",
+      "expression": "1 - seed_chronic_share - seed_aids_share >= 0"
+    }
+  ]
+}

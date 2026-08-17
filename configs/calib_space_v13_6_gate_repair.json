@@ -1,0 +1,521 @@
+{
+  "version": "1.1",
+  "description": "Focused V13.6 gated repair space: existing backbone/care levers plus disease-history repair parameters; PrEP parameters are held from the incoming baseline and treated as audit-only.",
+  "parameters": [
+    {
+      "name": "orient_female",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.Female",
+      "min": 0.2,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "Female multiplier relative to the fixed heterosexual-male reference of 1.0.",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "orient_msm",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.MSM",
+      "min": 1.0,
+      "max": 5.0,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "notes": "MSM multiplier relative to the fixed heterosexual-male reference of 1.0.",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "epsilon_hetero",
+      "config_path": "transmission_model.mixing.epsilon_hetero.value",
+      "min": 0.0,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "dimensionless",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "epsilon_msm",
+      "config_path": "transmission_model.mixing.epsilon_msm.value",
+      "min": 0.0,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "dimensionless",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "activity_med",
+      "config_path": "population.activity_distribution.value.Medium",
+      "min": 0.2,
+      "max": 0.45,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "activity_high",
+      "config_path": "population.activity_distribution.value.High",
+      "min": 0.03,
+      "max": 0.15,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "derived_companion": {
+        "name": "activity_low",
+        "config_path": "population.activity_distribution.value.Low",
+        "formula": "1.0 - activity_med - activity_high",
+        "min": 0.4,
+        "max": 0.77
+      },
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "seed_prevalence",
+      "config_path": "population.epidemic_seed.seed_prevalence.value",
+      "min": 1e-05,
+      "max": 0.003,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "seed_msm_fraction",
+      "config_path": "population.epidemic_seed.msm_fraction.value",
+      "min": 0.5,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "contact_low",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[0].contact_rate",
+      "min": 1.0,
+      "max": 6.0,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "contact_med",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[1].contact_rate",
+      "min": 6.0,
+      "max": 18.0,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "contact_high",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[2].contact_rate",
+      "min": 18.0,
+      "max": 60.0,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "stages": [
+        "backbone",
+        "joint"
+      ]
+    },
+    {
+      "name": "diagnosis_1985",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1985",
+      "min": 0.03,
+      "max": 0.18,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "Effective diagnosis probability in the early HIV testing era.",
+      "stages": [
+        "diagnosis",
+        "joint"
+      ]
+    },
+    {
+      "name": "diagnosis_1990",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1990",
+      "min": 0.08,
+      "max": 0.3,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "Effective diagnosis probability for the intermediate second/third-generation testing era.",
+      "stages": [
+        "diagnosis",
+        "joint"
+      ]
+    },
+    {
+      "name": "diagnosis_1997",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1997",
+      "min": 0.18,
+      "max": 0.5,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "Effective diagnosis probability for the modern fourth-generation testing era.",
+      "stages": [
+        "diagnosis",
+        "joint"
+      ]
+    },
+    {
+      "name": "diagnosis_2015",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.2015",
+      "min": 0.25,
+      "max": 0.7,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "Effective diagnosis probability after intensified Amsterdam PrEP-era testing policy.",
+      "stages": [
+        "diagnosis",
+        "joint"
+      ]
+    },
+    {
+      "name": "art_init_1996",
+      "config_path": "interventions.art.schedule.initiation.value.1996",
+      "min": 0.05,
+      "max": 0.5,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "First ART-available year. The fixed 1995 anchor remains 0.0.",
+      "stages": [
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "art_init_2000",
+      "config_path": "interventions.art.schedule.initiation.value.2000",
+      "min": 0.3,
+      "max": 0.95,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": [
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "art_init_2015",
+      "config_path": "interventions.art.schedule.initiation.value.2015",
+      "min": 0.6,
+      "max": 0.98,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": [
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "art_init_2020",
+      "config_path": "interventions.art.schedule.initiation.value.2020",
+      "min": 0.75,
+      "max": 0.995,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": [
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "art_dropout_rate",
+      "config_path": "interventions.art.advanced.art_dropout_rate.value",
+      "min": 0.0,
+      "max": 0.03,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": [
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "chronic_to_aids",
+      "config_path": "transmission_model.disease.progression.chronic_to_aids.value",
+      "min": 0.045,
+      "max": 0.085,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "V13.6 focused repair: chronic-to-AIDS progression. Bounds are wider than the current narrow point estimate but remain in a literature-plausible diagnostic range.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "chronic_to_aids_on_art",
+      "config_path": "transmission_model.disease.progression.chronic_to_aids_on_art.value",
+      "min": 0.001,
+      "max": 0.015,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "V13.6 focused repair: on-ART chronic-to-AIDS progression sensitivity within existing config bounds.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "aids_mortality",
+      "config_path": "transmission_model.disease.mortality.aids.value",
+      "min": 0.15,
+      "max": 0.35,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "notes": "V13.6 focused repair: AIDS-stage mortality. Upper bound stays below the broad legacy 0.45 stress-test because diagnostics showed extreme mortality can collapse stocks.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "art_mortality_reduction",
+      "config_path": "transmission_model.disease.advanced.art_mortality_reduction.value",
+      "min": 0.75,
+      "max": 0.97,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "V13.6 focused repair: ART reduction in HIV-attributable mortality within existing evidence bounds.",
+      "stages": [
+        "joint"
+      ]
+    }
+  ],
+  "fixed_parameters": [
+    {
+      "name": "orient_het_male",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.Heterosexual_Male",
+      "value": 1.0,
+      "unit": "multiplier",
+      "reason": "Reference orientation multiplier for calibration. Female and MSM are estimated relative to heterosexual males.",
+      "stages": [
+        "backbone",
+        "diagnosis",
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "art_init_1995",
+      "config_path": "interventions.art.schedule.initiation.value.1995",
+      "value": 0.0,
+      "unit": "annual probability",
+      "reason": "Hard no-ART anchor before the 1996 ART availability year; prevents calibration from fitting a 1995 ART uptake value.",
+      "stages": [
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_oral_prep_enabled",
+      "config_path": "interventions.oral_prep.enabled.value",
+      "value": true,
+      "unit": "boolean",
+      "reason": "Historical oral PrEP must be active when fitting the 2019-2025 CSG programme targets.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_lenacapavir_disabled",
+      "config_path": "interventions.lenacapavir.enabled.value",
+      "value": false,
+      "unit": "boolean",
+      "reason": "Lenacapavir was not available during the historical PrEP calibration period.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_oral_prep_activity_classes",
+      "config_path": "interventions.oral_prep.eligible_activity_classes.value",
+      "value": [
+        "Low",
+        "Medium",
+        "High"
+      ],
+      "unit": "list",
+      "reason": "Historical uptake is not restricted to the model's theoretical High activity group; lower activity MSM remain eligible with lower uptake intensity.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_oral_prep_low_modifier",
+      "config_path": "interventions.oral_prep.advanced.uptake_modifier_by_activity.value.Low",
+      "value": 0.2,
+      "unit": "multiplier",
+      "reason": "Low-activity MSM retain nonzero historical uptake because real PrEP indication includes situational risk not captured by fixed activity class.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_oral_prep_medium_modifier",
+      "config_path": "interventions.oral_prep.advanced.uptake_modifier_by_activity.value.Medium",
+      "value": 1.0,
+      "unit": "multiplier",
+      "reason": "Reference uptake intensity for historical PrEP calibration.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_oral_prep_high_modifier",
+      "config_path": "interventions.oral_prep.advanced.uptake_modifier_by_activity.value.High",
+      "value": 1.5,
+      "unit": "multiplier",
+      "reason": "Higher historical uptake intensity among high-activity MSM without making PrEP High-only.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_oral_prep_stock_corridor_enabled",
+      "config_path": "prep_schedules.Oral_PrEP.advanced.historical_stock_corridor.enabled",
+      "value": true,
+      "unit": "boolean",
+      "reason": "Historical PrEP exposure is externally observed during the CSG pilot and should remain inside the empirical stock corridor during joint calibration.",
+      "stages": [
+        "joint"
+      ]
+    },
+    {
+      "name": "historical_lenacapavir_stock_corridor_disabled",
+      "config_path": "prep_schedules.Lenacapavir.advanced.historical_stock_corridor.enabled",
+      "value": false,
+      "unit": "boolean",
+      "reason": "The generic corridor mechanism supports lenacapavir, but it must remain inactive for the historical Netherlands period because lenacapavir was not available.",
+      "stages": [
+        "joint"
+      ]
+    }
+  ],
+  "excluded_parameters": [
+    {
+      "name": "beta_vaginal_mtf",
+      "config_path": "transmission_model.disease.transmission.advanced.beta_per_route.vaginal_mtf.chronic.value",
+      "reason": "Route-specific betas are literature-defined biological parameters. Their uncertainty should be handled in PSA, not pre-PSA calibration.",
+      "stages": [
+        "backbone",
+        "diagnosis",
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "beta_vaginal_ftm",
+      "config_path": "transmission_model.disease.transmission.advanced.beta_per_route.vaginal_ftm.chronic.value",
+      "reason": "Route-specific betas are literature-defined biological parameters. Their uncertainty should be handled in PSA, not pre-PSA calibration.",
+      "stages": [
+        "backbone",
+        "diagnosis",
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "beta_anal_rec",
+      "config_path": "transmission_model.disease.transmission.advanced.beta_per_route.anal_receptive.chronic.value",
+      "reason": "Route-specific betas are literature-defined biological parameters. Their uncertainty should be handled in PSA, not pre-PSA calibration.",
+      "stages": [
+        "backbone",
+        "diagnosis",
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "beta_anal_ins",
+      "config_path": "transmission_model.disease.transmission.advanced.beta_per_route.anal_insertive.chronic.value",
+      "reason": "Route-specific betas are literature-defined biological parameters. Their uncertainty should be handled in PSA, not pre-PSA calibration.",
+      "stages": [
+        "backbone",
+        "diagnosis",
+        "art",
+        "joint"
+      ]
+    },
+    {
+      "name": "prep_oral_init_2019",
+      "config_path": "prep_schedules.Oral_PrEP.initiation.schedule.2019",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    },
+    {
+      "name": "prep_oral_init_2021",
+      "config_path": "prep_schedules.Oral_PrEP.initiation.schedule.2021",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    },
+    {
+      "name": "prep_oral_init_2023",
+      "config_path": "prep_schedules.Oral_PrEP.initiation.schedule.2023",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    },
+    {
+      "name": "prep_oral_init_2024",
+      "config_path": "prep_schedules.Oral_PrEP.initiation.schedule.2024",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    },
+    {
+      "name": "prep_oral_init_2025",
+      "config_path": "prep_schedules.Oral_PrEP.initiation.schedule.2025",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    },
+    {
+      "name": "prep_oral_dropout_2019",
+      "config_path": "prep_schedules.Oral_PrEP.discontinuation.schedule.2019",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    },
+    {
+      "name": "prep_oral_dropout_2025",
+      "config_path": "prep_schedules.Oral_PrEP.discontinuation.schedule.2025",
+      "stages": [
+        "joint"
+      ],
+      "reason": "V13.6 gate repair keeps PrEP audit-only; incoming baseline value is retained rather than using PrEP to force incidence fit."
+    }
+  ],
+  "name": "calib_space_v13_6_gate_repair"
+}

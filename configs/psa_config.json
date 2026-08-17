@@ -1,0 +1,134 @@
+{
+  "_readme": "PSA configuration — controls sampling, outputs, and metrics. Separate from model config. Do not add PSA settings to v11_configuration.json.",
+
+  "sampling": {
+    "n_draws": {
+      "value": 1000,
+      "notes": "Number of PSA iterations. 1000 is standard for HTA submissions; use 20-100 for development testing."
+    },
+    "method": {
+      "value": "lhs",
+      "notes": "Sampling method: 'lhs' (Latin Hypercube Sampling) or 'random' (simple Monte Carlo). LHS preferred for HTA."
+    },
+    "seed": {
+      "value": 12345,
+      "notes": "RNG seed for reproducibility of PSA parameter draws. Fixed seed ensures same draws across runs."
+    },
+    "tiers_to_sample": {
+      "value": ["uncertain"],
+      "notes": "Which parameter tiers to include. Default: only Tier 3 (uncertain). Add 'estimated' to also vary Tier 2 calibrated params — only do this after full calibration."
+    },
+    "exclude_parameters": {
+      "value": [],
+      "notes": "Dot-paths of Tier-3 parameters to exclude from sampling. Example: ['transmission_model.disease.transmission.beta_acute']"
+    },
+    "include_parameters": {
+      "value": [],
+      "notes": "If non-empty, ONLY these dot-paths are sampled (overrides tier discovery). Use for targeted one-way sensitivity analysis."
+    },
+    "correlation_groups": {
+      "value": [],
+      "notes": "FUTURE (BACKLOG): Groups of parameters with enforced rank correlation. E.g., [{'params': ['beta_chronic', 'epsilon_msm'], 'rank_correlation': 0.6}]. Not implemented in V11.10."
+    }
+  },
+
+  "scenarios": {
+    "enabled": {
+      "value": false,
+      "notes": "If true, run PSA across multiple HTA scenarios (PSA x scenario grid). Requires hta_config.json. Not implemented in V11.10 MVP."
+    },
+    "reference_scenario": {
+      "value": "no_prep",
+      "notes": "Reference scenario for computing incremental outcomes. Used only when scenarios.enabled = true."
+    }
+  },
+
+  "metrics": {
+    "extract": [
+      {
+        "name": "cumulative_infections",
+        "column": "new_infections",
+        "aggregation": "sum",
+        "year_range": [1970, 2020],
+        "notes": "Total new HIV infections over the full simulation horizon"
+      },
+      {
+        "name": "final_prevalence",
+        "column": "prevalence",
+        "aggregation": "final",
+        "notes": "HIV prevalence at the final simulation year"
+      },
+      {
+        "name": "cumulative_hiv_deaths",
+        "column": "hiv_deaths",
+        "aggregation": "sum",
+        "year_range": [1970, 2020],
+        "notes": "Cumulative HIV-attributable deaths over simulation horizon"
+      },
+      {
+        "name": "mean_incidence_rate",
+        "column": "incidence_rate",
+        "aggregation": "mean",
+        "year_range": [2000, 2020],
+        "notes": "Mean annual HIV incidence rate over 2000-2020 calibration window"
+      }
+    ]
+  },
+
+  "outputs": {
+    "directory": {
+      "value": "outputs/psa",
+      "notes": "Output directory for PSA results. Created if it does not exist."
+    },
+    "raw_draws": {
+      "enabled": true,
+      "format": "csv",
+      "notes": "Write full parameter draws matrix (N x K) and outcome matrix (N x M) as CSV files."
+    },
+    "summary_excel": {
+      "enabled": true,
+      "notes": "Write summary Excel workbook: parameter_summary, outcome_summary, raw_draws, raw_outcomes, tornado_data, convergence tabs."
+    },
+    "plots": {
+      "tornado": {
+        "enabled": true,
+        "metric": "cumulative_infections",
+        "top_n": 9,
+        "notes": "Spearman rank correlation tornado diagram. top_n capped at number of parameters."
+      },
+      "histogram": {
+        "enabled": true,
+        "metrics": ["cumulative_infections", "final_prevalence"],
+        "notes": "Distribution of outcome metrics across PSA draws."
+      },
+      "convergence": {
+        "enabled": true,
+        "metric": "cumulative_infections",
+        "notes": "Running mean ± 95% CI vs. draw count. Justifies that N is sufficient."
+      },
+      "format": {
+        "value": "png",
+        "notes": "Plot format: 'png', 'pdf', or 'svg'."
+      },
+      "dpi": {
+        "value": 150,
+        "notes": "Plot resolution. 150 for development, 300 for publication."
+      }
+    }
+  },
+
+  "hta_sampling": {
+    "enabled": {
+      "value": true,
+      "notes": "If true, also sample cost/utility/AE parameters from hta_config.json."
+    },
+    "exclude_placeholders": {
+      "value": false,
+      "notes": "If true, skip parameters with distribution_status='placeholder'. Set true when BACKLOG-15 is incomplete."
+    },
+    "exclude_parameters": {
+      "value": [],
+      "notes": "Dot-paths of HTA parameters to exclude from sampling."
+    }
+  }
+}

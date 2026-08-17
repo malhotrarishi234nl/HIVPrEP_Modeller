@@ -1,0 +1,1034 @@
+{
+  "_format_version": "v2",
+  "_notes": "V11.6.0 redesigned HTA config — four-component layered structure. Updated through 2026-05-22 HTA cleanup: oral PrEP AE items removed from base case, lenacapavir ISR/nodule prevalence marked sourced with approximate uncertainty, disease-stage productivity losses disabled for the base case, and HIV diagnosis/linkage cost sourced from Dutch guidance and tariffs.",
+  "_adjusted_config_note": "V12.18 side-by-side costing sensitivity. Uses Popping et al. 2023 Table 3 year-1 and years-2-to-5 non-ART stage costs inflated from 2018 EUR to 2025 EUR (factor 1.3018), plus Dovato first-line ART AIP from Farmacotherapeutisch Kompas. Requires V12.18 disease_costs cohort routing for new_art_initiators and on_art_continuing. See documentation/patches/PATCH_PLAN_V12_17_POPPING_STAGE_COST_RECONCILIATION.md and documentation/patches/PATCH_PLAN_V12_18_ART_INITIATION_DISEASE_COST_ROUTING.md.",
+  "time_horizon": {
+    "freeze_year": 2025,
+    "evaluation_years": 40,
+    "notes": "40-year time horizon from 2025 baseline freeze for scenario comparison",
+    "prep_reset_at_fork": {
+      "value": true,
+      "notes": "V11.10.7: When true, collapses all existing PrEP users → None slot in the baseline snapshot before each arm engine is initialised. Ensures equal PrEP-naive starting stock across all three arms at the HTA decision point (2025). Historical PrEP effects on HIV prevalence are preserved in the snapshot state; only the PrEP stock headcount is cleared. Set false only for sensitivity analysis exploring carry-over effects. Has no effect when the baseline runs with all PrEP interventions disabled (current default — flag is a forward-compatibility guard for when oral_prep is enabled in the baseline)."
+    }
+  },
+  "discounting": {
+    "health_effects_rate": {
+      "value": 0.015,
+      "notes": "ZIN guideline: 1.5% annual discount rate for health effects",
+      "source": "Zorginstituut Nederland (ZIN) guideline 2022"
+    },
+    "cost_rate": {
+      "value": 0.04,
+      "notes": "ZIN guideline: 4.0% annual discount rate for costs",
+      "source": "Zorginstituut Nederland (ZIN) guideline 2022"
+    },
+    "base_year": {
+      "value": 2025,
+      "notes": "Base year for discounting calculations"
+    }
+  },
+  "wtp_threshold_eur_per_qaly": {
+    "value": 80000,
+    "notes": "WTP threshold per QALY for HIV/AIDS under ZIN proportional shortfall scale. Diseases with proportional shortfall >= 0.70 qualify for tier 3 threshold of EUR 80,000/QALY. HIV/AIDS qualifies given substantial life-years lost relative to healthy life expectancy.",
+    "source": "Zorginstituut Nederland (2022). Richtlijn voor economische evaluaties in de gezondheidszorg. https://www.zorginstituutnederland.nl/publicaties/rapport/2022/08/15/richtlijn-voor-economische-evaluaties-in-de-gezondheidszorg",
+    "distribution_status": "sourced"
+  },
+  "perspective": {
+    "_notes": "Controls which cost total drives the ICER. 'societal' = primary analysis per ZIN 2022 (BACKLOG-20). 'payer' = healthcare-payer only (secondary/sensitivity run, reproduces V11.9.10 behaviour). Both cost totals are always computed; this flag only selects which appears in the ICER table.",
+    "primary": "societal",
+    "report_payer_component_separately": true,
+    "productivity_loss": {
+      "enabled": false,
+      "method": "friction_incident",
+      "working_age_min": 15,
+      "working_age_max": 65,
+      "employment_rate_modifier": {
+        "value": 1,
+        "notes": "Not used in the base case because disease-stage productivity losses are disabled. Retained for sensitivity analyses that re-enable productivity losses; value 1.0 means incident working-age counts are not further reduced by an employment-rate scalar.",
+        "source": "Base-case structural exclusion of disease-stage productivity losses; sensitivity-only parameter.",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "not_used_base_case_sensitivity_only"
+      },
+      "friction_period_weeks": {
+        "value": 16.4,
+        "notes": "Dutch average friction period (CBS vacancy data 2018-2022): 115 calendar days = 16.4 weeks. Updated from stale 21-week value. iMTA 2024 Table 6-1.",
+        "source": "Hakkaart-van Roijen et al. (2024) iMTA Costing Manual, Table 6-1. CBS Statline Arbeidsrekeningen 2018-2022.",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "sourced"
+      },
+      "average_hourly_wage": {
+        "value": 39.88,
+        "notes": "Average hourly labour cost including employer costs (EUR/hr), Netherlands 2023. iMTA 2024 Table 6-2. Updated from stale EUR 36.50.",
+        "source": "Hakkaart-van Roijen et al. (2024) iMTA Costing Manual, Table 6-2. CBS Statline Arbeidskosten 2023.",
+        "distribution": {
+          "type": "gamma",
+          "mean": 39.88,
+          "se": 4
+        },
+        "distribution_status": "sourced"
+      },
+      "annual_hours_worked": {
+        "value": 1720,
+        "notes": "Not used in the base case because disease-stage productivity losses are disabled. Retained for sensitivity analyses that re-enable productivity losses.",
+        "source": "Sensitivity-only parameter; no base-case role.",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "not_used_base_case_sensitivity_only"
+      },
+      "loss_rate_by_stage": {
+        "_notes": "Sensitivity-only disease-stage productivity loss rates. Not used in the base case. Dutch labor-market evidence now supports diagnosis/late-diagnosis productivity sensitivity analyses, but it does not cleanly map to the model's acute/chronic/AIDS state rates.",
+        "acute": {
+          "value": 0.15,
+          "notes": "Not used in the base case. Retained only for sensitivity analyses that re-enable disease-stage productivity losses (acute).",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "not_used_base_case_sensitivity_only",
+          "source": "Sensitivity-only assumption. Excluded from base case; Tuiu et al. (2026) provides Dutch post-diagnosis and late-diagnosis labor-market effects, not acute/chronic/AIDS state-specific decrements."
+        },
+        "chronic_off_art": {
+          "value": 0.1,
+          "notes": "Not used in the base case. Retained only for sensitivity analyses that re-enable disease-stage productivity losses (chronic_off_art).",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "not_used_base_case_sensitivity_only",
+          "source": "Sensitivity-only assumption. Excluded from base case; Tuiu et al. (2026) provides Dutch post-diagnosis and late-diagnosis labor-market effects, not acute/chronic/AIDS state-specific decrements."
+        },
+        "chronic_on_art": {
+          "value": 0.03,
+          "notes": "Not used in the base case. Retained only for sensitivity analyses that re-enable disease-stage productivity losses (chronic_on_art).",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "not_used_base_case_sensitivity_only",
+          "source": "Sensitivity-only assumption. Excluded from base case; Tuiu et al. (2026) provides Dutch post-diagnosis and late-diagnosis labor-market effects, not acute/chronic/AIDS state-specific decrements."
+        },
+        "aids_off_art": {
+          "value": 0.5,
+          "notes": "Not used in the base case. Retained only for sensitivity analyses that re-enable disease-stage productivity losses (aids_off_art).",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "not_used_base_case_sensitivity_only",
+          "source": "Sensitivity-only assumption. Excluded from base case; Tuiu et al. (2026) provides Dutch post-diagnosis and late-diagnosis labor-market effects, not acute/chronic/AIDS state-specific decrements."
+        },
+        "aids_on_art": {
+          "value": 0.2,
+          "notes": "Not used in the base case. Retained only for sensitivity analyses that re-enable disease-stage productivity losses (aids_on_art).",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "not_used_base_case_sensitivity_only",
+          "source": "Sensitivity-only assumption. Excluded from base case; Tuiu et al. (2026) provides Dutch post-diagnosis and late-diagnosis labor-market effects, not acute/chronic/AIDS state-specific decrements."
+        }
+      },
+      "_base_case_note": "Disease-stage productivity losses are excluded from the base case. Dutch evidence from Tuiu et al. (2026) supports productivity sensitivity analyses by HIV diagnosis and late diagnosis, but not the model's acute/chronic/AIDS state-specific loss rates. Base-case exclusion remains conservative for prevention because it removes productivity savings from infections averted."
+    },
+    "patient_time_costs": {
+      "enabled": true,
+      "oral_prep_visits_per_year": {
+        "value": 2,
+        "notes": "Standard monitoring visits per MDR PrEP Nederland v4.5 (July 2025): 6-monthly consultations = 2 visits/year. 3-monthly visits are optional via shared decision-making for higher-risk individuals (sensitivity scenario only). Updated from outdated 4 visits/year (old MDR 2022 quarterly assumption).",
+        "source": "MDR PrEP Nederland v4.5, July 2025. https://www.soaaids.nl/files/2025-07/20250716+PrEP+richtlijn+Nederland+versie+4.5.pdf",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "sourced"
+      },
+      "lenacapavir_visits_per_year": {
+        "value": 2,
+        "notes": "Biannual lenacapavir injection/monitoring visits: two 6-monthly visits per year, aligned with Yeytuo dosing and the MDR PrEP v4.5 standard 6-monthly PrEP monitoring interval.",
+        "source": "EMA Yeytuo product information/SmPC dosing every 6 months; MDR PrEP Nederland v4.5 July 2025 standard monitoring interval.",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "sourced"
+      },
+      "time_per_visit_hours": {
+        "value": 2.5,
+        "notes": "Base-case assumption for patient travel + appointment time per clinic visit. ZIN/iMTA support including patient time costs in the societal perspective; no Dutch PrEP-specific measured visit-time estimate was identified. Test as sensitivity.",
+        "source": "Zorginstituut Nederland 2022 economic evaluation guideline and iMTA 2024 costing manual for patient time-cost inclusion; 2.5-hour duration is a model assumption for travel + appointment time.",
+        "distribution": {
+          "type": "gamma",
+          "mean": 2.5,
+          "se": 0.5
+        },
+        "distribution_status": "assumption_for_sensitivity"
+      },
+      "hiv_art_visits_per_year": {
+        "value": 4,
+        "notes": "HIV-positive individuals on ART are assigned quarterly outpatient monitoring visits (viral load/labs/clinical review) in the societal patient-time component. This is applied equally across arms and only differs through the number of HIV-positive on-ART patients.",
+        "source": "Stichting HIV Monitoring ATHENA monitoring practice; Dutch HIV treatment guidelines/NVHB clinical practice.",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "sourced_protocol"
+      },
+      "use_average_wage_for_time": true
+    },
+    "informal_care": {
+      "enabled": false,
+      "notes": "Not implemented in this patch. ZIN guidance includes informal care in societal perspective. Small in Dutch context (professional care infrastructure). Pending supervisor input — see BACKLOG-20 Design decision 3."
+    }
+  },
+  "utilities": {
+    "susceptible": {
+      "value": 1,
+      "notes": "Full health utility for HIV-negative individuals not on PrEP. Convention used in Dutch PrEP CEA (Nichols 2016) and NICE TA1106 (2025).",
+      "source": "Convention: Nichols et al. 2016 (Lancet Infect Dis 16:1423); NICE TA1106 2025",
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "literature_sourced"
+    },
+    "susceptible_oral_prep": {
+      "value": 1,
+      "notes": "No EQ-5D evidence for PrEP utility decrement. Nichols 2016 Dutch PrEP CEA and NICE TA1106 both apply zero decrement for PrEP use. Previous value of 0.99 was clinical judgment with no source.",
+      "source": "Nichols et al. 2016 (Lancet Infect Dis 16:1423, Table S1); NICE TA1106 2025 (no PrEP decrement applied)",
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "literature_sourced"
+    },
+    "susceptible_lenacapavir": {
+      "value": 1,
+      "notes": "No EQ-5D evidence for lenacapavir PrEP utility decrement. Same convention as oral PrEP. Previous differential (0.005) vs oral PrEP was unsourced and created a structural QALY advantage for lenacapavir without evidence.",
+      "source": "Nichols et al. 2016 (Lancet Infect Dis 16:1423, Table S1); NICE TA1106 2025 (no PrEP decrement applied)",
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "literature_sourced"
+    },
+    "hiv_acute": {
+      "value": 0.78,
+      "notes": "Proxy for early/acute HIV (symptomatic, CD4 200-350). Tengs & Lin 2002 pooled TTO symptomatic HIV = 0.82; Nichols 2016 Dutch CEA Table S1 CD4 200-350 = 0.82. Value 0.78 is midpoint between symptomatic HIV (0.82) and AIDS (0.70) to reflect acute phase severity. Previous value 0.70 was the Tengs AIDS estimate, not acute HIV.",
+      "source": "Tengs & Lin 2002 (Med Decis Making 22:475, Table 2 TTO patient pooled); Nichols et al. 2016 (Lancet Infect Dis 16:1423, Table S1 CD4 200-350)",
+      "bounds": {
+        "lower": 0.7,
+        "upper": 0.87,
+        "lower_source": "Tengs & Lin 2002 AIDS pooled TTO (floor)",
+        "upper_source": "Nichols 2016 Table S1 CD4>350 sensitivity value"
+      },
+      "distribution": {
+        "type": "beta",
+        "alpha": 70.4,
+        "beta": 19.8,
+        "mean": 0.78
+      },
+      "distribution_status": "literature_sourced"
+    },
+    "hiv_chronic_on_art": {
+      "value": 0.98,
+      "notes": "Stable chronic HIV on suppressive ART, expressed on the model convention where susceptible/no HIV utility is 1.0. Popping 2021 reports Dutch PLHIV EQ-5D-5L utility 0.850 and Dutch general-population utility 0.869; the normalized model-scale value is 0.850/0.869 = 0.978, rounded to 0.98. This replaces direct use of 0.850, which mixed an absolute population utility with a susceptible state fixed at 1.0.",
+      "source": "Popping et al. 2021 (Lancet Reg Health Eur 8:100177; NL n=895, EQ-5D-5L, Versteegh 2016 NL tariff)",
+      "bounds": {
+        "lower": 0.85,
+        "upper": 1,
+        "lower_source": "Popping 2021 absolute Dutch PLHIV EQ-5D-5L utility, conservative unnormalised sensitivity",
+        "upper_source": "Model susceptible/no-HIV convention fixed at 1.0"
+      },
+      "distribution": {
+        "type": "beta",
+        "alpha": 98,
+        "beta": 2,
+        "mean": 0.98
+      },
+      "distribution_status": "literature_sourced"
+    },
+    "hiv_chronic_off_art": {
+      "value": 0.78,
+      "notes": "Chronic HIV off ART: CD4 decline without treatment. Value 0.78 is consistent with Tengs & Lin 2002 symptomatic HIV and Nichols 2016 CD4 200-350 (0.82), adjusted downward to reflect off-ART status. Miners 2014 stopped-ART disutility −0.18 vs NL norm 0.85 gives 0.67 as lower bound.",
+      "source": "Tengs & Lin 2002 (Med Decis Making 22:475, Table 2, symptomatic HIV 0.82 proxy); Nichols et al. 2016 (Lancet Infect Dis 16:1423, Table S1 CD4 200-350 = 0.82)",
+      "bounds": {
+        "lower": 0.67,
+        "upper": 0.85,
+        "lower_source": "Miners et al. 2014 stopped-ART disutility −0.18 applied to NL norm 0.85",
+        "upper_source": "NL EQ-5D-5L population norm (Versteegh 2016; Popping 2021 = 0.869, rounded to 0.85 for 3L comparability)"
+      },
+      "distribution": {
+        "type": "beta",
+        "alpha": 62.7,
+        "beta": 17.7,
+        "mean": 0.78
+      },
+      "distribution_status": "literature_sourced"
+    },
+    "aids_on_art": {
+      "value": 0.98,
+      "notes": "AIDS-stage on ART after applying the late-presenter initiation penalty. Set equal to stable chronic ART because the expected five-year recovery loss is charged once through utility_decrements.late_presenter_art_initiation. This avoids permanently penalising AIDS-on-ART person-time in a model that does not track immune-recovery tunnel states.",
+      "source": "Popping et al. 2021 (Lancet Reg Health Eur 8:100177; NL PLHIV utility 0.850); Popping et al. 2023 (PLoS ONE 18:e0280877; late/very-late presentation costs persist through 5 years); Tengs & Lin 2002 / Nichols 2016 untreated AIDS utility anchor 0.70",
+      "bounds": {
+        "lower": 0.85,
+        "upper": 0.98,
+        "lower_source": "Popping 2021 absolute Dutch PLHIV EQ-5D-5L utility, conservative unnormalised sensitivity",
+        "upper_source": "Popping 2021 normalized stable chronic ART utility"
+      },
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "derived_from_hiv_chronic_on_art"
+    },
+    "aids_off_art": {
+      "value": 0.7,
+      "notes": "AIDS off ART. Tengs & Lin 2002 provides a single pooled AIDS utility (0.70) with no ART stratification; Nichols 2016 uses the same AIDS-stage base value. In the current HTA utility structure this remains the untreated AIDS anchor, while late-presenter ART morbidity is represented by a one-time ART-initiation utility decrement. Previous value 0.40 had no literature source and was below all published estimates.",
+      "source": "Tengs & Lin 2002 (Med Decis Making 22:475, Table 2, AIDS TTO patient pooled 0.702); Nichols et al. 2016 (Lancet Infect Dis 16:1423, Table S1 AIDS CD4 <200 = 0.70).",
+      "bounds": {
+        "lower": 0.6,
+        "upper": 0.8,
+        "lower_source": "Nichols 2016 Table S1 AIDS sensitivity low",
+        "upper_source": "Nichols 2016 Table S1 AIDS sensitivity high"
+      },
+      "distribution": {
+        "type": "beta",
+        "alpha": 55.8,
+        "beta": 23.9,
+        "mean": 0.7
+      },
+      "distribution_status": "literature_sourced"
+    }
+  },
+  "utility_decrements": {
+    "late_presenter_art_initiation": {
+      "value": 0.65,
+      "frequency": "once",
+      "billing_moment": "art_initiation",
+      "applies_to_stages": [
+        "AIDS"
+      ],
+      "notes": "One-time QALY decrement for AIDS-stage late presenters initiating ART. Derived as (stable ART utility 0.98 - late-recovery proxy 0.85) x 5 years = 0.65 QALYs. This decrement is kept undiscounted here because the HTA accumulator applies the model's health discounting when QALYs are accumulated; discounting the parameter itself would risk double discounting under the current event-decrement implementation. Popping 2023 supports persistent excess morbidity/resource use through five years after ART initiation in late and very-late presenters, but does not directly measure utility by presentation timing. Kept fixed in PSA to avoid sampling this derived decrement independently of the underlying utility values.",
+      "source": "Derived from Popping et al. 2021 Dutch PLHIV utility and Popping et al. 2023 five-year late-presentation cost persistence; Tengs & Lin 2002 / Nichols 2016 AIDS utility anchor for lower-bound context.",
+      "bounds": {
+        "lower": 0,
+        "upper": 0.65,
+        "lower_source": "No additional late-presenter utility penalty sensitivity",
+        "upper_source": "Full five-year decrement: (0.98 - 0.85) x 5"
+      },
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "derived_fixed_base_case"
+    }
+  },
+  "adverse_events": {
+    "mode": "prevalence",
+    "notes": "Base case uses prevalence mode. Oral PrEP GI/renal AE cost and disutility items were removed from the base case on 2026-05-22 because iPrEx/PROUD/IPERGAY show low severity, minimal serious drug-related toxicity, and no defensible incremental utility/cost burden beyond routine monitoring. Oral renal monitoring remains included under prevention_costs.shared.prep_renal_monitoring_oral. Lenacapavir ISR/nodule utility burden remains included.",
+    "items": [
+      {
+        "id": "lenacapavir_isr_ae",
+        "label": "Transient injection site reactions — Lenacapavir ongoing",
+        "arm": "lenacapavir",
+        "billing_moment": "ongoing",
+        "frequency": "annual",
+        "state_machine_params": {
+          "onset_rate_per_year": 0.8,
+          "resolution_rate_per_year": 6,
+          "severity_distribution": {
+            "mild": 0.75,
+            "moderate": 0.22,
+            "severe": 0.03
+          },
+          "utility_decrements": {
+            "mild": -0.005,
+            "moderate": -0.01,
+            "severe": -0.03
+          },
+          "cost_additions": {
+            "mild": 0,
+            "moderate": 0,
+            "severe": 0
+          },
+          "_notes": "resolution_rate_per_year=6.0 implies mean resolution ~2 months, appropriate for transient ISRs (redness, swelling, pain). State-machine params inactive in prevalence mode."
+        },
+        "prevalence": {
+          "value": 0.405,
+          "notes": "Transient ISR prevalence = total ISR prevalence (0.760) minus persistent nodule prevalence (0.355). Non-overlapping split: this item covers patients with ISRs that resolve, excluding persistent non-resolving nodules. Total ISR prevalence 0.760 is midpoint of PURPOSE-1 (68.8%) and PURPOSE-2 (83.2%). No direct CI is reported for the derived transient fraction; beta distribution is approximate and should be complemented by deterministic sensitivity analysis.",
+          "source": "EMA CHMP Assessment Report, Yeytuo (lenacapavir), EMA/265754/2025, Table 63 and safety section. PURPOSE-1: 68.8% any ISR; PURPOSE-2: 83.2% any ISR.",
+          "distribution": {
+            "type": "beta",
+            "alpha": 40,
+            "beta": 59,
+            "_notes": "Beta(40,59): mean=0.404, SD~0.049. Approximate — derived value, no direct trial CI."
+          },
+          "distribution_status": "sourced_derived_approximate_uncertainty"
+        },
+        "utility_decrement": {
+          "value": -0.01,
+          "notes": "Proxy-sourced utility loss for transient ISR. PURPOSE/EPAR provides lenacapavir-specific prevalence but no EQ-5D utility decrement. NICE TA1106 cabotegravir PrEP EAG scenario EAG 05 assumed an ISR disutility of -0.015 applied per cycle. We split that average burden into -0.01 for transient ISRs and -0.02 for persistent nodules; weighted by current prevalence (0.405 transient, 0.355 persistent), the mean decrement among ISR/nodule cases is -0.0147, approximately matching TA1106. Use sensitivity analysis around this proxy because it is cabotegravir-derived, not lenacapavir-specific.",
+          "source": "NICE TA1106 Cabotegravir for preventing HIV-1, committee papers, EAG 05: per-cycle ISR costs and disutility; EMA CHMP Assessment Report Yeytuo (lenacapavir), EMA/265754/2025 for lenacapavir ISR prevalence.",
+          "distribution": {
+            "type": "beta",
+            "alpha": 1,
+            "beta": 99
+          },
+          "distribution_status": "sourced_proxy"
+        },
+        "cost": {
+          "value": 0,
+          "notes": "Base-case assumption: no incremental medical management cost for transient lenacapavir injection-site reactions. This follows a conservative cabotegravir-style costing approach in which mild ISRs are not costed and any treatment resource use is negligible. Utility decrement captures patient burden; medical-management costs can be added as a sensitivity if treatment-seeking evidence is identified.",
+          "source": "Model assumption informed by NICE cabotegravir PrEP appraisal structure; no Dutch lenacapavir-specific ISR treatment-cost evidence identified.",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "sourced_zero_cost_assumption"
+        }
+      },
+      {
+        "id": "lenacapavir_isr_persistent_nodule",
+        "label": "Persistent injection site nodule — Lenacapavir ongoing",
+        "arm": "lenacapavir",
+        "billing_moment": "ongoing",
+        "frequency": "annual",
+        "state_machine_params": {
+          "onset_rate_per_year": 0.8,
+          "resolution_rate_per_year": 0.5,
+          "_notes": "resolution_rate_per_year=0.5 derived from EPAR: ~35-36% of LEN users had non-resolving nodules at end of observation (~2 years). Solving 1-exp(-r*2)=0.64 gives r~0.51. Inactive in prevalence mode.",
+          "severity_distribution": {
+            "mild": 0.7,
+            "moderate": 0.25,
+            "severe": 0.05
+          },
+          "utility_decrements": {
+            "mild": -0.01,
+            "moderate": -0.02,
+            "severe": -0.04
+          },
+          "cost_additions": {
+            "mild": 0,
+            "moderate": 0,
+            "severe": 0
+          }
+        },
+        "prevalence": {
+          "value": 0.355,
+          "notes": "Non-resolving injection-site nodule/induration prevalence among lenacapavir users. Midpoint of PURPOSE-1 and PURPOSE-2 end-of-observation rates (both approximately 35-36%), reported consistently across both trials. This is a subset of the total ISR population and is not double counted with transient ISR. No formal 95% CI was reported in the EPAR; beta distribution is approximate and should be complemented by deterministic sensitivity analysis [0.25, 0.45].",
+          "source": "EMA CHMP Assessment Report, Yeytuo (lenacapavir), EMA/265754/2025, safety section. PURPOSE-1 LEN arm: ~35-36% non-resolving nodule at end of observation. PURPOSE-2 LEN arm: ~35-36% non-resolving nodule at end of observation.",
+          "distribution": {
+            "type": "beta",
+            "alpha": 90,
+            "beta": 163,
+            "_notes": "Beta(90,163): mean=0.356, SD~0.030. Approximate — no direct CI from EPAR. Parameterised assuming SD=0.03 (reflecting uncertainty in the absence of CI). Sensitivity analysis should test wide range [0.25, 0.45]."
+          },
+          "distribution_status": "sourced_approximate_uncertainty"
+        },
+        "utility_decrement": {
+          "value": -0.02,
+          "notes": "Proxy-sourced utility loss for persistent injection-site nodule. PURPOSE/EPAR provides lenacapavir-specific persistent nodule prevalence but no EQ-5D utility decrement. NICE TA1106 cabotegravir PrEP EAG scenario EAG 05 assumed an ISR disutility of -0.015 applied per cycle. We assign a larger decrement to persistent nodules (-0.02) than transient ISRs (-0.01) to reflect longer duration/cosmetic burden while preserving the NICE average: weighted by prevalence (0.405 transient, 0.355 persistent), mean decrement among ISR/nodule cases is -0.0147. Use sensitivity analysis because this is a cabotegravir-derived proxy and persistent nodule-specific utility evidence is unavailable.",
+          "source": "NICE TA1106 Cabotegravir for preventing HIV-1, committee papers, EAG 05: per-cycle ISR costs and disutility; EMA CHMP Assessment Report Yeytuo (lenacapavir), EMA/265754/2025 for lenacapavir persistent nodule prevalence.",
+          "distribution": {
+            "type": "beta",
+            "alpha": 2,
+            "beta": 98,
+            "_notes": "Wide uninformative prior pending literature sourcing."
+          },
+          "distribution_status": "sourced_proxy"
+        },
+        "cost": {
+          "value": 0,
+          "notes": "Base-case assumption: persistent injection-site nodules are not assigned incremental treatment costs because routine medical treatment/removal is not established. Patient burden is represented through utility decrement only. Dermatology or removal costs should be tested only as a sensitivity if treatment-seeking evidence is identified.",
+          "source": "Model assumption informed by NICE cabotegravir PrEP appraisal structure; no Dutch lenacapavir-specific persistent-nodule treatment-cost evidence identified.",
+          "distribution": {
+            "type": "fixed"
+          },
+          "distribution_status": "sourced_zero_cost_assumption"
+        }
+      }
+    ],
+    "_oral_prep_ae_exclusion_note": "Removed oral_prep_initiation_renal_screen, oral_prep_gi_ae, and oral_prep_renal_ae from base-case AE items. Renal screening/monitoring is costed in prevention_costs rather than adverse_events; minor oral PrEP GI/renal toxicity is not assigned separate base-case cost or disutility."
+  },
+  "prevention_costs": {
+    "shared": [
+      {
+        "id": "prep_monitoring_visits_and_sti",
+        "label": "PrEP monitoring visits + STI screening — all active PrEP users",
+        "applies_to": [
+          "oral_prep",
+          "lenacapavir"
+        ],
+        "frequency": "annual",
+        "billing_moment": "ongoing",
+        "category": "monitoring",
+        "value": 854.5,
+        "components": {
+          "consultations_per_year": 2,
+          "consultation_unit_cost_eur": 120,
+          "sti_lab_bundle_per_visit_eur": 307.25,
+          "sti_bundle_nza_codes": "70003x6, 70626, 71118+71144, 79989",
+          "sti_bundle_includes": "Chlamydia NAAT x3 sites + Gonorrhoea NAAT x3 sites + Syphilis TPHA + HIV 4th gen Ag/Ab combo + order tariff"
+        },
+        "notes": "MDR PrEP Nederland v4.5 (July 2025) standard monitoring: 2 consultations/year (6-monthly). Per consultation: outpatient visit EUR 120 (iMTA 2024) + full STI lab bundle EUR 307.25 (NZA 2025 tariffs). Annual total: 2 x (EUR 120 + EUR 307.25) = EUR 854.50. Applies identically to both arms. PROTOCOL NOTE: Prior Dutch PrEP standard (MDR PrEP v3/v4, 2022) specified quarterly monitoring (4 visits/year = EUR 1,709/year). MDR v4.5 (July 2025) updated this to 6-monthly as the standard interval, with quarterly visits retained as an option under shared decision-making for higher-risk individuals. This model uses the v4.5 standard (2 visits/year); quarterly monitoring may be evaluated as a sensitivity scenario.",
+        "source": "MDR PrEP Nederland v4.5 July 2025 (monitoring interval). Hakkaart-van Roijen et al. (2024) iMTA Costing Manual Appendix 1 (outpatient EUR 120). NZA maximumtarieven diagnostiek 2025 (codes 70003 EUR 40.86/site, 70626 EUR 12.21, 71118 EUR 15.02, 71144 EUR 26.97, 79989 EUR 7.89).",
+        "distribution": {
+          "type": "gamma",
+          "mean": 854.5,
+          "se": 85
+        },
+        "distribution_status": "sourced"
+      },
+      {
+        "id": "prep_renal_monitoring_oral",
+        "label": "Renal function monitoring (creatinine) — oral PrEP users only",
+        "applies_to": [
+          "oral_prep"
+        ],
+        "frequency": "annual",
+        "billing_moment": "ongoing",
+        "category": "monitoring",
+        "value": 4.26,
+        "notes": "TDF-based oral PrEP requires renal function monitoring per MDR PrEP v4.5. 2 creatinine tests/year x NZA code 70419 (EUR 2.13) = EUR 4.26/year. Not applicable to lenacapavir (no TDF component). Included for methodological completeness; negligible budget impact.",
+        "source": "MDR PrEP Nederland v4.5 July 2025. NZA maximumtarieven diagnostiek 2025 code 70419 (creatinine EUR 2.13).",
+        "distribution": {
+          "type": "fixed"
+        },
+        "distribution_status": "sourced"
+      }
+    ],
+    "arm_specific": {
+      "oral_prep": {
+        "drug_tdf_ftc_generic": {
+          "id": "oral_prep_drug_tdf_ftc",
+          "label": "TDF/FTC generic — oral PrEP annual drug cost",
+          "value": 1322.21,
+          "frequency": "annual",
+          "billing_moment": "ongoing",
+          "cohort": "all",
+          "category": "drug",
+          "notes": "Generic emtricitabine 200mg / tenofovir disoproxil 245mg tablet (daily dosing). Price: EUR 3.62/tablet x 365.25 days/year = EUR 1322.21/year. Brand (Truvada) = EUR 8.07/tablet = EUR 2947.57/year (sensitivity scenario). SE 10% assumed — no published price variance available. Replaces old bundled drug_and_monitoring item (EUR 1322, which was drug cost only despite the label).",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Generic emtricitabine 200mg/tenofovir disoproxil 245mg tablet EUR 3.62. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 1322.21,
+            "se": 132.22
+          },
+          "distribution_status": "sourced"
+        }
+      },
+      "lenacapavir": {
+        "injection_year1": {
+          "value": 41110.44,
+          "frequency": "annual",
+          "billing_moment": "initiation",
+          "cohort": "new_initiators",
+          "category": "drug",
+          "injections_per_year": 2,
+          "notes": "Lenacapavir year-1 injection cost (two biannual injections): 2 x 1.5ML vials Sulenaca at 2 x €10,277.61 = €20,555.22 per injection x 2 = €41,110.44. Combined with oral_loading_year1 (€839.98) gives total year-1 cost of €41,950.42.",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Sunlenca 1.5 mL injection solution EUR 10,277.61 per vial; two vials per injection and two injections/year. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 41110.44,
+            "se": 2000
+          },
+          "distribution_status": "sourced"
+        },
+        "oral_loading_year1": {
+          "value": 839.98,
+          "frequency": "once",
+          "billing_moment": "initiation",
+          "cohort": "new_initiators",
+          "category": "drug",
+          "injections_per_year": 1,
+          "notes": "Lenacapavir year-1 oral loading dose at initiation: 2 x 300mg tablets at 2 x €419.99 = €839.98. Given once at start alongside first injection. frequency:once ensures no step_fraction division — full cost charged per new initiator. (V11.9.11)",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Sunlenca tablet 300 mg EUR 419.99; oral loading dose 2 tablets. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 839.98,
+            "se": 100
+          },
+          "distribution_status": "sourced"
+        },
+        "injection_subsequent": {
+          "value": 41110.44,
+          "frequency": "annual",
+          "billing_moment": "ongoing",
+          "cohort": "continuing",
+          "category": "drug",
+          "injections_per_year": 2,
+          "notes": "Lenacapavir subsequent-year annual cost for continuing users: two biannual injections at €20,555.22 each (2 x 1.5ML vials Sulenaca at 2 x €10,277.61) = €41,110.44/year.",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Sunlenca 1.5 mL injection solution EUR 10,277.61 per vial; two vials per injection and two injections/year. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 41110.44,
+            "se": 2000
+          },
+          "distribution_status": "sourced"
+        }
+      },
+      "oral_prep_plus_lena": {
+        "drug_tdf_ftc_generic": {
+          "id": "oral_prep_drug_tdf_ftc",
+          "label": "TDF/FTC generic — oral PrEP annual drug cost",
+          "value": 1322.21,
+          "frequency": "annual",
+          "billing_moment": "ongoing",
+          "cohort": "all",
+          "category": "drug",
+          "notes": "Generic emtricitabine 200mg / tenofovir disoproxil 245mg tablet (daily dosing). Price: EUR 3.62/tablet x 365.25 days/year = EUR 1322.21/year. Brand (Truvada) = EUR 8.07/tablet = EUR 2947.57/year (sensitivity scenario). SE 10% assumed — no published price variance available. Replaces old bundled drug_and_monitoring item (EUR 1322, which was drug cost only despite the label).",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Generic emtricitabine 200mg/tenofovir disoproxil 245mg tablet EUR 3.62. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 1322.21,
+            "se": 132.22
+          },
+          "distribution_status": "sourced"
+        },
+        "injection_year1": {
+          "value": 41110.44,
+          "frequency": "annual",
+          "billing_moment": "initiation",
+          "cohort": "new_initiators",
+          "category": "drug",
+          "injections_per_year": 2,
+          "notes": "Lenacapavir year-1 injection cost (two biannual injections): 2 x 1.5ML vials Sulenaca at 2 x €10,277.61 = €20,555.22 per injection x 2 = €41,110.44. Combined with oral_loading_year1 (€839.98) gives total year-1 cost of €41,950.42.",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Sunlenca 1.5 mL injection solution EUR 10,277.61 per vial; two vials per injection and two injections/year. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 41110.44,
+            "se": 2000
+          },
+          "distribution_status": "sourced"
+        },
+        "oral_loading_year1": {
+          "value": 839.98,
+          "frequency": "once",
+          "billing_moment": "initiation",
+          "cohort": "new_initiators",
+          "category": "drug",
+          "injections_per_year": 1,
+          "notes": "Lenacapavir year-1 oral loading dose at initiation: 2 x 300mg tablets at 2 x €419.99 = €839.98. Given once at start alongside first injection. frequency:once ensures no step_fraction division — full cost charged per new initiator. (V11.9.11)",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Sunlenca tablet 300 mg EUR 419.99; oral loading dose 2 tablets. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 839.98,
+            "se": 100
+          },
+          "distribution_status": "sourced"
+        },
+        "injection_subsequent": {
+          "value": 41110.44,
+          "frequency": "annual",
+          "billing_moment": "ongoing",
+          "cohort": "continuing",
+          "category": "drug",
+          "injections_per_year": 2,
+          "notes": "Lenacapavir subsequent-year annual cost for continuing users: two biannual injections at €20,555.22 each (2 x 1.5ML vials Sulenaca at 2 x €10,277.61) = €41,110.44/year.",
+          "source": "Farmacotherapeutisch Kompas (farmacotherapeutischkompas.nl). Sunlenca 1.5 mL injection solution EUR 10,277.61 per vial; two vials per injection and two injections/year. Accessed 2026-04-29.",
+          "distribution": {
+            "type": "gamma",
+            "mean": 41110.44,
+            "se": 2000
+          },
+          "distribution_status": "sourced"
+        }
+      }
+    }
+  },
+  "disease_costs": {
+    "art_first_line": {
+      "value": 8907,
+      "frequency": "annual",
+      "billing_moment": "ongoing",
+      "applies_to_stages": [
+        "Acute",
+        "Chronic",
+        "AIDS"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "drug",
+      "notes": "Annual cost of first-line ART. Adjusted-config base case uses Dovato 50/300 mg AIP: EUR 4,453.54 per six months x 2 = EUR 8,907/year. Low sensitivity candidate: current model EUR 7,352. High sensitivity candidate: Biktarvy adult 50/200/25 mg AIP EUR 10,651/year.",
+      "source": "Farmacotherapeutisch Kompas / Zorginstituut Nederland cost overview for Dovato (dolutegravir/lamivudine 50/300 mg).",
+      "distribution": {
+        "type": "gamma",
+        "mean": 8907,
+        "se": 825
+      },
+      "distribution_status": "sourced",
+      "_psa_range_note": "Suggested ART price range for sensitivity/PSA: low EUR 7,352; base EUR 8,907; high EUR 10,651."
+    },
+    "hiv_monitoring_on_art": {
+      "value": 0,
+      "frequency": "annual",
+      "billing_moment": "ongoing",
+      "applies_to_stages": [
+        "Acute",
+        "Chronic",
+        "AIDS"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "monitoring",
+      "notes": "Superseded in adjusted config by Popping stage-specific non-ART care cost items below. Set to zero to avoid double-counting.",
+      "source": "Superseded by Popping et al. 2023 Table 3 stage-specific non-ART cost items.",
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_non_art_care_tier_timely_year1": {
+      "value": 3133,
+      "frequency": "once",
+      "billing_moment": "ongoing",
+      "cohort": "new_art_initiators",
+      "applies_to_stages": [
+        "Acute"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "monitoring",
+      "notes": "Adjusted-config Popping non-ART care tier. Timely presentation year-1 cost: EUR 2,407 in 2018 EUR, inflated to EUR 3,133 in 2025 EUR using CPI factor 1.3018. Requires V12.18 disease-cost cohort routing; frequency:once charges the year-1 bundle to gross ART initiators in this stage.",
+      "source": "Popping et al. (2023) PLoS ONE 18(2):e0280877, Table 3; CBS CPI 2019-2025.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 3133,
+        "se": 650
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_non_art_care_tier_timely_maintenance": {
+      "value": 2871,
+      "frequency": "annual",
+      "billing_moment": "ongoing",
+      "cohort": "on_art_continuing",
+      "applies_to_stages": [
+        "Acute"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "monitoring",
+      "notes": "Adjusted-config Popping non-ART care tier. Timely presentation years 2-5 annual average: EUR 2,205.75 in 2018 EUR, inflated to EUR 2,871 in 2025 EUR using CPI factor 1.3018. Requires V12.18 disease-cost cohort routing; applies to on-ART continuing stock after excluding same-step ART initiators.",
+      "source": "Popping et al. (2023) PLoS ONE 18(2):e0280877, Table 3; CBS CPI 2019-2025.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 2871,
+        "se": 580
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_non_art_care_tier_late_year1": {
+      "value": 6182,
+      "frequency": "once",
+      "billing_moment": "ongoing",
+      "cohort": "new_art_initiators",
+      "applies_to_stages": [
+        "Chronic"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "monitoring",
+      "notes": "Adjusted-config Popping non-ART care tier. Late presentation year-1 cost: EUR 4,749 in 2018 EUR, inflated to EUR 6,182 in 2025 EUR using CPI factor 1.3018. Requires V12.18 disease-cost cohort routing; frequency:once charges the year-1 bundle to gross ART initiators in this stage. Mapping all Chronic-on-ART to Late is conservative; use Timely for Chronic in a lower-cost sensitivity if desired.",
+      "source": "Popping et al. (2023) PLoS ONE 18(2):e0280877, Table 3; CBS CPI 2019-2025.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 6182,
+        "se": 1200
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_non_art_care_tier_late_maintenance": {
+      "value": 4169,
+      "frequency": "annual",
+      "billing_moment": "ongoing",
+      "cohort": "on_art_continuing",
+      "applies_to_stages": [
+        "Chronic"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "monitoring",
+      "notes": "Adjusted-config Popping non-ART care tier. Late presentation years 2-5 annual average: EUR 3,202.75 in 2018 EUR, inflated to EUR 4,169 in 2025 EUR using CPI factor 1.3018. Requires V12.18 disease-cost cohort routing; applies to on-ART continuing stock after excluding same-step ART initiators.",
+      "source": "Popping et al. (2023) PLoS ONE 18(2):e0280877, Table 3; CBS CPI 2019-2025.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 4169,
+        "se": 900
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_non_art_care_tier_very_late_year1": {
+      "value": 20680,
+      "frequency": "once",
+      "billing_moment": "ongoing",
+      "cohort": "new_art_initiators",
+      "applies_to_stages": [
+        "AIDS"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "hiv_care",
+      "notes": "Adjusted-config Popping non-ART care tier. Very late presentation year-1 cost: EUR 15,886 in 2018 EUR, inflated to EUR 20,680 in 2025 EUR using CPI factor 1.3018. Requires V12.18 disease-cost cohort routing; frequency:once charges the year-1 bundle to gross ART initiators in this stage. AIDS-off-ART remains covered by aids_hospitalization.",
+      "source": "Popping et al. (2023) PLoS ONE 18(2):e0280877, Table 3; CBS CPI 2019-2025.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 20680,
+        "se": 5000
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_non_art_care_tier_very_late_maintenance": {
+      "value": 7477,
+      "frequency": "annual",
+      "billing_moment": "ongoing",
+      "cohort": "on_art_continuing",
+      "applies_to_stages": [
+        "AIDS"
+      ],
+      "applies_to_art_status": [
+        "on_art"
+      ],
+      "category": "hiv_care",
+      "notes": "Adjusted-config Popping non-ART care tier. Very late presentation years 2-5 annual average: EUR 5,743.75 in 2018 EUR, inflated to EUR 7,477 in 2025 EUR using CPI factor 1.3018. Requires V12.18 disease-cost cohort routing; applies to on-ART continuing stock after excluding same-step ART initiators. AIDS-off-ART remains covered by aids_hospitalization.",
+      "source": "Popping et al. (2023) PLoS ONE 18(2):e0280877, Table 3; CBS CPI 2019-2025.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 7477,
+        "se": 3000
+      },
+      "distribution_status": "sourced"
+    },
+    "aids_hospitalization": {
+      "value": 22000,
+      "frequency": "annual",
+      "billing_moment": "ongoing",
+      "applies_to_stages": [
+        "AIDS"
+      ],
+      "applies_to_art_status": [
+        "off_art"
+      ],
+      "category": "hiv_care",
+      "notes": "Annual cost of AIDS-stage care without ART: opportunistic infection hospitalisations, OI drug treatment, supportive outpatient care. Restricted to off_art only (architecture decision 2026-04-29) — AIDS-on-ART patients are covered by hiv_monitoring_on_art. Value: iMTA 2024 bottom-up construction (1.5 OI episodes x 18 ward days x EUR 644/day + OI drugs + visits ~ EUR 21,868/year). Corroborated by Popping et al. (2023) ATHENA cohort: very late presenter non-ART costs year 1 EUR 15,886 (2018 EUR), inflated to 2025 ~ EUR 20,680 lower bound.",
+      "source": "Hakkaart-van Roijen et al. (2024) iMTA Costing Manual, Appendix 1 (hospital ward day EUR 644). Popping et al. (2023) PLoS ONE 18(2):e0280877 (ATHENA cohort, very late presenter non-ART costs, 2018 EUR).",
+      "distribution": {
+        "type": "gamma",
+        "mean": 22000,
+        "se": 4000
+      },
+      "distribution_status": "sourced"
+    },
+    "hiv_diagnosis_linkage": {
+      "value": 600,
+      "frequency": "once",
+      "billing_moment": "diagnosis",
+      "category": "hiv_care",
+      "_architecture_note": "billing_moment='diagnosis' fires once per person transitioning Undiagnosed→Diagnosed in a given step. The applies_to_stages and applies_to_art_status fields are NOT evaluated for diagnosis-billing items — the accumulator applies the cost directly to the new_diagnoses counter. Those fields have been removed to avoid misleading readers.",
+      "notes": "One-time per-diagnosis linkage bundle, rounded from Dutch guidance/tariffs: reactive HIV screen/antigen EUR 39.66, confirmatory blot EUR 60.01, HIV viral load EUR 113.75, CD4/CD8 EUR 33.04, HIV RNA genotyping or sequence analysis EUR 241.58-257.51, first specialist linkage visit EUR 120, and blood/order handling about EUR 15. Broader STI/baseline screening is not included here to avoid overlap with first-year HIV care bundles. Rounded base-case value EUR 600; use EUR 500-750 as a sensitivity range.",
+      "source": "RIVM LCI HIV-infectie guideline (diagnostic confirmation, HIV-RNA after confirmed positive, referral to HIV treatment centre). NVHB Richtlijn HIV: first consult in people with HIV (documented confirmation/Western blot, HIV-RNA, CD4, resistance testing on indication). GGD Amsterdam Streeklaboratorium 2025 tariffs: 071118 EUR 14.19, 071144 EUR 25.47, 070185 EUR 60.01, 070005 EUR 113.75. NZA maximumtarieven diagnostiek 2025: 70007 DNA/RNA analysis EUR 241.58. Amsterdam UMC ODV 2025/2026: HIV RNA genotyping EUR 257.51; HIV RNA quantitative EUR 116.07. Hakkaart-van Roijen et al. (2024) iMTA Costing Manual Appendix 1 outpatient visit EUR 120.",
+      "distribution": {
+        "type": "gamma",
+        "mean": 600,
+        "se": 100
+      },
+      "distribution_status": "sourced_bottom_up"
+    },
+    "hiv_terminal_care": {
+      "value": 0,
+      "frequency": "once",
+      "billing_moment": "death",
+      "applies_to_stages": [
+        "AIDS"
+      ],
+      "category": "terminal_care",
+      "notes": "Intentionally zero (architecture decision 2026-04-29). Terminal care costs for AIDS-off-ART patients are implicitly captured in the final time-steps of aids_hospitalization (EUR 22,000/year ongoing until death). Adding a separate lump sum at death would double-count the final period. Evidence: Van Dijk et al. (2025) Eur J Health Econ confirms Dutch end-of-life costs concentrate in months t-1 and t-2 before death — the ongoing AIDS state cost already captures this. If a societal terminal care sensitivity is needed in future, size as ~2 months ICU/ward above the ongoing AIDS state cost citing Dijk 2025.",
+      "source": "Van Dijk et al. (2025) Eur J Health Econ. DOI: 10.1007/s10198-025-01763-w",
+      "distribution": {
+        "type": "fixed"
+      },
+      "distribution_status": "sourced"
+    }
+  },
+  "outputs": {
+    "excel_report": {
+      "enabled": true,
+      "notes": "Write the HTA Excel report workbook as the primary output"
+    },
+    "csv_files": {
+      "enabled": true,
+      "notes": "Write individual CSV files alongside the Excel report. Set false to suppress."
+    },
+    "baseline_summary_years": {
+      "value": [
+        1970,
+        1975,
+        1980,
+        1985,
+        1990,
+        1995,
+        2000,
+        2005,
+        2010,
+        2015,
+        2020,
+        2025
+      ],
+      "notes": "Years to include in the Baseline Key Years tab. Must be within simulation range."
+    },
+    "baseline_full_tab": {
+      "enabled": true,
+      "notes": "Include the full quarterly baseline data tab (Tab 10). Disable to reduce file size."
+    }
+  },
+  "analysis_scenarios": [
+    {
+      "name": "scenario_a_base",
+      "label": "Base case: Universal access (All MSM)",
+      "description": "All eligible MSM can access both Oral PrEP and Lenacapavir without activity restriction",
+      "lenacapavir_overrides": {
+        "eligible_activity_classes": [
+          "Low",
+          "Medium",
+          "High"
+        ],
+        "notes": "Lenacapavir eligible for all activity levels"
+      },
+      "_note_schedules": "prep_schedule_overrides replace the base config prep_schedules for these arms in the evaluation period only. Base config schedules cover the historical 1980-2025 period and are unchanged.",
+      "prep_schedule_overrides": {
+        "oral_prep": {
+          "Oral_PrEP": {
+            "initiation": {
+              "2025": 0.033,
+              "2028": 0.038,
+              "2030": 0.04,
+              "_source": "Kuipers RIVM 2023 Scenarioverkenning PrEP-zorg na de landelijke pilot — high scenario (~30,000 users by 2030). Demand rate ~0.033/year derived from 2023 stock (13,600) + unmet demand (2,685 waiting list) applied to eligible pool. No capacity cap post-2024 (national pilot ended; GP access demand-driven).",
+              "_status": "SCENARIO ASSUMPTION — grounded in Kuipers 2023 derivation; vary in scenario/PSA sensitivity rather than treating as an unsourced placeholder."
+            }
+          }
+        },
+        "lenacapavir": {
+          "Lenacapavir": {
+            "initiation": {
+              "2025": 0.05,
+              "2027": 0.1,
+              "_source": "SCENARIO ASSUMPTION — no RIVM equivalent exists for Lena uptake because Lenacapavir was not yet available in NL at the time of Kuipers 2023. Treat as a primary scenario/PSA sensitivity parameter.",
+              "_status": "SCENARIO ASSUMPTION / PSA SENSITIVITY"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "scenario_b_targeted",
+      "label": "Targeted: High-activity MSM only",
+      "description": "SUPERSEDED by scenario_b_expansion (2026-05-11). Retained for backward compatibility with existing run outputs. Do not use for new analysis. See BACKLOG-25 for cleanup. Original: Lenacapavir restricted to high-activity MSM; Oral PrEP available to all",
+      "lenacapavir_overrides": {
+        "eligible_activity_classes": [
+          "High"
+        ],
+        "notes": "Cost-containment approach: target high-risk groups"
+      },
+      "_description": "SUPERSEDED by scenario_b_expansion (2026-05-11). Retained for backward compatibility with existing run outputs. Do not use for new analysis. See BACKLOG for cleanup item."
+    },
+    {
+      "name": "scenario_b_expansion",
+      "label": "Expansion: Add Lenacapavir for High-risk on top of oral PrEP",
+      "description": "Oral PrEP continues at current Dutch coverage for Medium and High-activity MSM (MDR PrEP 2022 behavioural eligibility). Lenacapavir added for High-activity MSM only. Comparator = oral PrEP status quo. Primary comparison: oral_prep_plus_lena vs oral_prep. Consistent with Nosyk et al. (2025) expansion framing. Reflects real-world Dutch deployment post-2024: CSG capacity cap removed, demand-driven GP access.",
+      "arm_structure": "expansion",
+      "_note_prep_reset": "For Scenario B, oral PrEP users at the 2025 freeze point carry over into the oral_prep and oral_prep_plus_lena arms. The no_prep reference arm is still reset to ensure a clean counterfactual.",
+      "arm_prep_reset": {
+        "no_prep": true,
+        "oral_prep": false,
+        "oral_prep_plus_lena": false
+      },
+      "oral_prep_overrides": {
+        "eligible_activity_classes": [
+          "Medium",
+          "High"
+        ],
+        "notes": "MDR PrEP 2022 / Kuipers RIVM 2023: behavioural-situational eligibility maps to High+Medium. Low-activity MSM excluded (transmission risk too low — uptake would be epidemiologically spurious)."
+      },
+      "lenacapavir_overrides": {
+        "eligible_activity_classes": [
+          "High"
+        ],
+        "notes": "Cost-containment targeting — High-activity MSM only. ZIN reimbursement is expected to be restricted to highest-risk group given unit cost."
+      },
+      "_note_schedules": "prep_schedule_overrides replace the base config prep_schedules for these arms in the evaluation period only. Base config schedules cover the historical 1980-2025 period and are unchanged.",
+      "prep_schedule_overrides": {
+        "oral_prep": {
+          "Oral_PrEP": {
+            "initiation": {
+              "2025": 0.033,
+              "2028": 0.038,
+              "2030": 0.04,
+              "_source": "Kuipers RIVM 2023 Scenarioverkenning PrEP-zorg na de landelijke pilot — high scenario (~30,000 users by 2030). Demand rate ~0.033/year derived from 2023 stock (13,600) + unmet demand (2,685 waiting list) applied to eligible pool (High+Medium ~122,000). No capacity cap post-2024 (national pilot ended; GP access demand-driven).",
+              "_status": "SCENARIO ASSUMPTION — grounded in Kuipers 2023 derivation; vary in scenario/PSA sensitivity rather than treating as an unsourced placeholder."
+            }
+          }
+        },
+        "oral_prep_plus_lena": {
+          "Oral_PrEP": {
+            "initiation": {
+              "2025": 0.033,
+              "2028": 0.038,
+              "2030": 0.04,
+              "_source": "Same as oral_prep arm — Kuipers 2023 high scenario.",
+              "_status": "SCENARIO ASSUMPTION — same as oral_prep arm."
+            }
+          },
+          "Lenacapavir": {
+            "initiation": {
+              "2025": 0.05,
+              "2027": 0.1,
+              "_source": "SCENARIO ASSUMPTION — no RIVM equivalent exists for Lena uptake because Lenacapavir was not yet available in NL at the time of Kuipers 2023. Treat as a primary scenario/PSA sensitivity parameter.",
+              "_status": "SCENARIO ASSUMPTION / PSA SENSITIVITY"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "scenario_d_price",
+      "label": "Price sensitivity analysis",
+      "description": "Evaluate cost-effectiveness across different Lenacapavir price points",
+      "lenacapavir_overrides": {
+        "eligible_activity_classes": [
+          "Low",
+          "Medium",
+          "High"
+        ],
+        "notes": "Lenacapavir available to all; price varied"
+      },
+      "price_sensitivity_range": {
+        "min_pct": 10,
+        "max_pct": 200,
+        "step_pct": 10
+      },
+      "notes": "Percentage of base annual price (injection_subsequent). 10%–200% in 10% steps = 20 rows. 100% = base case (€41,110.44/year).",
+      "_note_schedules": "prep_schedule_overrides replace the base config prep_schedules for these arms in the evaluation period only. Base config schedules cover the historical 1980-2025 period and are unchanged.",
+      "prep_schedule_overrides": {
+        "oral_prep": {
+          "Oral_PrEP": {
+            "initiation": {
+              "2025": 0.033,
+              "2028": 0.038,
+              "2030": 0.04,
+              "_source": "Kuipers RIVM 2023 Scenarioverkenning PrEP-zorg na de landelijke pilot — high scenario (~30,000 users by 2030). Demand rate ~0.033/year derived from 2023 stock (13,600) + unmet demand (2,685 waiting list) applied to eligible pool. No capacity cap post-2024 (national pilot ended; GP access demand-driven).",
+              "_status": "SCENARIO ASSUMPTION — grounded in Kuipers 2023 derivation; vary in scenario/PSA sensitivity rather than treating as an unsourced placeholder."
+            }
+          }
+        },
+        "lenacapavir": {
+          "Lenacapavir": {
+            "initiation": {
+              "2025": 0.05,
+              "2027": 0.1,
+              "_source": "SCENARIO ASSUMPTION — no RIVM equivalent exists for Lena uptake because Lenacapavir was not yet available in NL at the time of Kuipers 2023. Treat as a primary scenario/PSA sensitivity parameter.",
+              "_status": "SCENARIO ASSUMPTION / PSA SENSITIVITY"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

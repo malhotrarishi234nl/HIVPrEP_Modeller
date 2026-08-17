@@ -1,0 +1,385 @@
+{
+  "_notes": "Split HTA runtime/scenario/reporting config. Economic inputs are loaded from configs/hta_costing_config.json.",
+  "_format_version": "hta_runtime_config_v3_target_stock_draft",
+  "study_defaults": {
+    "start_year": 2025,
+    "freeze_year": 2025,
+    "evaluation_years": 40,
+    "primary_perspective": "societal",
+    "economic_inputs_file": "configs/hta_costing_config.json",
+    "notes": "Runtime config controls what is run, compared, and reported. Cost, utility, QALY, testing, monitoring, and discount inputs are loaded from the economic inputs file. End year is derived as start_year + evaluation_years - 1."
+  },
+  "outputs": {
+    "_notes": "Output settings are intentionally near the top because they change the audit burden and workbook size.",
+    "excel_report": {
+      "enabled": true,
+      "notes": "When detail_sheet_mode is off, detailed outputs remain available as CSV files but are not embedded as workbook tabs.",
+      "detail_sheet_mode": "off",
+      "include_full_data_tabs": false,
+      "include_quarterly_timestep_tabs": false,
+      "include_subgroup_detail_tabs": false
+    },
+    "csv_outputs": {
+      "scenario_register": true,
+      "arm_summary": true,
+      "comparison_table": true,
+      "price_sensitivity": true,
+      "epidemiology_annual": true,
+      "budget_impact": true,
+      "timestep_detail": true
+    },
+    "display_defaults": {
+      "show_no_prep_in_decision_summary": false,
+      "show_no_prep_in_epidemiology": true,
+      "show_base_comparator_in_all_relevant_tables": true
+    },
+    "csv_files": {
+      "enabled": true,
+      "notes": "Write individual CSV files alongside the Excel report. Set false to suppress."
+    },
+    "baseline_summary_years": {
+      "value": [
+        1970,
+        1975,
+        1980,
+        1985,
+        1990,
+        1995,
+        2000,
+        2005,
+        2010,
+        2015,
+        2020,
+        2025
+      ],
+      "notes": "Years to include in the Baseline Key Years tab. Must be within simulation range."
+    },
+    "baseline_full_tab": {
+      "enabled": false,
+      "notes": "Include the full quarterly baseline data tab (Tab 10). Disable to reduce file size."
+    },
+    "scenario_full_data_tabs": {
+      "enabled": false,
+      "notes": "Include scenario-specific full data tabs. CSV timestep detail is still written when csv_outputs.timestep_detail is true."
+    },
+    "transparency_tabs": {
+      "enabled": true,
+      "notes": "Include PrEP Population Dynamics and Incidence by Subgroup tabs."
+    }
+  },
+  "comparison_selection": {
+    "_notes": "These fields control report emphasis and decision-summary ordering only. They do not change simulated epidemiology, costs, QALYs, or ICER calculations.",
+    "primary_comparison_rule": "exactly_one_required",
+    "on_multiple_primary_comparisons": "raise_error",
+    "on_no_primary_comparison": "raise_error",
+    "secondary_comparisons": "all_decision_relevant_non_primary"
+  },
+  "pathway_mode_definitions": {
+    "target_stock": {
+      "notes": "For each timestep, the engine applies continuation/discontinuation first, then initiates enough eligible non-users to approach the interpolated product stock target. If current post-discontinuation stock is above target, the default is to pause new initiations and let natural discontinuation reduce stock; users are not forcibly removed unless above_target_action is set to force_down_to_target.",
+      "discontinuation_order": "before_targeting",
+      "default_above_target_action": "allow_attrition_only",
+      "default_below_target_action": "initiate_to_target"
+    },
+    "switch_share": {
+      "notes": "Applies the base oral PrEP pathway first, then converts the requested share of eligible oral PrEP users to lenacapavir. Total PrEP stock is preserved unless there are fewer eligible oral users than requested; in that case the switch is capped at eligible oral stock and the shortfall is reported.",
+      "preserve_total_prep_stock": true,
+      "shortfall_action": "cap_at_eligible_oral_stock_and_report"
+    },
+    "additional_target_stock": {
+      "notes": "Adds lenacapavir stock beyond oral PrEP standard of care. This is an expansion mode, so total PrEP coverage increases."
+    }
+  },
+  "interpolation": {
+    "target_stock": {
+      "mode": "linear_annual",
+      "allowed_modes": [
+        "linear_annual",
+        "step_hold"
+      ],
+      "notes": "linear_annual interpolates between annual target knots before converting to quarterly targets. step_hold holds the most recent knot value until the next knot year."
+    }
+  },
+  "base_cases": {
+    "_notes": "Base cases are reusable arms defined before policy scenarios. A base case can be displayed alone, used as a comparator, or kept as epidemiological context.",
+    "display_mode_definitions": {
+      "epidemiology_only": "Show in epidemiology and calibration/context outputs, but exclude from decision-summary ICER/NMB tables.",
+      "comparator": "Use as the active comparator in decision-relevant scenario comparisons and show in relevant decision tables."
+    },
+    "no_prep_counterfactual": {
+      "label": "No PrEP counterfactual",
+      "role": "attribution_context",
+      "display_mode": "epidemiology_only",
+      "include_in_report": true,
+      "include_in_decision_summary": false,
+      "prep_stock_handling": {
+        "mode": "reset_to_none",
+        "notes": "Clears PrEP stock at the fork for attribution only. Historical HIV state at the freeze point is otherwise preserved."
+      },
+      "interventions": []
+    },
+    "oral_prep_standard_of_care": {
+      "label": "Oral PrEP standard of care",
+      "role": "decision_comparator",
+      "display_mode": "comparator",
+      "include_in_report": true,
+      "include_in_decision_summary": true,
+      "prep_stock_handling": {
+        "mode": "carry_over_observed_stock",
+        "notes": "Preserves observed PrEP stock at the 2025 fork, then applies the forward oral PrEP SOC pathway."
+      },
+      "interventions": [
+        {
+          "pathway": "oral_soc_modest_continuation"
+        }
+      ]
+    }
+  },
+  "prep_target_pathways": {
+    "oral_soc_modest_continuation": {
+      "_notes": "Continued oral PrEP standard of care after the 2024 Dutch programme transition.",
+      "product": "Oral_PrEP",
+      "mode": "target_stock",
+      "target_stock": {
+        "value": {
+          "2025": 13000,
+          "2027": 14000,
+          "2030": 15000,
+          "2040": 15000,
+          "2064": 15000
+        },
+        "source": "Current Dutch provision anchor with modest continuation assumption for thesis HTA.",
+        "benchmark_references": [
+          "wang_2025",
+          "rivm_2024_programme_transition"
+        ],
+        "distribution_status": "scenario_assumption"
+      },
+      "eligible_population": {
+        "risk_groups": [
+          "MSM"
+        ],
+        "activity_classes": [
+          "Medium",
+          "High"
+        ]
+      }
+    },
+    "oral_expansion_benchmark_full": {
+      "_notes": "Full oral PrEP expansion benchmark. The ID is source-neutral; source details live in benchmark_references.",
+      "product": "Oral_PrEP",
+      "mode": "target_stock",
+      "target_stock": {
+        "value": {
+          "2025": 13000,
+          "2030": 28000,
+          "2040": 28000,
+          "2064": 28000
+        },
+        "source": "Full oral PrEP expansion benchmark target.",
+        "benchmark_references": [
+          "wang_2025"
+        ],
+        "distribution_status": "literature_anchor"
+      },
+      "eligible_population": {
+        "risk_groups": [
+          "MSM"
+        ],
+        "activity_classes": [
+          "Medium",
+          "High"
+        ]
+      }
+    },
+    "lena_substitution_grid": {
+      "_notes": "Lenacapavir substitutes for oral PrEP among eligible high-activity MSM while total target PrEP stock remains comparable to oral SOC.",
+      "product": "Lenacapavir",
+      "mode": "switch_share",
+      "base_pathway": "oral_soc_modest_continuation",
+      "switch_share_of_eligible_oral_users": {
+        "value": [
+          0.1,
+          0.25,
+          0.5,
+          0.75,
+          1.0
+        ],
+        "source": "Scenario grid agreed for primary thesis analysis.",
+        "distribution_status": "scenario_assumption"
+      },
+      "eligible_population": {
+        "risk_groups": [
+          "MSM"
+        ],
+        "activity_classes": [
+          "High"
+        ]
+      }
+    },
+    "lena_add_on_grid": {
+      "_notes": "Lenacapavir add-on expansion for high-activity MSM not reached by oral PrEP SOC.",
+      "product": "Lenacapavir",
+      "mode": "additional_target_stock",
+      "base_pathway": "oral_soc_modest_continuation",
+      "additional_target_stock": {
+        "value": [
+          {
+            "label": "add_on_500",
+            "target_stock": {
+              "2026": 100,
+              "2028": 300,
+              "2030": 500
+            }
+          },
+          {
+            "label": "add_on_1500",
+            "target_stock": {
+              "2026": 300,
+              "2028": 900,
+              "2030": 1500
+            }
+          },
+          {
+            "label": "add_on_3000",
+            "target_stock": {
+              "2026": 500,
+              "2028": 1500,
+              "2030": 3000
+            }
+          }
+        ],
+        "source": "Scenario grid agreed for secondary programme-expansion analysis.",
+        "distribution_status": "scenario_assumption"
+      },
+      "eligible_population": {
+        "risk_groups": [
+          "MSM"
+        ],
+        "activity_classes": [
+          "High"
+        ]
+      }
+    }
+  },
+  "scenarios": {
+    "scenario_a_lena_substitution": {
+      "label": "Lenacapavir substitution",
+      "comparison_type": "substitution",
+      "primary_comparison": true,
+      "comparator_base_case": "oral_prep_standard_of_care",
+      "intervention_arm": {
+        "id": "lena_substitution",
+        "label": "Oral PrEP SOC with eligible high-risk users switched to lenacapavir",
+        "prep_stock_handling": {
+          "mode": "carry_over_observed_stock"
+        },
+        "interventions": [
+          {
+            "pathway": "oral_soc_modest_continuation"
+          },
+          {
+            "pathway": "lena_substitution_grid"
+          }
+        ]
+      },
+      "price_sensitivity": {
+        "enabled": true,
+        "input_ref": "prevention_costs.arm_specific.lenacapavir.injection_subsequent",
+        "range_mode": "percent_of_base",
+        "percent_values": [
+          0.1,
+          0.25,
+          0.5,
+          0.75,
+          1.0,
+          1.25,
+          1.5,
+          2.0
+        ]
+      },
+      "reporting": {
+        "include_in_decision_summary": true,
+        "include_in_epidemiology": true,
+        "include_price_sensitivity": true
+      }
+    },
+    "scenario_b_lena_add_on": {
+      "label": "Lenacapavir add-on expansion",
+      "comparison_type": "add_on",
+      "primary_comparison": false,
+      "comparator_base_case": "oral_prep_standard_of_care",
+      "intervention_arm": {
+        "id": "oral_prep_plus_lena_add_on",
+        "label": "Oral PrEP SOC plus lenacapavir add-on",
+        "prep_stock_handling": {
+          "mode": "carry_over_observed_stock"
+        },
+        "interventions": [
+          {
+            "pathway": "oral_soc_modest_continuation"
+          },
+          {
+            "pathway": "lena_add_on_grid"
+          }
+        ]
+      },
+      "price_sensitivity": {
+        "enabled": true,
+        "input_ref": "prevention_costs.arm_specific.lenacapavir.injection_subsequent",
+        "range_mode": "percent_of_base",
+        "percent_values": [
+          0.1,
+          0.25,
+          0.5,
+          0.75,
+          1.0,
+          1.25,
+          1.5,
+          2.0
+        ]
+      },
+      "reporting": {
+        "include_in_decision_summary": true,
+        "include_in_epidemiology": true,
+        "include_price_sensitivity": true
+      }
+    },
+    "scenario_c_oral_expansion_benchmark": {
+      "label": "Oral PrEP expansion benchmark",
+      "comparison_type": "oral_expansion_benchmark",
+      "primary_comparison": false,
+      "comparator_base_case": "oral_prep_standard_of_care",
+      "intervention_arm": {
+        "id": "oral_prep_expansion",
+        "label": "Full oral PrEP expansion benchmark",
+        "prep_stock_handling": {
+          "mode": "carry_over_observed_stock"
+        },
+        "interventions": [
+          {
+            "pathway": "oral_expansion_benchmark_full"
+          }
+        ]
+      },
+      "benchmark_references": [
+        "wang_2025"
+      ],
+      "reporting": {
+        "include_in_decision_summary": false,
+        "include_in_epidemiology": true,
+        "include_price_sensitivity": false
+      }
+    }
+  },
+  "benchmark_references": {
+    "wang_2025": {
+      "label": "Wang et al. 2025",
+      "use": "External oral PrEP expansion plausibility benchmark"
+    },
+    "rivm_2024_programme_transition": {
+      "label": "RIVM 2024 PrEP programme transition",
+      "use": "Context for Dutch standard-of-care continuation after the pilot programme"
+    }
+  }
+}

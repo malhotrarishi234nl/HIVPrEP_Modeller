@@ -1,0 +1,341 @@
+{
+  "version": "1.3",
+  "description": "V13.11 orientation-specific seed stage pilot. Based on V13.9.3 MSM denominator bridge. Replaces shared seed_chronic_share/seed_aids_share with four orientation-specific parameters (MSM and non-MSM Chronic and AIDS shares). Diagnostic question: does seed-stage separation improve AIDS-death shape and MSM historical fit without damaging endpoint gates? V13.10 MSM diagnosis multiplier NOT forced (not required for this test). Diagnostic-only; do not adopt as production default without gate-pass evidence.",
+  "parameters": [
+    {
+      "name": "orient_female",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.Female",
+      "min": 0.2,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "stages": ["joint"]
+    },
+    {
+      "name": "orient_msm",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.MSM",
+      "min": 1.0,
+      "max": 5.0,
+      "distribution": "uniform",
+      "unit": "multiplier",
+      "stages": ["joint"]
+    },
+    {
+      "name": "epsilon_hetero",
+      "config_path": "transmission_model.mixing.epsilon_hetero.value",
+      "min": 0.0,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "dimensionless",
+      "stages": ["joint"]
+    },
+    {
+      "name": "epsilon_msm",
+      "config_path": "transmission_model.mixing.epsilon_msm.value",
+      "min": 0.0,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "dimensionless",
+      "stages": ["joint"]
+    },
+    {
+      "name": "activity_med",
+      "config_path": "population.activity_distribution.value.Medium",
+      "min": 0.2,
+      "max": 0.45,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": ["joint"]
+    },
+    {
+      "name": "activity_high",
+      "config_path": "population.activity_distribution.value.High",
+      "min": 0.03,
+      "max": 0.15,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "derived_companion": {
+        "name": "activity_low",
+        "config_path": "population.activity_distribution.value.Low",
+        "formula": "1.0 - activity_med - activity_high",
+        "min": 0.14,
+        "max": 0.81
+      },
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_prevalence",
+      "config_path": "population.epidemic_seed.seed_prevalence.value",
+      "min": 0.001,
+      "max": 0.0035,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_msm_fraction",
+      "config_path": "population.epidemic_seed.msm_fraction.value",
+      "min": 0.8,
+      "max": 1.0,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": ["joint"]
+    },
+    {
+      "name": "p_msm",
+      "config_path": "population.p_msm.value",
+      "min": 0.053,
+      "max": 0.09,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "V13.9.3 MSM denominator diagnostic. Runner syncs demography.sexual_debut.p_msm.value.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_msm_chronic_share",
+      "config_path": "population.epidemic_seed.stage_distribution_by_orientation.value.MSM.Chronic",
+      "min": 0.0,
+      "max": 0.35,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "V13.11: MSM seed Chronic stage share. Injected via orientation-specific block.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_msm_aids_share",
+      "config_path": "population.epidemic_seed.stage_distribution_by_orientation.value.MSM.AIDS",
+      "min": 0.0,
+      "max": 0.05,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "V13.11: MSM seed AIDS stage share. Constraint: seed_msm_aids_share <= seed_non_msm_aids_share.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_non_msm_chronic_share",
+      "config_path": "population.epidemic_seed.stage_distribution_by_orientation.value.non_MSM.Chronic",
+      "min": 0.0,
+      "max": 0.40,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "V13.11: non-MSM seed Chronic stage share.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "seed_non_msm_aids_share",
+      "config_path": "population.epidemic_seed.stage_distribution_by_orientation.value.non_MSM.AIDS",
+      "min": 0.0,
+      "max": 0.12,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "notes": "V13.11: non-MSM seed AIDS stage share. Upper bound raised vs MSM to allow more heterogeneity.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "contact_low",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[0].contact_rate",
+      "min": 1.0,
+      "max": 6.0,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "stages": ["joint"]
+    },
+    {
+      "name": "contact_med",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[1].contact_rate",
+      "min": 6.0,
+      "max": 18.0,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "stages": ["joint"]
+    },
+    {
+      "name": "contact_high",
+      "config_path": "transmission_model.groups.sexual_activity_groups.value[2].contact_rate",
+      "min": 18.0,
+      "max": 60.0,
+      "distribution": "uniform",
+      "unit": "contacts per year",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_1985",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1985",
+      "min": 0.03,
+      "max": 0.18,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_1990",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1990",
+      "min": 0.08,
+      "max": 0.30,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_1997",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.1997",
+      "min": 0.18,
+      "max": 0.50,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "diagnosis_2015",
+      "config_path": "transmission_model.disease.diagnosis.schedule.value.2015",
+      "min": 0.25,
+      "max": 0.70,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_1996",
+      "config_path": "interventions.art.schedule.initiation.value.1996",
+      "min": 0.05,
+      "max": 0.50,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_2000",
+      "config_path": "interventions.art.schedule.initiation.value.2000",
+      "min": 0.30,
+      "max": 0.95,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_2015",
+      "config_path": "interventions.art.schedule.initiation.value.2015",
+      "min": 0.60,
+      "max": 0.98,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_2020",
+      "config_path": "interventions.art.schedule.initiation.value.2020",
+      "min": 0.75,
+      "max": 0.995,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_dropout_rate",
+      "config_path": "interventions.art.advanced.art_dropout_rate.value",
+      "min": 0.0,
+      "max": 0.03,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "chronic_to_aids",
+      "config_path": "transmission_model.disease.progression.chronic_to_aids.value",
+      "min": 0.045,
+      "max": 0.085,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "chronic_to_aids_on_art",
+      "config_path": "transmission_model.disease.progression.chronic_to_aids_on_art.value",
+      "min": 0.001,
+      "max": 0.015,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "aids_mortality",
+      "config_path": "transmission_model.disease.mortality.aids.value",
+      "min": 0.15,
+      "max": 0.35,
+      "distribution": "uniform",
+      "unit": "annual probability",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_mortality_reduction",
+      "config_path": "transmission_model.disease.advanced.art_mortality_reduction.value",
+      "min": 0.75,
+      "max": 0.97,
+      "distribution": "uniform",
+      "unit": "proportion",
+      "stages": ["joint"]
+    }
+  ],
+  "fixed_parameters": [
+    {
+      "name": "orient_het_male",
+      "config_path": "transmission_model.groups.advanced.orientation_contact_multipliers.value.Heterosexual_Male",
+      "value": 1.0,
+      "unit": "multiplier",
+      "reason": "Reference orientation multiplier for calibration.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "art_init_1995",
+      "config_path": "interventions.art.schedule.initiation.value.1995",
+      "value": 0.0,
+      "unit": "annual probability",
+      "reason": "Hard no-ART anchor before the 1996 ART availability year.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "historical_oral_prep_enabled",
+      "config_path": "interventions.oral_prep.enabled.value",
+      "value": true,
+      "unit": "boolean",
+      "reason": "Historical oral PrEP remains active for 2019-2025 targets.",
+      "stages": ["joint"]
+    },
+    {
+      "name": "historical_lenacapavir_disabled",
+      "config_path": "interventions.lenacapavir.enabled.value",
+      "value": false,
+      "unit": "boolean",
+      "reason": "Lenacapavir was unavailable during historical calibration.",
+      "stages": ["joint"]
+    }
+  ],
+  "excluded_parameters": [
+    {
+      "name": "seed_msm_acute_share",
+      "config_path": "population.epidemic_seed.stage_distribution_by_orientation.value.MSM.Acute",
+      "value": "derived",
+      "reason": "Derived in runner as 1 - seed_msm_chronic_share - seed_msm_aids_share."
+    },
+    {
+      "name": "seed_non_msm_acute_share",
+      "config_path": "population.epidemic_seed.stage_distribution_by_orientation.value.non_MSM.Acute",
+      "value": "derived",
+      "reason": "Derived in runner as 1 - seed_non_msm_chronic_share - seed_non_msm_aids_share."
+    }
+  ],
+  "constraints": [
+    {
+      "description": "MSM acute seed share must be non-negative (simplex validity).",
+      "expression": "1 - seed_msm_chronic_share - seed_msm_aids_share >= 0"
+    },
+    {
+      "description": "non-MSM acute seed share must be non-negative (simplex validity).",
+      "expression": "1 - seed_non_msm_chronic_share - seed_non_msm_aids_share >= 0"
+    },
+    {
+      "description": "V13.11 pilot: MSM AIDS seed share must not exceed non-MSM AIDS seed share.",
+      "expression": "seed_msm_aids_share <= seed_non_msm_aids_share"
+    }
+  ]
+}

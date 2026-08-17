@@ -1,0 +1,261 @@
+{
+  "version": "1.0",
+  "description": "Source-preserving mapping from Validation/DiseaseData.xlsx sheets to internal LHS calibration targets. Workbook columns are intentionally not renamed.",
+  "targets": [
+    {
+      "name": "unaids_plhiv_all_ages",
+      "sheet": "UNAIDS-PLHIV)",
+      "year_column": "Time Period",
+      "estimate_column": "(All Age Mid)",
+      "lower_column": "(All Age Low)",
+      "upper_column": "(All Age High)",
+      "model_output": "PLHIV",
+      "target_family": "epidemic_backbone",
+      "stages": ["backbone", "joint"],
+      "calibration_use": "primary",
+      "weight": 2.0,
+      "sigma_fallback_cv": 0.10,
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      }
+    },
+    {
+      "name": "unaids_plhiv_female_adult_15plus",
+      "sheet": "UNAIDS-PLHIV)",
+      "year_column": "Time Period",
+      "estimate_column": "(Female Age Mid)",
+      "lower_column": "(Female Age Low)",
+      "upper_column": "(Female Age High)",
+      "model_output": "plhiv_female_15plus",
+      "target_family": "plhiv_sex_composition",
+      "stages": ["backbone", "joint"],
+      "calibration_use": "secondary",
+      "weight": 0.5,
+      "sigma_fallback_cv": 0.12,
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      }
+    },
+    {
+      "name": "unaids_plhiv_male_adult_15plus",
+      "sheet": "UNAIDS-PLHIV)",
+      "year_column": "Time Period",
+      "estimate_column": "(Male Age Mid)",
+      "lower_column": "(Male Age Low)",
+      "upper_column": "(Male Age High)",
+      "model_output": "plhiv_male_15plus",
+      "target_family": "plhiv_sex_composition",
+      "stages": ["backbone", "joint"],
+      "calibration_use": "secondary",
+      "weight": 0.5,
+      "sigma_fallback_cv": 0.12,
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      }
+    },
+    {
+      "name": "unaids_plhiv_child_0_14_diagnostic",
+      "sheet": "UNAIDS-PLHIV)",
+      "year_column": "Time Period",
+      "estimate_column": "CHILD (0-14) MID",
+      "lower_column": "CHILD (0-14) Low",
+      "upper_column": "CHILD (0-14) High",
+      "model_output": "plhiv_child_0_14",
+      "target_family": "pediatric_plhiv_diagnostic",
+      "stages": ["backbone", "joint"],
+      "calibration_use": "diagnostic",
+      "weight": 0.0,
+      "sigma_fallback_cv": 0.20,
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      }
+    },
+    {
+      "name": "unaids_new_infections_adult_15plus",
+      "sheet": "UNAIDS-HIV Infections",
+      "year_column": "Time Period",
+      "estimate_column": "(All Age Mid)",
+      "estimate_column_subtract_column": "CHILD (0-14) MID",
+      "lower_column": "(All Age Low)",
+      "lower_column_subtract_column": "CHILD (0-14) Low",
+      "upper_column": "(All Age High)",
+      "upper_column_subtract_column": "CHILD (0-14) High",
+      "model_output": "new_infections",
+      "target_family": "epidemic_backbone",
+      "stages": ["backbone", "joint"],
+      "calibration_use": "primary",
+      "weight": 1.5,
+      "sigma_fallback_cv": 0.10,
+      "filters": {
+        "Indicator_GId": "NEW_INFECTIONS"
+      }
+    },
+    {
+      "name": "unaids_aids_deaths_adult_15plus",
+      "sheet": "UNAIDS-AIDSDeath",
+      "year_column": "Time Period",
+      "estimate_column": "(All Age Mid)",
+      "estimate_column_subtract_column": "CHILD (0-14) MID",
+      "lower_column": "(All Age Low)",
+      "lower_column_subtract_column": "CHILD (0-14) Low",
+      "upper_column": "(All Age High)",
+      "upper_column_subtract_column": "CHILD (0-14) High",
+      "model_output": "aids_deaths",
+      "target_family": "epidemic_backbone",
+      "stages": ["backbone", "joint"],
+      "calibration_use": "primary",
+      "weight": 1.0,
+      "sigma_fallback_cv": 0.10,
+      "filters": {
+        "Indicator_GId": "AIDS_DEATHS"
+      }
+    },
+    {
+      "name": "stichting_hiv_diagnoses_adult_no_under15",
+      "sheet": "Stiching 1.1 (Diagnoses)",
+      "year_column": "Year of diagnosis",
+      "estimate_column": "Total Adjusted \n(No <15)",
+      "model_output": "new_diagnoses",
+      "target_family": "diagnosis_surveillance",
+      "stages": ["diagnosis", "joint"],
+      "calibration_use": "primary",
+      "weight": 1.5,
+      "sigma_fallback_cv": 0.12
+    },
+    {
+      "name": "stichting_hiv_diagnoses_msm_trans",
+      "sheet": "Stiching 1.1 (Diagnoses)",
+      "year_column": "Year of diagnosis",
+      "estimate_column": "MSM+Trans (CALC)",
+      "model_output": "new_diagnoses_msm",
+      "target_family": "diagnosis_surveillance",
+      "stages": ["diagnosis", "joint"],
+      "calibration_use": "secondary",
+      "weight": 0.75,
+      "sigma_fallback_cv": 0.15
+    },
+    {
+      "name": "ecdc_hiv_confirmed_cases_secondary",
+      "sheet": "EDC-HIV (Secondary)",
+      "year_column": "Time",
+      "estimate_column": "NumValue",
+      "model_output": "new_diagnoses",
+      "target_family": "diagnosis_surveillance",
+      "stages": ["diagnosis", "joint"],
+      "calibration_use": "secondary",
+      "weight": 0.75,
+      "sigma_fallback_cv": 0.15,
+      "filters": {
+        "Population": "HIV infection|Confirmed cases",
+        "Indicator": "Reported cases",
+        "Unit": "N"
+      }
+    },
+    {
+      "name": "ecdc_aids_confirmed_cases",
+      "sheet": "EDC- AIDS",
+      "year_column": "Time",
+      "estimate_column": "NumValue",
+      "model_output": "new_aids_cases",
+      "target_family": "aids_surveillance",
+      "stages": ["diagnosis", "joint"],
+      "calibration_use": "secondary",
+      "weight": 0.75,
+      "sigma_fallback_cv": 0.20,
+      "filters": {
+        "Population": "AIDS|Confirmed cases",
+        "Indicator": "Reported cases",
+        "Unit": "N"
+      }
+    },
+    {
+      "name": "unaids_art_stock_adult_15plus",
+      "sheet": "UNAIDS-ART",
+      "year_column": "Time Period",
+      "estimate_column": "TOTAL ADULTS",
+      "model_output": "on_art_stock",
+      "target_family": "art_care",
+      "stages": ["art", "joint"],
+      "calibration_use": "secondary",
+      "weight": 1.0,
+      "sigma_fallback_cv": 0.10,
+      "start_year": 1996,
+      "filters": {
+        "Indicator_GId": "PEOPLE_RECEIVING_ART",
+        "Subgroup": "Adults (15+)"
+      }
+    },
+    {
+      "name": "rivm_prep_csg_persons_in_care",
+      "sheet": "PrEP-Historical",
+      "year_column": "Year",
+      "estimate_column": "csg_persons_in_care_target",
+      "model_output": "prep_oral_annual_unique_approx",
+      "target_family": "prep_program",
+      "stages": ["joint"],
+      "calibration_use": "primary",
+      "weight": 0.75,
+      "sigma_fallback_cv": 0.12,
+      "start_year": 2019,
+      "end_year": 2024,
+      "filters": {
+        "scenario_label": "csg_base"
+      }
+    },
+    {
+      "name": "rivm_prep_csg_new_persons",
+      "sheet": "PrEP-Historical",
+      "year_column": "Year",
+      "estimate_column": "csg_new_persons_target",
+      "model_output": "prep_oral_initiations",
+      "target_family": "prep_program",
+      "stages": ["joint"],
+      "calibration_use": "secondary",
+      "weight": 0.25,
+      "sigma_fallback_cv": 0.20,
+      "start_year": 2019,
+      "end_year": 2024,
+      "filters": {
+        "scenario_label": "csg_base"
+      }
+    },
+    {
+      "name": "rivm_prep_csg_stock_end_anchor",
+      "sheet": "PrEP-Historical",
+      "year_column": "Year",
+      "estimate_column": "csg_stock_end_target",
+      "model_output": "msm_on_oral_end",
+      "target_family": "prep_program",
+      "stages": ["joint"],
+      "calibration_use": "primary",
+      "weight": 2.0,
+      "sigma_fallback_cv": 0.10,
+      "start_year": 2019,
+      "end_year": 2024,
+      "filters": {
+        "scenario_label": "csg_base"
+      }
+    },
+    {
+      "name": "rivm_prep_csg_stock_mean_anchor",
+      "sheet": "PrEP-Historical",
+      "year_column": "Year",
+      "estimate_column": "csg_stock_mean_target",
+      "model_output": "msm_on_oral_mean",
+      "target_family": "prep_program",
+      "stages": ["joint"],
+      "calibration_use": "primary",
+      "weight": 2.0,
+      "sigma_fallback_cv": 0.10,
+      "start_year": 2019,
+      "end_year": 2024,
+      "filters": {
+        "scenario_label": "csg_base"
+      }
+    }
+  ]
+}

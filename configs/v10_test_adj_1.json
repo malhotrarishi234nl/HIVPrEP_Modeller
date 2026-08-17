@@ -1,0 +1,1047 @@
+{
+  "meta": {
+    "model_name": {
+      "value": "HIV Transmission Model V10",
+      "notes": "Discrete-time stochastic population model with childhood pool and sexual debut"
+    },
+    "version": {
+      "value": "10.0",
+      "notes": "Added pre-sexual childhood pool, sexual debut mechanism, probabilistic orientation/activity assignment"
+    },
+    "author": {
+      "value": "Thesis Research- Rishi Malhotra",
+      "notes": "Academic use only"
+    },
+    "model_notes": {
+      "calibration_status": "In Progress. [DONE: IntPop (1970 Weights), AgeBins, Mortality ('15-'19 Avg), Fert('15-'19), TFR Mulitplier, SexDebut Set) ",
+      "intended_use": "Thesis research on HIV prevention interventions",
+      "academic_framing": "A discrete-time stochastic population model for HIV transmission dynamics and prevention interventions, developed from scratch for the Netherlands context with modern computational best practices.",
+      "v4_features": [
+        "Pre-sexual childhood pool (children aged 0-14 outside transmission system)",
+        "Sexual debut mechanism at configurable age (default 15)",
+        "Probabilistic MSM orientation assignment at debut (not birth)",
+        "Probabilistic sexual activity assignment at debut (not birth)",
+        "All debutants enter as Susceptible/Undiagnosed/NoART/NoPrEP",
+        "Childhood mortality separate from adult mortality",
+        "Cohort turnover with delayed entry into risk",
+        "Robust file outputs (CSV/Excel)",
+        "Corrected two-step transmission formulation",
+        "Optional fertility tables (ASFR), life tables, population adjustments"
+      ],
+      "population_flow": "Birth -> Childhood pool (age 0-14, sex only) -> Sexual debut (age 15) -> Orientation + Activity assignment -> HIV transmission system"
+    }
+  },
+  "run_control": {
+    "unit": {
+      "value": "months",
+      "notes": "Base simulation unit: 'days', 'months', or 'years'"
+    },
+    "step_size": {
+      "value": 3,
+      "notes": "Number of units per timestep (12 months = 1 year timestep)"
+    },
+    "start_year": {
+      "value": 1970,
+      "notes": "Calendar year when simulation begins"
+    },
+    "end_year": {
+      "value": 1975,
+      "notes": "Calendar year when simulation ends"
+    },
+    "n_runs": {
+      "value": 1,
+      "notes": "Number of stochastic simulation runs (use 100+ for uncertainty analysis)"
+    },
+    "seed": {
+      "value": 42,
+      "notes": "Base random number generator seed for reproducibility"
+    },
+    "deterministic_mode": {
+      "value": true,
+      "notes": "If true, replace random draws with expected values (for debugging/testing)"
+    }
+  },
+  "output": {
+    "enabled": {
+      "value": true,
+      "notes": "Master switch for writing output files"
+    },
+    "format": {
+      "value": "csv",
+      "notes": "'csv' or 'xlsx' - file format for outputs"
+    },
+    "directory": {
+      "value": "outputs",
+      "notes": "Where to write output files"
+    },
+    "run_tag": {
+      "value": "baseline",
+      "notes": "Used in output filenames (e.g., baseline_run_001.csv)"
+    },
+    "write_per_run_files": {
+      "value": true,
+      "notes": "If true, write one file per run; else aggregate only"
+    },
+    "write_aggregated_files": {
+      "value": false,
+      "notes": "Write mean/quantiles across runs (requires n_runs > 1)"
+    },
+    "terminal_summary": {
+      "value": true,
+      "notes": "Print summary to terminal at end of simulation"
+    },
+    "advanced": {
+      "write_state_counts": {
+        "value": false,
+        "notes": "Write detailed state counts (can be very large files)"
+      },
+      "summary_years": {
+        "value": [
+          1970,
+          1975,
+          1980,
+          1985,
+          1990,
+          1995,
+          2000,
+          2005,
+          2010,
+          2015,
+          2020
+        ],
+        "notes": "Which years to include in terminal summary"
+      },
+      "quantiles": {
+        "value": [
+          0.05,
+          0.5,
+          0.95
+        ],
+        "notes": "Quantiles for aggregated outputs (median and 90% interval)"
+      }
+    }
+  },
+  "population": {
+    "initialization_method": {
+      "value": "relative_weights",
+      "notes": "Relative age\u2013sex weights based on 1970 population structure"
+    },
+    "total_size": {
+      "value": 12713815
+    },
+    "age_sex_distribution": {
+      "value": {
+        "0-4": {
+          "female": 0.036309638,
+          "male": 0.038071737
+        },
+        "5-9": {
+          "female": 0.046482431,
+          "male": 0.048700491
+        },
+        "10-14": {
+          "female": 0.044130737,
+          "male": 0.046204937
+        },
+        "15-19": {
+          "female": 0.042525475,
+          "male": 0.044675341
+        },
+        "20-24": {
+          "female": 0.044672274,
+          "male": 0.047070689
+        },
+        "25-29": {
+          "female": 0.034225527,
+          "male": 0.037063778
+        },
+        "30-34": {
+          "female": 0.030324102,
+          "male": 0.032642918
+        },
+        "35-39": {
+          "female": 0.029895591,
+          "male": 0.031222888
+        },
+        "40-44": {
+          "female": 0.029590175,
+          "male": 0.029359324
+        },
+        "45-49": {
+          "female": 0.030427847,
+          "male": 0.029187071
+        },
+        "50-54": {
+          "female": 0.025683087,
+          "male": 0.024453715
+        },
+        "55-59": {
+          "female": 0.025667906,
+          "male": 0.023639011
+        },
+        "60-64": {
+          "female": 0.023749442,
+          "male": 0.020844806
+        },
+        "65-69": {
+          "female": 0.020369969,
+          "male": 0.016948336
+        },
+        "70-74": {
+          "female": 0.016056393,
+          "male": 0.012585837
+        },
+        "75-79": {
+          "female": 0.011203797,
+          "male": 0.008508776
+        },
+        "80-84": {
+          "female": 0.006414909,
+          "male": 0.004902148
+        },
+        "85-89": {
+          "female": 0.002724698,
+          "male": 0.001997119
+        },
+        "90-94": {
+          "female": 0.000737936,
+          "male": 0.000530604
+        },
+        "95-99": {
+          "female": 0.000117055,
+          "male": 6.9216e-05
+        },
+        "100-104": {
+          "female": 7.39353e-06,
+          "male": 4.56197e-06
+        },
+        "105-109": {
+          "female": 1.57309e-07,
+          "male": 1.57309e-07
+        },
+        "110+": {
+          "female": 0.0,
+          "male": 0.0
+        }
+      }
+    },
+    "p_msm": {
+      "value": 0.1
+    },
+    "activity_distribution": {
+      "value": {
+        "Low": 0.6,
+        "Medium": 0.3,
+        "High": 0.1
+      }
+    },
+    "initial_hiv_prevalence": {
+      "value": 0.0
+    }
+  },
+  "demography": {
+    "enabled": {
+      "value": true,
+      "notes": "If false, no demographic changes except aging and mortality"
+    },
+    "mode": {
+      "value": "fertility_table",
+      "notes": "'closed' (no births), 'fixed_net_addition' (constant entrants into childhood), or 'fertility_table' (use ASFR)"
+    },
+    "childhood": {
+      "enabled": {
+        "value": true,
+        "notes": "Pre-sexual childhood pool. Children age through 0-4, 5-9, 10-14 before sexual debut."
+      },
+      "age_bins": {
+        "value": [
+          "0-4",
+          "5-9",
+          "10-14"
+        ],
+        "notes": "Childhood age groups (5-year bins from birth to sexual debut age). NOT part of the HIV transmission system."
+      },
+      "background_mortality_annual": {
+        "value": 0.005,
+        "notes": "Annual background mortality rate for children (used if life_table not enabled for childhood ages)"
+      },
+      "initial_per_bin": {
+        "value": "auto",
+        "notes": "Initial childhood population per 5-year bin. 'auto' computes from adult population size and sex ratio. Or provide {\"male\": N, \"female\": N} per bin."
+      }
+    },
+    "sexual_debut": {
+      "debut_age": {
+        "value": 15,
+        "notes": "(Documentation ONLY - not used by code, hard-coded to first age bin)"
+      },
+      "p_msm": {
+        "value": 0.1,
+        "notes": "Proportion of males assigned MSM at debut"
+      },
+      "use_population_activity_distribution": {
+        "value": true,
+        "notes": "Uses same distribution as population (recommended) for debuts. Use README for custom. Will cause drift otherwise."
+      }
+    },
+    "life_table": {
+      "enabled": {
+        "value": true,
+        "notes": "If true, override background mortality with life-table survival probabilities"
+      },
+      "survival_by_age_limit": {
+        "value": [
+          {
+            "age_limit": 1,
+            "male_survival": 0.99622,
+            "female_survival": 0.99687
+          },
+          {
+            "age_limit": 5,
+            "male_survival": 0.999844376,
+            "female_survival": 0.99987709
+          },
+          {
+            "age_limit": 10,
+            "male_survival": 0.999917125,
+            "female_survival": 0.99991719
+          },
+          {
+            "age_limit": 15,
+            "male_survival": 0.999884433,
+            "female_survival": 0.99991214
+          },
+          {
+            "age_limit": 20,
+            "male_survival": 0.999688237,
+            "female_survival": 0.99982169
+          },
+          {
+            "age_limit": 25,
+            "male_survival": 0.999516543,
+            "female_survival": 0.99978133
+          },
+          {
+            "age_limit": 30,
+            "male_survival": 0.999452482,
+            "female_survival": 0.99971319
+          },
+          {
+            "age_limit": 35,
+            "male_survival": 0.999329783,
+            "female_survival": 0.99957676
+          },
+          {
+            "age_limit": 40,
+            "male_survival": 0.999081658,
+            "female_survival": 0.99939671
+          },
+          {
+            "age_limit": 45,
+            "male_survival": 0.99860113,
+            "female_survival": 0.999005
+          },
+          {
+            "age_limit": 50,
+            "male_survival": 0.997762827,
+            "female_survival": 0.99832572
+          },
+          {
+            "age_limit": 55,
+            "male_survival": 0.996263945,
+            "female_survival": 0.99704591
+          },
+          {
+            "age_limit": 60,
+            "male_survival": 0.993625137,
+            "female_survival": 0.99507959
+          },
+          {
+            "age_limit": 65,
+            "male_survival": 0.989272341,
+            "female_survival": 0.9921955
+          },
+          {
+            "age_limit": 70,
+            "male_survival": 0.982720412,
+            "female_survival": 0.988263
+          },
+          {
+            "age_limit": 75,
+            "male_survival": 0.97155254,
+            "female_survival": 0.98124159
+          },
+          {
+            "age_limit": 80,
+            "male_survival": 0.951296389,
+            "female_survival": 0.96774421
+          },
+          {
+            "age_limit": 85,
+            "male_survival": 0.910049073,
+            "female_survival": 0.93806107
+          },
+          {
+            "age_limit": 90,
+            "male_survival": 0.836644531,
+            "female_survival": 0.87629739
+          },
+          {
+            "age_limit": 95,
+            "male_survival": 0.728858159,
+            "female_survival": 0.7717803
+          },
+          {
+            "age_limit": 100,
+            "male_survival": 0.599907579,
+            "female_survival": 0.63584886
+          },
+          {
+            "age_limit": 105,
+            "male_survival": 0.475233263,
+            "female_survival": 0.49577342
+          },
+          {
+            "age_limit": 110,
+            "male_survival": 0.402767205,
+            "female_survival": 0.4027672
+          },
+          {
+            "age_limit": 111,
+            "male_survival": 0.0,
+            "female_survival": 0.0
+          }
+        ],
+        "notes": "Piecewise survival probabilities up to each age_limit (probability of surviving from birth to that age). Annual survival probabilities. Bin Rate --> [(lxB/100,000)/(lxA/100,000)]^0.2. Ref Excel"
+      },
+      "advanced": {
+        "source_notes": {
+          "value": "Source --> M & F Life Tables (1x5) https://www.mortality.org/Country/Country?cntr=NLD",
+          "notes": "Human Mortality Database (HMD), Netherlands, period life tables 2015\u20132019, protocol v6"
+        }
+      }
+    },
+    "fertility": {
+      "enabled": {
+        "value": true,
+        "notes": "Enable births via age-specific fertility rates (ASFR)"
+      },
+      "fraction_male_newborns": {
+        "value": 0.512195,
+        "notes": "Sex ratio at birth (proportion male)"
+      },
+      "asfr_by_age_limit": {
+        "value": [
+          {
+            "age_limit": 15,
+            "birth_rate": 0.0
+          },
+          {
+            "age_limit": 20,
+            "birth_rate": 0.0027636
+          },
+          {
+            "age_limit": 25,
+            "birth_rate": 0.02639
+          },
+          {
+            "age_limit": 30,
+            "birth_rate": 0.0951236
+          },
+          {
+            "age_limit": 35,
+            "birth_rate": 0.1275292
+          },
+          {
+            "age_limit": 40,
+            "birth_rate": 0.0610048
+          },
+          {
+            "age_limit": 45,
+            "birth_rate": 0.0107084
+          },
+          {
+            "age_limit": 50,
+            "birth_rate": 0.0004836
+          },
+          {
+            "age_limit": 55,
+            "birth_rate": 0.000218
+          },
+          {
+            "age_limit": 60,
+            "birth_rate": 0.0
+          },
+          {
+            "age_limit": 65,
+            "birth_rate": 0.0
+          },
+          {
+            "age_limit": 110,
+            "birth_rate": 0.0
+          }
+        ],
+        "notes": "Births per woman-year, piecewise by age band (age-specific fertility rates). ASSUMPTION--After 50, 0% Source: Human Fertility Collection (fertilitydata.org) Netherlands ASFR (standardized) https://www.fertilitydata.org/Country/Country?code=NLD"
+      },
+      "advanced": {
+        "year_multipliers": {
+          "enabled": {
+            "value": true,
+            "notes": "If true, apply year-specific multipliers to baseline ASFR. Source: Statistics Netherlands (CBS) https://www.cbs.nl/en-gb/figures/detail/86244ENG"
+          },
+          "values": {
+            "value": {
+              "1970": 1.586070755,
+              "1975": 1.027187386,
+              "1980": 0.989014923,
+              "1985": 0.932830293,
+              "1990": 0.997786442,
+              "1995": 0.945077086,
+              "2000": 1.062903082,
+              "2005": 1.05476736,
+              "2010": 1.108464361,
+              "2015": 1.0234652,
+              "2020": 1.0
+            },
+            "notes": "Fertility multipliers by calendar year (interpolated between years). Age Bins 1 and 9 Excluded. Check Excel REFS. https://www.macrotrends.net/global-metrics/countries/nld/netherlands/birth-rate"
+          }
+        }
+      }
+    },
+    "migration": {
+      "notes": "V9 Patch: Net Migration Module. Demographic stabiliser only \u2014 entrants are Susceptible/Undiagnosed/No-ART/No-PrEP. Toggle enabled:true to activate.",
+      "enabled": {
+        "value": true,
+        "notes": "Master switch. Safe default: disabled. Set true to activate net migration."
+      },
+      "quantity": {
+        "notes": "How much net migration to apply each year. Exactly one mode is active.",
+        "mode": {
+          "value": "year_specific",
+          "notes": "Active quantity mode: 'year_specific' | 'rate' | 'flat'"
+        },
+        "year_specific": {
+          "notes": "World Bank Netherlands net migration data 1970-2020. Missing years default to 0. Source: https://data.worldbank.org/indicator/SM.POP.NETM?locations=NL",
+          "value": {
+            "1970": 32438,
+            "1971": 32756,
+            "1972": 17470,
+            "1973": 18705,
+            "1974": 31645,
+            "1975": 68569,
+            "1976": 18774,
+            "1977": 19809,
+            "1978": 26639,
+            "1979": 42772,
+            "1980": 54010,
+            "1981": 17643,
+            "1982": 7644,
+            "1983": 11007,
+            "1984": 12902,
+            "1985": 27356,
+            "1986": 30380,
+            "1987": 39559,
+            "1988": 31026,
+            "1989": 31165,
+            "1990": 53564,
+            "1991": 51670,
+            "1992": 50148,
+            "1993": 44514,
+            "1994": 20193,
+            "1995": 15056,
+            "1996": 21792,
+            "1997": 31302,
+            "1998": 52058,
+            "1999": 47179,
+            "2000": 59308,
+            "2001": 56096,
+            "2002": 28824,
+            "2003": 7937,
+            "2004": -9230,
+            "2005": -22496,
+            "2006": -25401,
+            "2007": -304,
+            "2008": 32406,
+            "2009": 39832,
+            "2010": 33703,
+            "2011": 31224,
+            "2012": 14861,
+            "2013": 19973,
+            "2014": 36591,
+            "2015": 55585,
+            "2016": 88743,
+            "2017": 86332,
+            "2018": 87197,
+            "2019": 109003,
+            "2020": 67598
+          }
+        },
+        "advanced": {
+          "rate": {
+            "value": 0.003,
+            "notes": "Annual net migration as fraction of current total population. Only used when mode='rate'. E.g. 0.003 = 0.3%/yr."
+          },
+          "flat": {
+            "value": 44000,
+            "notes": "Constant annual net migration (persons/year). Only used when mode='flat'. NL historical average ~44,000/yr."
+          }
+        }
+      },
+      "profile": {
+        "notes": "How entrant migrants are distributed across age-sex bins.",
+        "mode": {
+          "value": "working_age",
+          "notes": "Active profile mode: 'mirror' | 'working_age' | 'custom'. Default 'mirror' is safest."
+        },
+        "working_age": {
+          "notes": "Parameters for working_age profile. Only used when profile.mode='working_age'.",
+          "min_age": {
+            "value": 20,
+            "notes": "Youngest age (inclusive) for working-age migrants."
+          },
+          "max_age": {
+            "value": 40,
+            "notes": "Oldest age (inclusive, at bin boundary) for working-age migrants."
+          }
+        },
+        "advanced": {
+          "custom_weights": {
+            "notes": "Per-bin age-sex weights for custom profile. Auto-normalised. Only used when profile.mode='custom'. Example below covers adult prime-fertility ages only.",
+            "value": {
+              "20-24": {
+                "female": 0.1,
+                "male": 0.12
+              },
+              "25-29": {
+                "female": 0.15,
+                "male": 0.18
+              },
+              "30-34": {
+                "female": 0.12,
+                "male": 0.14
+              },
+              "35-39": {
+                "female": 0.08,
+                "male": 0.11
+              }
+            }
+          }
+        }
+      }
+    },
+    "advanced": {
+      "aging_method": {
+        "value": "fractional",
+        "notes": "Method for aging population through age bins. Options: 'fractional' (20% annual transfer, smooth mortality) or 'discrete' (100% transfer every 5 years, legacy method). Recommended: 'fractional' for realistic mortality curves."
+      },
+      "background_mortality": {
+        "value": 0.008,
+        "notes": "Annual non-HIV death rate for sexually active population (used if life_table not enabled)"
+      },
+      "fixed_net_addition": {
+        "annual_entrants": {
+          "value": 20000,
+          "notes": "Number of births per year (enter childhood pool at age 0-4, only used if mode='fixed_net_addition')"
+        }
+      },
+      "population_adjustments": {
+        "enabled": {
+          "value": true,
+          "notes": "If true, apply exogenous multipliers to population totals over time (for calibration). "
+        },
+        "apply_to": {
+          "value": "total",
+          "notes": "'total', 'by_age', 'by_orientation', or 'by_age_and_orientation'"
+        },
+        "year_multipliers": {
+          "value": {
+            "1970": 1.05,
+            "2020": 1.05
+          },
+          "notes": "Population scaling multipliers by year (interpolated). https://www.worldometers.info/world-population/netherlands-population/"
+        }
+      }
+    }
+  },
+  "transmission_model": {
+    "groups": {
+      "orientations": {
+        "value": [
+          {
+            "name": "Female",
+            "notes": "Cisgender female"
+          },
+          {
+            "name": "Heterosexual_Male",
+            "notes": "Cisgender heterosexual male"
+          },
+          {
+            "name": "MSM",
+            "notes": "Men who have sex with men"
+          }
+        ],
+        "notes": "Sexual orientation groups - assigned at sexual debut, NOT at birth"
+      },
+      "age_groups": {
+        "value": [
+          {
+            "name": "15-19",
+            "min": 15,
+            "max": 19
+          },
+          {
+            "name": "20-24",
+            "min": 20,
+            "max": 24
+          },
+          {
+            "name": "25-29",
+            "min": 25,
+            "max": 29
+          },
+          {
+            "name": "30-34",
+            "min": 30,
+            "max": 34
+          },
+          {
+            "name": "35-39",
+            "min": 35,
+            "max": 39
+          },
+          {
+            "name": "40-44",
+            "min": 40,
+            "max": 44
+          },
+          {
+            "name": "45-49",
+            "min": 45,
+            "max": 49
+          },
+          {
+            "name": "50-54",
+            "min": 50,
+            "max": 54
+          },
+          {
+            "name": "55-59",
+            "min": 55,
+            "max": 59
+          },
+          {
+            "name": "60-64",
+            "min": 60,
+            "max": 64
+          },
+          {
+            "name": "65-69",
+            "min": 65,
+            "max": 69
+          },
+          {
+            "name": "70-74",
+            "min": 70,
+            "max": 74
+          },
+          {
+            "name": "75-79",
+            "min": 75,
+            "max": 75
+          },
+          {
+            "name": "80-84",
+            "min": 80,
+            "max": 84
+          },
+          {
+            "name": "85-89",
+            "min": 85,
+            "max": 85
+          },
+          {
+            "name": "90-94",
+            "min": 90,
+            "max": 94
+          },
+          {
+            "name": "95-99",
+            "min": 95,
+            "max": 95
+          },
+          {
+            "name": "100-104",
+            "min": 100,
+            "max": 104
+          },
+          {
+            "name": "105-109",
+            "min": 105,
+            "max": 105
+          },
+          {
+            "name": "110+",
+            "min": 110,
+            "max": 115
+          }
+        ],
+        "notes": "Sexually active age groups in 5-year bins. Children (0-14) are in the separate childhood pool."
+      },
+      "sexual_activity_groups": {
+        "value": [
+          {
+            "name": "Low",
+            "contact_rate": 3.0,
+            "notes": "3 sexual acts per year (with ~1 partner)"
+          },
+          {
+            "name": "Medium",
+            "contact_rate": 10.0,
+            "notes": "10 sexual acts per year (with ~3 partners)"
+          },
+          {
+            "name": "High",
+            "contact_rate": 50.0,
+            "notes": "50 sexual acts per year (with ~50 partners)"
+          }
+        ],
+        "notes": "Sexual activity levels. contact_rate = acts per year (combined with per-act beta for transmission). Assigned at sexual debut, NOT at birth."
+      },
+      "hiv_stages": {
+        "value": [
+          {
+            "name": "Susceptible",
+            "notes": "HIV-negative"
+          },
+          {
+            "name": "Acute",
+            "notes": "Recent infection, high viral load"
+          },
+          {
+            "name": "Chronic",
+            "notes": "Established infection"
+          },
+          {
+            "name": "AIDS",
+            "notes": "Advanced disease"
+          }
+        ],
+        "notes": "HIV disease stages - DO NOT MODIFY ORDER"
+      },
+      "advanced": {
+        "orientation_contact_multipliers": {
+          "value": {
+            "Female": 0.7,
+            "Heterosexual_Male": 1.0,
+            "MSM": 2.5
+          },
+          "notes": "Multipliers applied to base contact rates by orientation. Female ~30% fewer contacts, MSM ~150% more contacts than heterosexual males. Defaults to 1.0 if not specified."
+        }
+      }
+    },
+    "mixing": {
+      "heterosexual": {
+        "value": {
+          "Low": {
+            "Low": 0.7,
+            "Medium": 0.25,
+            "High": 0.05
+          },
+          "Medium": {
+            "Low": 0.25,
+            "Medium": 0.6,
+            "High": 0.15
+          },
+          "High": {
+            "Low": 0.1,
+            "Medium": 0.3,
+            "High": 0.6
+          }
+        },
+        "notes": "Mixing matrix for heterosexual contacts (Female to Heterosexual_Male). Rows must sum to 1.0."
+      },
+      "msm": {
+        "value": {
+          "Low": {
+            "Low": 0.6,
+            "Medium": 0.3,
+            "High": 0.1
+          },
+          "Medium": {
+            "Low": 0.3,
+            "Medium": 0.5,
+            "High": 0.2
+          },
+          "High": {
+            "Low": 0.1,
+            "Medium": 0.2,
+            "High": 0.7
+          }
+        },
+        "notes": "Mixing matrix for MSM contacts. Rows must sum to 1.0."
+      },
+      "advanced": {
+        "condom_usage": {
+          "value": {
+            "Low": 1.0,
+            "Medium": 1.0,
+            "High": 1.0
+          },
+          "notes": "Condom risk multiplier by activity group. Applied as: effective_beta = beta * condom_mod. Values: 1.0 = no condom effect (baseline), 0.5 = 50% risk reduction. Lower = more protection."
+        }
+      }
+    },
+    "disease": {
+      "transmission": {
+        "beta_acute": {
+          "value": 0.08,
+          "notes": "Per-act transmission probability during acute infection"
+        },
+        "beta_chronic": {
+          "value": 0.004,
+          "notes": "Per-act transmission probability during chronic infection"
+        },
+        "beta_aids": {
+          "value": 0.008,
+          "notes": "Per-act transmission probability during AIDS stage"
+        }
+      },
+      "progression": {
+        "acute_to_chronic": {
+          "value": 0.5,
+          "notes": "Annual probability of progressing from acute to chronic HIV"
+        },
+        "chronic_to_aids": {
+          "value": 0.05,
+          "notes": "Annual probability of progressing from chronic to AIDS (untreated / not on ART)"
+        },
+        "chronic_to_aids_on_art": {
+          "value": 0.005,
+          "notes": "Annual probability of progressing from chronic to AIDS while on ART. Literature: ~0.5-1%/yr with viral suppression (Mocroft et al. 2010, CASCADE collaboration). ~10x reduction vs untreated. Used for cost-effectiveness and QALY calculations."
+        }
+      },
+      "mortality": {
+        "acute": {
+          "value": 0.01,
+          "notes": "Annual HIV mortality during acute stage"
+        },
+        "chronic": {
+          "value": 0.02,
+          "notes": "Annual HIV mortality during chronic stage"
+        },
+        "aids": {
+          "value": 0.25,
+          "notes": "Annual HIV mortality during AIDS stage"
+        },
+        "combine_with_background": {
+          "value": "excess",
+          "notes": "'excess' (HIV mortality added to background) or 'override' (HIV mortality replaces background)"
+        }
+      },
+      "diagnosis": {
+        "annual_rate": {
+          "value": 0.15,
+          "notes": "Annual probability of HIV diagnosis (if undiagnosed)"
+        }
+      },
+      "advanced": {
+        "art_transmission_reduction": {
+          "value": 0.96,
+          "notes": "Reduction in transmission probability when on ART (96% = U=U)"
+        },
+        "art_mortality_reduction": {
+          "value": 0.9,
+          "notes": "Reduction in HIV mortality when on ART (90% reduction)"
+        }
+      }
+    }
+  },
+  "interventions": {
+    "art": {
+      "notes": "Time-based ART availability and uptake rates. Before first year: ART unavailable (rate=0). Between years: use stepwise (carry-forward) or linear interpolation based on interpolation setting.",
+      "schedule": {
+        "interpolation": {
+          "value": "stepwise",
+          "notes": "'stepwise' (carry forward last value) or 'linear' (interpolate between years)"
+        },
+        "initiation": {
+          "notes": "Annual probability of ART initiation for diagnosed individuals not on treatment",
+          "value": {
+            "1996": 0.1,
+            "2000": 0.3,
+            "2005": 0.5,
+            "2010": 0.7,
+            "2015": 0.8,
+            "2020": 0.85
+          }
+        }
+      }
+    },
+    "oral_prep": {
+      "enabled": {
+        "value": false,
+        "notes": "Whether this intervention is active in the simulation"
+      },
+      "uptake_rate": {
+        "value": 0.05,
+        "notes": "Annual probability of starting PrEP (susceptible only)"
+      },
+      "dropout_rate": {
+        "value": 0.2,
+        "notes": "Annual probability of discontinuing PrEP"
+      },
+      "advanced": {
+        "efficacy": {
+          "value": 0.86,
+          "notes": "Protection per dosing cycle (86% effectiveness with adherence)"
+        },
+        "dosing_interval": {
+          "value": 3,
+          "unit": "months",
+          "notes": "Prescription renewal every 3 months (quarterly)"
+        },
+        "uptake_modifier_by_activity": {
+          "value": {
+            "Low": 0.5,
+            "Medium": 1.0,
+            "High": 1.5
+          },
+          "notes": "Multiplier for uptake rate by activity level"
+        }
+      }
+    },
+    "lenacapavir": {
+      "enabled": {
+        "value": false,
+        "notes": "Whether this intervention is active in the simulation"
+      },
+      "uptake_rate": {
+        "value": 0.02,
+        "notes": "Annual probability of starting Lenacapavir"
+      },
+      "dropout_rate": {
+        "value": 0.05,
+        "notes": "Annual probability of discontinuing Lenacapavir"
+      },
+      "advanced": {
+        "efficacy": {
+          "value": 0.99,
+          "notes": "Protection per dosing cycle (99% from PURPOSE trials)"
+        },
+        "dosing_interval": {
+          "value": 6,
+          "unit": "months",
+          "notes": "Injection every 6 months (twice yearly)"
+        },
+        "uptake_modifier_by_activity": {
+          "value": {
+            "Low": 0.3,
+            "Medium": 1.0,
+            "High": 2.0
+          },
+          "notes": "Multiplier for uptake rate by activity level"
+        }
+      }
+    }
+  }
+}

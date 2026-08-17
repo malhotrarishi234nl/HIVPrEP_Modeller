@@ -1,0 +1,24 @@
+# Environments / caches
+.venv/
+.venv-snpe/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.idea/
+.claude/
+.DS_Store
+
+# Data & outputs -- regenerable or too large for git.
+# See data/reference/ (tracked, small model-input data) vs the sibling
+# ../data/raw/ and ../data/model-outputs/ folders (outside this repo).
+outputs/
+data/raw/
+data/model-outputs/
+*.log
+sbi-logs/
+
+# OS / editor cruft
+.Rhistory
+*.swp

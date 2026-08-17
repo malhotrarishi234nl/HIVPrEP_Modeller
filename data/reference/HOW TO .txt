@@ -1,0 +1,1 @@
+rishi@Rishis-MacBook-Pro v7 % python3 run_v3.py config_v6_rel_pop.json 
