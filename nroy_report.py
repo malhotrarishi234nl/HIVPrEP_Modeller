@@ -119,6 +119,24 @@ TABLE_SPEC: dict[str, dict[str, str]] = {
         ),
         "key_columns": "attempt_id, design_id, seed, status, failure_class",
     },
+    "design_evidence": {
+        "row_unit": "one frozen design id",
+        "description": (
+            "The resolved evidence state of every frozen design: confirmed support, no "
+            "support detected, unresolved evidence, execution failure or work not run. "
+            "The last two are execution bookkeeping and are never evidence about the model."
+        ),
+        "key_columns": "design_id, evidence_state, n_seeds_succeeded, nominal_pass",
+    },
+    "graph_nodes": {
+        "row_unit": "one graph node (one assessed confirmed point)",
+        "description": (
+            "The declared node set the candidate-edge graph was built over, with each "
+            "node's local-support label, eligibility and normalised coordinates. The "
+            "'u:' columns are the only geometry representative selection sees."
+        ),
+        "key_columns": "candidate_id, local_support_label, eligible_for_representation",
+    },
     "p_coverage": {
         "row_unit": "one declared p bin",
         "description": (

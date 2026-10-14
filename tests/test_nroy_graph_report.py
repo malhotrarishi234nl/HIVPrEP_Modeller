@@ -32,6 +32,10 @@ import nroy_report as nrp  # noqa: E402
 import run_robust_nroy_freeze as runner  # noqa: E402
 from coupled_calibration_search import ContractError  # noqa: E402
 
+#: The only bridge pass rule the implementation provides; the plan signs it and
+#: nroy_graph.classify_edge checks it rather than assuming it.
+PASS_RULE = ng.BRIDGE_PASS_RULES[0]
+
 TARGETS = ccs.FROZEN_TARGET_ORDER
 CONTRACT = nc.TargetContract(frozen_order=TARGETS, register_path="x", register_sha256="h")
 
@@ -103,6 +107,7 @@ def test_an_edge_is_supported_only_when_every_declared_probe_confirms():
     verdict = ng.classify_edge(
         _edge(), endpoint_confirmed={"L": True, "R": True},
         probe_evidence=[nc.EVIDENCE_CONFIRMED] * 3, n_declared=3,
+        pass_rule=PASS_RULE,
     )
     assert verdict.label == nc.EDGE_SAMPLED_PATH_SUPPORTED
     assert "not continuous connectivity" in verdict.reason
@@ -114,6 +119,7 @@ def test_a_failed_straight_bridge_is_unresolved_not_disconnection():
         _edge(), endpoint_confirmed={"L": True, "R": True},
         probe_evidence=[nc.EVIDENCE_CONFIRMED, nc.EVIDENCE_NO_SUPPORT, nc.EVIDENCE_CONFIRMED],
         n_declared=3,
+        pass_rule=PASS_RULE,
     )
     assert verdict.label == nc.EDGE_UNRESOLVED
     assert "not proof of disconnection" in verdict.reason
@@ -124,6 +130,7 @@ def test_a_partially_run_bridge_is_unresolved_and_names_the_missing_probes():
     verdict = ng.classify_edge(
         _edge(), endpoint_confirmed={"L": True, "R": True},
         probe_evidence=[nc.EVIDENCE_CONFIRMED], n_declared=3,
+        pass_rule=PASS_RULE,
     )
     assert verdict.label == nc.EDGE_UNRESOLVED
     assert verdict.evidence == nc.EVIDENCE_NOT_RUN
@@ -136,6 +143,7 @@ def test_a_bridge_execution_failure_is_not_evidence_of_disconnection():
         probe_evidence=[nc.EVIDENCE_CONFIRMED, nc.EVIDENCE_EXECUTION_FAILURE,
                         nc.EVIDENCE_CONFIRMED],
         n_declared=3,
+        pass_rule=PASS_RULE,
     )
     assert verdict.label == nc.EDGE_UNRESOLVED
     assert verdict.evidence == nc.EVIDENCE_EXECUTION_FAILURE
@@ -146,6 +154,7 @@ def test_an_unconfirmed_endpoint_blocks_support():
     verdict = ng.classify_edge(
         _edge(), endpoint_confirmed={"L": True, "R": False},
         probe_evidence=[nc.EVIDENCE_CONFIRMED] * 3, n_declared=3,
+        pass_rule=PASS_RULE,
     )
     assert verdict.label == nc.EDGE_UNRESOLVED
     assert "not confirmed" in verdict.reason
@@ -170,6 +179,7 @@ def test_disconnected_basins_yield_two_components():
                 else [nc.EVIDENCE_CONFIRMED, nc.EVIDENCE_NO_SUPPORT, nc.EVIDENCE_CONFIRMED]
             ),
             n_declared=3,
+            pass_rule=PASS_RULE,
         )
         for edge in minimal
     ]
@@ -186,6 +196,7 @@ def test_a_failed_cross_basin_bridge_keeps_the_basins_separate_as_unresolved():
         edge, endpoint_confirmed={"A": True, "B": True},
         probe_evidence=[nc.EVIDENCE_CONFIRMED, nc.EVIDENCE_NO_SUPPORT, nc.EVIDENCE_CONFIRMED],
         n_declared=3,
+        pass_rule=PASS_RULE,
     )
     components = ng.components(list(points), [verdict])
     assert len(components) == 2
@@ -216,6 +227,7 @@ def test_a_curved_corridor_fails_its_straight_bridge_and_is_reported_unresolved(
     verdict = ng.classify_edge(
         _edge("A", "B"), endpoint_confirmed={"A": True, "B": True},
         probe_evidence=evidence, n_declared=3,
+        pass_rule=PASS_RULE,
     )
     assert verdict.label == nc.EDGE_UNRESOLVED
     assert "not proof of disconnection" in verdict.reason
@@ -231,6 +243,7 @@ def test_components_refuse_an_edge_outside_the_declared_node_set():
     verdict = ng.classify_edge(
         _edge("X", "Y"), endpoint_confirmed={"X": True, "Y": True},
         probe_evidence=[nc.EVIDENCE_CONFIRMED] * 3, n_declared=3,
+        pass_rule=PASS_RULE,
     )
     with pytest.raises(ContractError, match="outside the declared set"):
         ng.components(["A", "B"], [verdict])
@@ -633,15 +646,48 @@ def test_prepare_refuses_an_unsigned_plan(tmp_path):
     assert not (tmp_path / "stage" / "manifest.json").exists()
 
 
-def test_production_evaluator_refuses_to_run(tmp_path):
-    unit = ne.WorkUnit(
+def _unit(**overrides) -> ne.WorkUnit:
+    fields = dict(
         stage=nc.STAGE_DISCOVERY, model=nc.MODEL_M0, design_id="D", seed=1,
         vector_hash="h", kernel=nc.KERNEL_AMBIENT, parent_ids=("A",), params={},
         parent_manifest_sha256="p", code_sha256="c", config_sha256="g",
         target_schema=TARGETS,
     )
-    with pytest.raises(ContractError, match="not wired up"):
-        runner.production_evaluator(unit, {}, TARGETS)
+    fields.update(overrides)
+    return ne.WorkUnit(**fields)
+
+
+def test_the_production_evaluator_stub_cannot_be_called_directly():
+    """The module-level callable is a refusal; the adapter is behind the gate."""
+    with pytest.raises(ContractError, match="gate was bypassed"):
+        runner.production_evaluator(_unit(), {}, TARGETS)
+
+
+def test_production_is_refused_without_the_priced_budget_acknowledgement(tmp_path):
+    plan = fx.signed_plan(tmp_path)
+    ledger = ne.Ledger(stage=nc.STAGE_DISCOVERY, model=nc.MODEL_M0, units=(_unit(),))
+    with pytest.raises(ContractError, match="never refunded"):
+        runner.resolve_evaluator("production", plan, priced=False, ledger=ledger)
+    # The surrogate is unaffected and runs no engine.
+    assert runner.resolve_evaluator(
+        "surrogate", plan, priced=False, ledger=ledger
+    ) is runner.surrogate_evaluator
+
+
+def test_production_is_refused_when_the_frozen_work_has_no_validated_parent(tmp_path):
+    """A stage after discovery must carry its parent-manifest hash."""
+    plan = fx.signed_plan(tmp_path)
+    orphan = _unit(stage=nc.STAGE_CONFIRMATION, parent_manifest_sha256="")
+    ledger = ne.Ledger(stage=nc.STAGE_CONFIRMATION, model=nc.MODEL_M0, units=(orphan,))
+    with pytest.raises(ContractError, match="parent artifacts were never validated"):
+        runner.resolve_evaluator("production", plan, priced=True, ledger=ledger)
+
+
+def test_there_is_no_default_route_to_the_production_evaluator():
+    """``--evaluator`` is required, so omission cannot reach the simulator."""
+    parser = runner.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["evaluate", "--stage-dir", "d", "--shard", "0", "--of", "1"])
 
 
 def test_anchor_table_must_hold_complete_joint_vectors(tmp_path):
@@ -653,13 +699,13 @@ def test_anchor_table_must_hold_complete_joint_vectors(tmp_path):
         runner._load_anchors(path, space)
 
 
-def _run_pipeline(tmp_path, n_shards, *, model=nc.MODEL_M0, tag=""):
+def _run_pipeline(tmp_path, n_shards, *, model=nc.MODEL_M0, tag="", overrides=None):
     """prepare -> evaluate (n shards) -> merge -> report, via the CLI.
 
     Each call gets its own stage directory: re-preparing into a finished one is
     correctly refused, because completed artifacts are immutable.
     """
-    plan_path = fx.write_signed_plan(tmp_path)
+    plan_path = fx.write_signed_plan(tmp_path, **(overrides or {}))
     space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
     anchors = _write_anchors(tmp_path / "anchors.csv", space)
     stage_dir = tmp_path / f"stage_{model}_{n_shards}{tag}"
@@ -721,13 +767,28 @@ def test_end_to_end_merged_table_is_identical_across_worker_counts(tmp_path, n_s
     )
 
 
-def test_end_to_end_m1_includes_explicit_p_zero_probes(tmp_path):
-    stage_dir = _run_pipeline(tmp_path, 2, model=nc.MODEL_M1)
+def test_end_to_end_m1_includes_explicit_p_zero_and_a_tiny_positive_probe(tmp_path):
+    """Both halves of the M1 boundary design, through the real CLI.
+
+    Exact ``p = 0`` is the identity control, and a declared tiny positive value
+    is probed rather than excluded: the specifications prohibit an exclusion
+    band above zero.
+    """
+    stage_dir = _run_pipeline(
+        tmp_path, 2, model=nc.MODEL_M1,
+        overrides={"p_parameter.extra_probe_values": [1e-18]},
+    )
     vectors = ne.read_frame_exact(stage_dir / "design_vectors.csv")
     assert (vectors[fx.P_NAME] == 0.0).any(), "M1 must include exact p=0 designs"
-    epsilon = 1e-6
-    between = vectors[(vectors[fx.P_NAME] > 0.0) & (vectors[fx.P_NAME] < epsilon)]
-    assert between.empty, "no design may sit in the p identity discontinuity band"
+    assert (vectors[fx.P_NAME] == 1e-18).any(), (
+        "a declared tiny positive p must be probed, not excluded as discontinuous"
+    )
+    # And it was really evaluated, not merely proposed.
+    tiny = vectors[vectors[fx.P_NAME] == 1e-18]["design_id"].astype(str).tolist()
+    scored = set(
+        ne.read_frame_exact(stage_dir / "candidate_scores.csv")["design_id"].astype(str)
+    )
+    assert set(tiny) <= scored, "the tiny positive probe was proposed but never scored"
 
 
 def test_evaluate_refuses_a_mutated_design_vector(tmp_path):
@@ -841,17 +902,17 @@ def _consumption_blob() -> str:
     sources = {}
     for name in (
         "nroy_contract", "nroy_design", "nroy_execution",
-        "nroy_graph", "nroy_report", "run_robust_nroy_freeze",
+        "nroy_graph", "nroy_report", "nroy_assess", "run_robust_nroy_freeze",
     ):
         sources[name] = (ROOT / f"{name}.py").read_text()
     contract = sources["nroy_contract"]
     # Strip every literal that merely NAMES decisions, at any level: the
-    # declaration dict and both bookkeeping sets. Leaving any of them in makes
+    # declaration dicts and the bookkeeping sets. Leaving any of them in makes
     # the test vacuous, because each path trivially appears in its own listing.
     for opening, closing in (
         ("REQUIRED_DECISIONS: dict[str, str] = {", "\n}\n"),
         ("DECISIONS_READ_BY_SUBSCRIPT = frozenset({", "\n})\n"),
-        ("DECISIONS_PENDING_WIRING = frozenset({", "\n})\n"),
+        ("CONDITIONAL_DECISIONS: dict[str, tuple[str, str]] = {", "\n}\n"),
     ):
         start = contract.index(opening)
         end = contract.index(closing, start) + len(closing)
@@ -869,9 +930,9 @@ def test_every_signed_decision_is_either_consumed_or_declared_unwired():
     ``from_plan`` constructor, or explicitly listed as pending wiring.
     """
     blob = _consumption_blob()
+    declared = set(nc.REQUIRED_DECISIONS) | set(nc.CONDITIONAL_DECISIONS)
     unread = {
-        path for path in nc.REQUIRED_DECISIONS
-        if f'"{path}"' not in blob
+        path for path in declared if f'"{path}"' not in blob
     } - nc.DECISIONS_READ_BY_SUBSCRIPT
     assert unread <= nc.DECISIONS_PENDING_WIRING, (
         "these required decisions are silently decorative -- no code reads them and "
@@ -879,11 +940,15 @@ def test_every_signed_decision_is_either_consumed_or_declared_unwired():
     )
 
 
-def test_the_pending_wiring_set_cannot_rot():
+def test_the_pending_wiring_set_is_empty_and_cannot_rot():
     """Once a stage is wired, its decision must leave DECISIONS_PENDING_WIRING.
 
     Without this, the set becomes a permanent excuse: a decision could be
     wired up and still be advertised as unwired, or vice versa.
+
+    It is now empty, which is the stronger statement: every required decision
+    of the base stage has a real consumer.  Re-emptying it is not automatic --
+    an entry added later must still be genuinely unconsumed.
     """
     blob = _consumption_blob()
     now_consumed = sorted(
@@ -893,8 +958,37 @@ def test_the_pending_wiring_set_cannot_rot():
         "these are now read by code and must be removed from "
         f"DECISIONS_PENDING_WIRING: {now_consumed}"
     )
-    unknown = sorted(nc.DECISIONS_PENDING_WIRING - set(nc.REQUIRED_DECISIONS))
+    unknown = sorted(
+        nc.DECISIONS_PENDING_WIRING
+        - set(nc.REQUIRED_DECISIONS) - set(nc.CONDITIONAL_DECISIONS)
+    )
     assert not unknown, f"pending-wiring entries that are not required decisions: {unknown}"
+    assert nc.DECISIONS_PENDING_WIRING == frozenset(), (
+        "the base stage is fully wired; if a decision genuinely has no consumer again, "
+        "add it here deliberately and say so in the inventory"
+    )
+
+
+def test_conditional_decisions_are_required_exactly_when_switched_on(tmp_path):
+    """Off: not required.  On: required, and the stage will not run on defaults."""
+    for path, (switch, _) in nc.CONDITIONAL_DECISIONS.items():
+        assert path not in nc.REQUIRED_DECISIONS, (
+            f"{path} is both unconditionally and conditionally required"
+        )
+        # The shipped plan has the switch off, so the value is not demanded...
+        off = {item.path for item in nc.unsigned_values(fx.signed_plan_dict())}
+        assert path not in off, f"{path} is demanded while {switch} is false"
+        # ...and turning it on demands it.
+        on = {
+            item.path
+            for item in nc.unsigned_values(fx.signed_plan_dict(**{switch: True}))
+        }
+        assert path in on, f"{path} is not demanded when {switch} is true"
+    # And the loader refuses the enabled-but-unsigned plan outright.
+    if nc.CONDITIONAL_DECISIONS:
+        switch = next(iter(nc.CONDITIONAL_DECISIONS.values()))[0]
+        with pytest.raises(nc.UnsignedConfigError):
+            fx.signed_plan(tmp_path, **{switch: True})
 
 
 def test_subscript_read_decisions_really_are_read():

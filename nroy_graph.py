@@ -33,6 +33,22 @@ EDGE_ALGORITHMS = ("kruskal_min_spanning_forest", "all_candidate_edges")
 #: Declared candidate-edge rules.
 NEIGHBOUR_RULES = ("k_nearest", "mutual_k_nearest")
 
+#: Declared bridge pass rules.  Only the specification's own rule exists: spec
+#: sec. 4 requires "the exact rule that all 25/50/75% probes must pass".  The
+#: registry exists so the signed value is *checked* rather than assumed, and so
+#: a plan that declares some other rule is refused rather than silently given
+#: this behaviour.
+BRIDGE_PASS_RULES = ("all_declared_probes_must_confirm",)
+
+#: Declared representative-selection rules.  Geometry only, by construction.
+#: Only rules this module actually implements are listed: an entry here is a
+#: promise that the signed value is honoured, so the registry is deliberately
+#: not a wish list.
+REPRESENTATIVE_RULES = ("maximin_geometry",)
+
+#: Declared deterministic tie-breaking rules.
+TIE_BREAKING_RULES = ("candidate_id_ascending",)
+
 
 @dataclass(frozen=True)
 class CandidateEdge:
@@ -123,8 +139,11 @@ def candidate_edges(
             f"unknown neighbour rule {neighbour_rule!r}; the plan must declare one of "
             f"{NEIGHBOUR_RULES}"
         )
-    if tie_breaking != "candidate_id_ascending":
-        raise ContractError(f"unknown tie-breaking rule {tie_breaking!r}")
+    if tie_breaking not in TIE_BREAKING_RULES:
+        raise ContractError(
+            f"unknown tie-breaking rule {tie_breaking!r}; the plan must declare one of "
+            f"{TIE_BREAKING_RULES}"
+        )
     ids = sorted(points)
     if len(ids) < 2:
         return []
@@ -227,14 +246,24 @@ def classify_edge(
     endpoint_confirmed: Mapping[str, bool],
     probe_evidence: Sequence[str],
     n_declared: int,
+    pass_rule: str,
 ) -> EdgeVerdict:
     """Label one proposed edge from its bridge-probe evidence (spec sec. 4).
 
     ``probe_evidence`` holds one state per evaluated bridge probe, drawn from
-    the module-level evidence vocabulary.  The rule is strict: *every* declared
-    probe must confirm, and both endpoints must be confirmed points.  Anything
-    else is ``unresolved``.
+    the module-level evidence vocabulary.  ``pass_rule`` is the plan's signed
+    ``graph.bridge_pass_rule`` and is **checked, not assumed**: the behaviour
+    below implements ``all_declared_probes_must_confirm``, so any other
+    declared rule is refused rather than silently given this one.
+
+    Under that rule: *every* declared probe must confirm, and both endpoints
+    must be confirmed points.  Anything else is ``unresolved``.
     """
+    if pass_rule not in BRIDGE_PASS_RULES:
+        raise ContractError(
+            f"unknown bridge pass rule {pass_rule!r}; this implementation provides "
+            f"{BRIDGE_PASS_RULES} and will not silently substitute one for another"
+        )
     left_ok = bool(endpoint_confirmed.get(edge.left, False))
     right_ok = bool(endpoint_confirmed.get(edge.right, False))
     states = [str(s) for s in probe_evidence]
@@ -402,9 +431,14 @@ def select_representatives(
     -- may be selected.  A component whose members are all ineligible yields
     no representative and is reported as such rather than silently dropped.
     """
-    if rule != "maximin_geometry":
+    if rule not in REPRESENTATIVE_RULES:
         raise ContractError(
-            f"unknown representative-selection rule {rule!r}; it must be declared and signed"
+            f"unknown representative-selection rule {rule!r}; it must be declared and signed "
+            f"as one of {REPRESENTATIVE_RULES}"
+        )
+    if int(n_per_component) < 1:
+        raise ContractError(
+            f"representative_selection.n_per_component must be >= 1, got {n_per_component!r}"
         )
     rows: list[dict] = []
     for component in components_now:

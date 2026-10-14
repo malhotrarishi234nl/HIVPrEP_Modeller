@@ -54,6 +54,24 @@ DIRCLASS_P_BOUNDARY = "p_boundary_one_sided"
 #: scientific criterion and never affects acceptance.
 COLLINEAR_COSINE = 0.99
 
+#: Declared rules for choosing which archive vectors an anchor consults.  The
+#: plan names one; nothing is inferred.  "Low J" orders the *consultation*; it
+#: never establishes plausibility and no J value enters the geometry.
+ARCHIVE_NEIGHBOUR_RULES = (
+    "k_nearest_low_J_archive_vectors",
+    "k_nearest_in_normalised_metric",
+)
+
+#: Declared kinds of correlation-following direction source (spec sec. 3.2).
+SOURCE_LOW_J_ARCHIVE = "low_j_archive_vectors"
+SOURCE_CONFIRMED_DIFFERENCES = "confirmed_differences"
+SOURCE_CROSS_BLOCK = "cross_block_directions"
+ARCHIVE_SOURCE_KINDS = (
+    SOURCE_LOW_J_ARCHIVE,
+    SOURCE_CONFIRMED_DIFFERENCES,
+    SOURCE_CROSS_BLOCK,
+)
+
 
 @dataclass(frozen=True)
 class Proposal:
@@ -567,17 +585,47 @@ def archive_directions(
     archive_ids: Sequence[str],
     neighbour_count: int,
     rank_truncation: int,
+    neighbour_rule: str,
+    archive_j: Sequence[float] | None = None,
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
     """Reproducible directions derived from nearby archive vectors.
 
     Returns ``(direction, direction_class, parent_ids)`` triples.  The source
-    pool, neighbour rule and rank truncation come from the plan and are frozen
-    before any outcome is evaluated.  "Low J" ordering guides which archive
-    vectors are consulted; it never establishes plausibility, and no J value
-    enters the returned geometry.
+    pool, neighbour rule, neighbour count and rank truncation come from the
+    plan and are frozen before any outcome is evaluated.
+
+    ``neighbour_rule`` is the signed choice of *which* archive vectors an
+    anchor consults:
+
+    ``k_nearest_low_J_archive_vectors``
+        order by J ascending, then by normalised distance, then by id.  This
+        requires ``archive_j`` and refuses to proceed without it, because
+        silently falling back to a distance-only ordering would mean the signed
+        rule was not the rule that ran.
+    ``k_nearest_in_normalised_metric``
+        order by normalised distance, then by id.  J is not consulted.
+
+    "Low J" orders the consultation; it never establishes plausibility, and no
+    J value enters the returned geometry.
     """
+    if neighbour_rule not in ARCHIVE_NEIGHBOUR_RULES:
+        raise ContractError(
+            f"unknown archive neighbour rule {neighbour_rule!r}; the plan must declare one "
+            f"of {ARCHIVE_NEIGHBOUR_RULES}"
+        )
     if len(archive) != len(archive_ids):
         raise ContractError("archive vectors and ids differ in length")
+    uses_j = neighbour_rule == "k_nearest_low_J_archive_vectors"
+    if uses_j:
+        if archive_j is None:
+            raise ContractError(
+                f"the signed archive neighbour rule {neighbour_rule!r} orders by J, but no J "
+                "values were supplied. The archive table must carry a 'j' column; falling "
+                "back to a distance-only ordering would mean the signed rule is not the rule "
+                "that ran."
+            )
+        if len(archive_j) != len(archive):
+            raise ContractError("archive vectors and J values differ in length")
     anchor_u = anchor.u(model)
     rows: list[tuple[float, int]] = []
     for position, params in enumerate(archive):
@@ -589,8 +637,14 @@ def archive_directions(
             )
         u_other = model.normalise({name: float(params[name]) for name in model.names})
         rows.append((_distance(u_other, anchor_u), position))
-    # Deterministic: distance, then id, so ties never depend on input order.
-    rows.sort(key=lambda item: (item[0], str(archive_ids[item[1]])))
+    # Deterministic in every rule: the declared key, then distance, then id,
+    # so ties never depend on input order.
+    if uses_j:
+        rows.sort(key=lambda item: (
+            float(archive_j[item[1]]), item[0], str(archive_ids[item[1]])
+        ))
+    else:
+        rows.sort(key=lambda item: (item[0], str(archive_ids[item[1]])))
     out: list[tuple[np.ndarray, str, tuple[str, ...]]] = []
     for distance, position in rows[: int(neighbour_count)]:
         if distance == 0.0:
@@ -691,6 +745,116 @@ def cross_block_directions(
             (anchor.anchor_id,),
         ))
     return out
+
+
+def assert_source_pool(source_pool: Sequence[str]) -> tuple[str, ...]:
+    """Validate the declared correlation-following source pool.
+
+    The pool is a *decision*, so it is validated rather than interpreted
+    loosely: an unknown kind is fatal, a duplicate is fatal, and an empty pool
+    is fatal because the correlation-following kernels would then have no
+    declared basis at all.
+    """
+    kinds = [str(k) for k in source_pool]
+    if not kinds:
+        raise ContractError(
+            "archive_following.source_pool is empty; the correlation-following design must "
+            f"declare at least one of {ARCHIVE_SOURCE_KINDS}"
+        )
+    unknown = sorted(set(kinds) - set(ARCHIVE_SOURCE_KINDS))
+    if unknown:
+        raise ContractError(
+            f"unknown correlation-following source kind(s) {unknown}; the plan must declare "
+            f"a subset of {ARCHIVE_SOURCE_KINDS}"
+        )
+    if len(set(kinds)) != len(kinds):
+        duplicated = sorted({k for k in kinds if kinds.count(k) > 1})
+        raise ContractError(f"archive_following.source_pool repeats {duplicated}")
+    # Frozen order, so the assembled direction list cannot depend on how the
+    # pool happened to be written down.
+    return tuple(k for k in ARCHIVE_SOURCE_KINDS if k in set(kinds))
+
+
+def correlation_following_directions(
+    anchor: Anchor,
+    model: nc.ModelSpace,
+    *,
+    source_pool: Sequence[str],
+    archive: Sequence[Mapping[str, float]] = (),
+    archive_ids: Sequence[str] = (),
+    archive_j: Sequence[float] | None = None,
+    confirmed: Sequence[Mapping[str, float]] = (),
+    confirmed_ids: Sequence[str] = (),
+    neighbour_count: int,
+    rank_truncation: int,
+    neighbour_rule: str,
+) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
+    """Assemble the archive-following directions from the *declared* sources.
+
+    This is where ``archive_following.source_pool`` becomes load-bearing.  A
+    declared kind that cannot contribute is a contract error, not a quietly
+    shorter direction list: a design that silently drops a declared source is
+    not the design that was signed.  A kind that is *not* declared contributes
+    nothing, however much data happens to be available.
+
+    ``cross_block_directions`` has its own kernel and quota, so it is not
+    assembled here; :func:`assert_cross_block_declared` keeps the two
+    consistent with the same declaration.
+    """
+    kinds = assert_source_pool(source_pool)
+    out: list[tuple[np.ndarray, str, tuple[str, ...]]] = []
+    for kind in kinds:
+        if kind == SOURCE_LOW_J_ARCHIVE:
+            if not archive:
+                raise ContractError(
+                    f"the declared source pool includes {kind!r} but no archive vectors were "
+                    "supplied. Supply the declared archive, or remove the kind from "
+                    "archive_following.source_pool; the design may not silently drop a "
+                    "declared source."
+                )
+            out.extend(archive_directions(
+                anchor, model, archive=archive, archive_ids=archive_ids,
+                archive_j=archive_j, neighbour_count=neighbour_count,
+                rank_truncation=rank_truncation, neighbour_rule=neighbour_rule,
+            ))
+        elif kind == SOURCE_CONFIRMED_DIFFERENCES:
+            others = [
+                identifier for identifier in confirmed_ids
+                if str(identifier) != anchor.anchor_id
+            ]
+            if not others:
+                raise ContractError(
+                    f"the declared source pool includes {kind!r} but anchor "
+                    f"{anchor.anchor_id!r} has no other confirmed vector to difference "
+                    "against. A single-anchor run cannot honour this declared source."
+                )
+            out.extend(confirmed_difference_directions(
+                anchor, model, confirmed=confirmed, confirmed_ids=confirmed_ids,
+                rank_truncation=rank_truncation,
+            ))
+    return out
+
+
+def assert_cross_block_declared(source_pool: Sequence[str], quota: int) -> bool:
+    """Keep the cross-block kernel and the declared source pool consistent.
+
+    Returns whether the cross-block kernel should run.  A positive quota for an
+    undeclared source, or a zero quota for a declared one, is a contradiction
+    in the signed plan rather than something to resolve by precedence.
+    """
+    declared = SOURCE_CROSS_BLOCK in assert_source_pool(source_pool)
+    count = int(quota)
+    if declared and count <= 0:
+        raise ContractError(
+            f"archive_following.source_pool declares {SOURCE_CROSS_BLOCK!r} but "
+            f"cross_block.quota is {count}; the declared source would never be used"
+        )
+    if not declared and count > 0:
+        raise ContractError(
+            f"cross_block.quota is {count} but {SOURCE_CROSS_BLOCK!r} is not in "
+            "archive_following.source_pool; the kernel would run an undeclared source"
+        )
+    return declared
 
 
 def directed_probes(

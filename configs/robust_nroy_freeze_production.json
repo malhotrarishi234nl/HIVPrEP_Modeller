@@ -80,6 +80,9 @@
   },
 
   "models": {
+    "base_config": "UNSIGNED",
+    "base_config_proposal": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json",
+    "base_config_note": "The frozen production model config that parameter vectors are injected into. This is the production spec's 'freeze configs' step and is the ONLY config run_robust_nroy_freeze's production evaluator will run. The proposal is coupled_calibration_search.BASE_CONFIG_PATH, the config the established production calibration runner already uses, so the two cannot silently diverge. Whether it is the frozen production build is still a decision, not an inheritance.",
     "m0": {
       "calib_space": "UNSIGNED",
       "calib_space_proposal": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
@@ -143,13 +146,17 @@
     "scales_proposal": [0.025, 0.05],
     "neighbour_rule": "UNSIGNED",
     "neighbour_rule_proposal": "k_nearest_low_J_archive_vectors",
+    "neighbour_rule_note": "Must be one of nroy_design.ARCHIVE_NEIGHBOUR_RULES. 'k_nearest_low_J_archive_vectors' orders consultation by J ascending and REQUIRES a 'j' column in the archive table supplied to prepare --archive; nroy_design.archive_directions refuses to fall back to a distance-only ordering, because that would mean the signed rule is not the rule that ran.",
+    "neighbour_count": "UNSIGNED",
+    "neighbour_count_note": "How many archive neighbours each anchor consults. A frozen design choice DISTINCT from graph.neighbour_count, which governs candidate edges. An earlier implementation read graph.neighbour_count here; that was a defect, not a convention. No proposal in either specification.",
     "rank_truncation": "UNSIGNED",
     "source_pool": "UNSIGNED",
     "source_pool_proposal": [
-      "nearby low-J archive vectors",
-      "differences among confirmed vectors",
-      "compensating cross-block directions found by the coupled search"
+      "low_j_archive_vectors",
+      "confirmed_differences",
+      "cross_block_directions"
     ],
+    "source_pool_note": "Must be a subset of nroy_design.ARCHIVE_SOURCE_KINDS, and it is load-bearing: a declared source that cannot contribute is a contract error, not a quietly shorter direction list, and an undeclared source contributes nothing however much data is available. 'low_j_archive_vectors' requires prepare --archive. 'cross_block_directions' must agree with cross_block.quota (> 0 iff declared); nroy_design.assert_cross_block_declared refuses a plan where they disagree.",
     "note": "The spec requires 'a predeclared number of paired moves'. No number is proposed in either document; it requires a decision. 'Low J' guides proposals but never establishes plausibility."
   },
 
@@ -243,7 +250,22 @@
 
   "correlated_output_diagnostic": {
     "enabled": false,
-    "note": "Secondary and cannot change the primary set in this stage. Requires seed-block bootstrap and leave-one-candidate-out stability before it may be reported; absent justified observation/discrepancy covariance it is explicitly a correlated stochastic-residual diagnostic, not a multivariate acceptance calculation."
+    "note": "Secondary and cannot change the primary set in this stage. Requires seed-block bootstrap and leave-one-candidate-out stability before it may be reported; absent justified observation/discrepancy covariance it is explicitly a correlated stochastic-residual diagnostic, not a multivariate acceptance calculation.",
+    "enabling_this_makes_decisions_required": "Setting enabled to true makes every value in the 'correlated_output' block below a REQUIRED decision (nroy_contract.CONDITIONAL_DECISIONS), so the diagnostic cannot run on defaults. Leaving it false does not gate the base stage."
+  },
+
+  "correlated_output": {
+    "_note": "Required ONLY when correlated_output_diagnostic.enabled is true. Neither specification proposes any of these values; each needs an explicit decision.",
+    "shrinkage": "UNSIGNED",
+    "shrinkage_note": "Intensity of shrinkage toward the covariance's own diagonal, in [0, 1]. Shrinkage is toward the diagonal rather than the identity because the 13 targets are on very different scales, so an identity target would be a statement about units rather than about correlation.",
+    "n_seed_block_bootstrap": "UNSIGNED",
+    "n_seed_block_bootstrap_note": "Resamples for the stability gate. Whole SEED BLOCKS are resampled, never candidate-by-seed rows: the effective stochastic sample size is the number of independent seed blocks, not candidates times seeds.",
+    "bootstrap_seed": "UNSIGNED",
+    "bootstrap_seed_note": "Must not collide with any simulation seed.",
+    "stability_rank_tolerance": "UNSIGNED",
+    "stability_rank_tolerance_note": "How far the effective rank may move across bootstrap and leave-one-candidate-out refits before the diagnostic is reported as unavailable/unstable. It is never repaired by dropping targets or switching estimator.",
+    "stability_direction_cosine": "UNSIGNED",
+    "stability_direction_cosine_note": "Minimum |cos| between leading correlated directions across refits for the diagnostic to count as stable."
   },
 
   "deferred_decisions": {

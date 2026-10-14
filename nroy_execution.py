@@ -126,9 +126,16 @@ def read_frame_exact(path: str | Path, **kwargs) -> pd.DataFrame:
     Every read of a frozen vector, ledger or seed-result table must go through
     this function.
     """
+    target = Path(path)
+    # A frame with no rows AND no columns serialises to an empty file, which
+    # `read_csv` refuses outright. That happens legitimately -- a worker that
+    # the wall-clock cap stopped before its first unit produces no results --
+    # and "the shard ran and produced nothing" must be readable, not a crash.
+    if target.exists() and not target.read_text().strip():
+        return pd.DataFrame()
     options = {"float_precision": "round_trip", "keep_default_na": False}
     options.update(kwargs)
-    return pd.read_csv(path, **options)
+    return pd.read_csv(target, **options)
 
 
 # ==========================================================================
@@ -1219,6 +1226,77 @@ def plan_resume(
             "frozen key with a new attempt_id"
         ),
     )
+
+
+# ==========================================================================
+# Wall-clock cap
+# ==========================================================================
+
+@dataclass
+class WallClockCap:
+    """The declared wall-clock cap, with *bounded in-flight completion*.
+
+    The cap stops **dispatch**, not the work already running.  A worker checks
+    :meth:`may_start` before taking the next frozen work unit and finishes the
+    unit it has already begun, because killing a unit mid-flight would spend a
+    launch attempt and leave no result -- the budget is consumed either way, so
+    letting it finish is strictly better science for the same money.
+
+    "Bounded" is the operative word: at most one unit may overrun, and
+    :attr:`overran_by_seconds` records by how much.  The stage is then
+    incomplete, which the ordinary resume path turns into ``PARTIAL``, and a
+    ``PARTIAL`` stage can never become a parent.  Nothing here invents a new
+    status or shortcut.
+    """
+
+    cap_seconds: float
+    started_utc: float = field(default_factory=time.time)
+    stopped_for_cap: bool = False
+    n_dispatched: int = 0
+    n_withheld: int = 0
+    overran_by_seconds: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not (float(self.cap_seconds) > 0.0):
+            raise ContractError(
+                f"budget.wall_time_cap_seconds must be positive; got {self.cap_seconds!r}"
+            )
+
+    def elapsed(self, *, now: float | None = None) -> float:
+        return float((time.time() if now is None else float(now)) - self.started_utc)
+
+    def may_start(self, *, now: float | None = None) -> bool:
+        """Whether another frozen work unit may be dispatched."""
+        if self.elapsed(now=now) >= float(self.cap_seconds):
+            self.stopped_for_cap = True
+            return False
+        return True
+
+    def record_dispatch(self) -> None:
+        self.n_dispatched += 1
+
+    def record_withheld(self, count: int = 1) -> None:
+        self.n_withheld += int(count)
+
+    def record_completion(self, *, now: float | None = None) -> None:
+        """Note any overrun of the unit that was already in flight."""
+        over = self.elapsed(now=now) - float(self.cap_seconds)
+        if over > 0.0:
+            self.overran_by_seconds = max(self.overran_by_seconds, float(over))
+
+    def as_row(self) -> dict:
+        return {
+            "wall_time_cap_seconds": float(self.cap_seconds),
+            "elapsed_seconds": self.elapsed(),
+            "stopped_for_wall_clock_cap": bool(self.stopped_for_cap),
+            "n_units_dispatched": self.n_dispatched,
+            "n_units_withheld_at_cap": self.n_withheld,
+            "in_flight_overrun_seconds": float(self.overran_by_seconds),
+            "consequence": (
+                "the cap stops dispatch and lets bounded in-flight work finish; remaining "
+                "units stay incomplete, so the stage is PARTIAL and cannot become a parent"
+            ),
+        }
 
 
 def assert_retry_preserves_key(

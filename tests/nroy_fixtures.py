@@ -41,6 +41,7 @@ P_CONFIG_PATH = (
 #: deliberately leaves every one of these unsigned.
 TEST_SIGNATURES: dict[str, object] = {
     "models.m0.calib_space": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
+    "models.base_config": ccs.BASE_CONFIG_PATH,
     "target_contract.register_path": "configs/hm_target_register_focused_20260916.json",
     "target_contract.n_targets": 13,
     "target_contract.frozen_order": list(ccs.FROZEN_TARGET_ORDER),
@@ -62,9 +63,10 @@ TEST_SIGNATURES: dict[str, object] = {
     "ambient.max_attempts_per_anchor": 2000,
     "archive_following.quota": 4,
     "archive_following.scales": [0.025, 0.05],
-    "archive_following.neighbour_rule": "k_nearest_low_J_archive_vectors",
+    "archive_following.neighbour_rule": "k_nearest_in_normalised_metric",
+    "archive_following.neighbour_count": 3,
     "archive_following.rank_truncation": 4,
-    "archive_following.source_pool": ["confirmed_differences"],
+    "archive_following.source_pool": ["confirmed_differences", "cross_block_directions"],
     "cross_block.quota": 4,
     "cross_block.scales": [0.025, 0.05],
     "separation.min_anchor_neighbour": 1e-4,

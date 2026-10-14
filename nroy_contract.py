@@ -288,6 +288,11 @@ REQUIRED_DECISIONS: dict[str, str] = {
         "M0 calibration space: every parameter name, bound and constraint; the most "
         "load-bearing scientific input in the stage"
     ),
+    "models.base_config": (
+        "frozen production model config the parameter vectors are injected into; the "
+        "production spec's 'freeze configs' step, and the only config the production "
+        "evaluator will run"
+    ),
     "target_contract.register_path": "production target register path",
     "target_contract.frozen_order": "exact frozen target order",
     "target_contract.n_targets": "declared number of targets (contract size)",
@@ -319,6 +324,10 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "archive_following.quota": "correlation-following probe quota per anchor",
     "archive_following.scales": "correlation-following probe scales",
     "archive_following.neighbour_rule": "archive neighbour rule",
+    "archive_following.neighbour_count": (
+        "how many archive neighbours each anchor consults; a frozen design choice "
+        "distinct from the graph's neighbour count, which governs candidate edges"
+    ),
     "archive_following.rank_truncation": "rank truncation for archive directions",
     "archive_following.source_pool": "declared source pool for archive directions",
     "cross_block.quota": "cross-block probe quota per anchor",
@@ -358,27 +367,66 @@ DECISIONS_READ_BY_SUBSCRIPT = frozenset({
 #: because the stage that would consume them is not wired into the runner.
 #:
 #: This is a deliberately explicit record of an implementation gap, not a
-#: parking space. The graph, bridge and representative-selection stages exist
-#: as tested library functions in :mod:`nroy_graph` but are not reachable from
-#: any ``run_robust_nroy_freeze.py`` subcommand, so their frozen rules are
-#: currently decorative: ``nroy_graph.classify_edge`` hardcodes "all declared
-#: probes must confirm" and ``select_representatives`` hardcodes
-#: ``maximin_geometry`` rather than receiving the signed value.
+#: parking space.  Signing an entry here does NOT mean it is being honoured.
+#: A paired test asserts that each entry really is unconsumed, so the set
+#: cannot rot: wiring a stage forces its entry to be removed.
 #:
-#: Signing these does NOT mean they are being honoured. A paired test asserts
-#: that each entry really is unconsumed, so the set cannot rot: wiring a stage
-#: forces its entry to be removed.
-DECISIONS_PENDING_WIRING = frozenset({
-    "archive_following.neighbour_rule",
-    "archive_following.source_pool",
-    "budget.wall_time_cap_seconds",
-    "graph.neighbour_rule",
-    "graph.tie_breaking",
-    "graph.minimal_edge_algorithm",
-    "graph.bridge_pass_rule",
-    "representative_selection.rule",
-    "representative_selection.n_per_component",
-})
+#: It is currently **empty**.  The graph, bridge, representative-selection,
+#: archive-pool and wall-clock decisions that used to sit here are now read by
+#: the ``prepare --stage bridges``, ``classify``, ``regions`` and ``evaluate``
+#: paths.
+DECISIONS_PENDING_WIRING: frozenset[str] = frozenset()
+
+
+#: Decisions required **only when** an optional component is switched on, as
+#: ``dotted.path -> (switch path, human description)``.
+#:
+#: The correlated-output diagnostic of spec sec. 7 is secondary and disabled by
+#: default, so demanding its numbers unconditionally would block signing the
+#: base stage over a component nobody asked for.  Demanding nothing would let
+#: it run on invented defaults.  Requiring them exactly when the switch is on
+#: is the only option that is neither over-strict nor silent.
+CONDITIONAL_DECISIONS: dict[str, tuple[str, str]] = {
+    "correlated_output.shrinkage": (
+        "correlated_output_diagnostic.enabled",
+        "shrinkage intensity toward the diagonal for the candidate-specific "
+        "stochastic covariance; the spec requires 'declared shrinkage regularisation' "
+        "and proposes no value",
+    ),
+    "correlated_output.n_seed_block_bootstrap": (
+        "correlated_output_diagnostic.enabled",
+        "number of seed-block bootstrap resamples used for the stability gate",
+    ),
+    "correlated_output.bootstrap_seed": (
+        "correlated_output_diagnostic.enabled",
+        "RNG seed for the seed-block bootstrap; must not be a simulation seed",
+    ),
+    "correlated_output.stability_rank_tolerance": (
+        "correlated_output_diagnostic.enabled",
+        "how much the effective rank may move across bootstrap and "
+        "leave-one-candidate-out refits before the diagnostic is unavailable",
+    ),
+    "correlated_output.stability_direction_cosine": (
+        "correlated_output_diagnostic.enabled",
+        "minimum |cos| between leading correlated directions across refits for the "
+        "diagnostic to count as stable",
+    ),
+}
+
+
+def conditional_requirements(plan: Mapping) -> dict[str, str]:
+    """Which conditional decisions this plan has actually switched on."""
+    out: dict[str, str] = {}
+    for path, (switch, description) in CONDITIONAL_DECISIONS.items():
+        found, value = _dig(plan, switch)
+        if found and bool(value) is True:
+            out[path] = description
+    return out
+
+
+def effective_requirements(plan: Mapping) -> dict[str, str]:
+    """Every decision this particular plan must sign."""
+    return {**REQUIRED_DECISIONS, **conditional_requirements(plan)}
 
 
 def _dig(mapping: Mapping, path: str) -> tuple[bool, Any]:
@@ -393,7 +441,7 @@ def _dig(mapping: Mapping, path: str) -> tuple[bool, Any]:
 
 def unsigned_values(plan: Mapping, *, required: Mapping[str, str] | None = None) -> list[UnsignedValue]:
     """Every required decision in ``plan`` that is missing or still a proposal."""
-    requirements = dict(REQUIRED_DECISIONS if required is None else required)
+    requirements = dict(effective_requirements(plan) if required is None else required)
     out: list[UnsignedValue] = []
     for path, description in requirements.items():
         found, value = _dig(plan, path)
@@ -1615,11 +1663,16 @@ class FrozenPlan:
         """
         scales = [float(s) for s in self.require("ambient.scales")]
         per_scale = int(self.require("ambient.quota_per_scale"))
-        return {
+        declared = {
             KERNEL_AMBIENT: per_scale * len(scales),
             KERNEL_ARCHIVE_FOLLOWING: int(self.require("archive_following.quota")),
             KERNEL_CROSS_BLOCK: int(self.require("cross_block.quota")),
         }
+        # A zero quota means the plan deliberately did not declare that kernel,
+        # which `nroy_design.assert_cross_block_declared` cross-checks against
+        # the declared source pool. Keeping it here would make the quota gate
+        # demand a kernel family the plan says is absent.
+        return {kernel: quota for kernel, quota in declared.items() if quota > 0}
 
     def ambient_scales(self) -> tuple[float, ...]:
         return tuple(float(s) for s in self.require("ambient.scales"))
