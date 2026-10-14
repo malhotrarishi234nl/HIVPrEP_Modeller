@@ -226,7 +226,7 @@ Three pre-existing failures are now **closed**, all in the A-12 family:
 | errors | 5 | 5 |
 
 Every remaining failure and error is classified by root cause in
-`NROY_COMPLETION_PASS_2026-10-14.md` section 2a: 39 from the missing
+`NROY_COMPLETION_PASS_2026-10-14.md` section 3: 39 from the missing
 root-level `1980_test.json`, 6 from the missing `Validation /` directory, 28
 from frozen run artifacts correctly refusing a changed runtime, 1 missing
 `documentation/BACKLOG.md`, 1 missing HTA utility parameter, and 1 cascade.

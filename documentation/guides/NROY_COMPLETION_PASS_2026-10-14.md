@@ -22,7 +22,7 @@ non-zero, and no subcommand below it can load the plan.
 |---|---|---|
 | Remove `p_parameter.identity_epsilon` as a required decision | `nroy_contract.REQUIRED_DECISIONS` (removed); `FrozenPlan.validate` **refuses** a plan that still declares the field | `test_nroy_contract_design.py::test_the_prohibited_identity_epsilon_band_is_gone_from_the_contract` |
 | Remove all logic rejecting valid positive `p` | `p_discontinuity_reason`, `REJECT_P_DISCONTINUITY` and `REASON_P_DISCONTINUITY` deleted; `nroy_design.Validator.reasons` has no `p`-proximity rule; `p_boundary_probes` probes every declared bin edge plus declared extras | `test_arbitrarily_small_positive_p_values_remain_admissible` (down to `5e-324`); `test_p_boundary_probes_cover_every_declared_bin_edge_and_extra_values` |
-| Preserve exact `p=0` as the M0 identity control | `nc.is_exact_p_zero`, `embed_m0_in_m1` (literal float comparison), `ModelSpace` requires the `p` lower bound to be exactly 0 | `test_nroy_m0_m1_engine_identity.py` (9 vector×seed comparisons via the gate) |
+| Preserve exact `p=0` as the M0 identity control | `nc.is_exact_p_zero`, `embed_m0_in_m1` (literal float comparison), `ModelSpace` requires the `p` lower bound to be exactly 0 | `test_nroy_m0_m1_engine_identity.py::test_identity_holds_for_every_vector_and_seed_combination` and friends; plus the `identity-gate` command's own 9 vector×seed comparisons |
 | Allow every positive value inside the signed range | `nc.assert_p_admissible` — bounds and finiteness only, with no epsilon argument to supply a proximity rule | `test_arbitrarily_small_positive_p_values_remain_admissible`; `test_end_to_end_m1_includes_explicit_p_zero_and_a_tiny_positive_probe` (a declared `1e-18` probe is proposed **and scored**) |
 | Compare `p>0` distributionally | `nc.comparison_mode_for_p`, `assert_comparison_mode`, `distributional_summary` (no per-seed field to difference by accident) | `test_paired_comparison_is_refused_above_zero_but_the_value_is_not`; `test_a_tiny_positive_p_runs_and_is_compared_distributionally_not_paired` (real engine, 3 seeds) |
 
@@ -141,7 +141,7 @@ three of its deliberate-failure guards were red, for exactly that reason.
 
 ---
 
-## 1.9 What the inspection step found in my own work
+### 1.9 What the inspection step found in my own work
 
 Recorded because the brief asked for an independent inspection against both
 specifications, and it was worth having.
@@ -220,7 +220,7 @@ GATE PASSED (4/4 checks) in 23.1s
 
 ---
 
-## 2a. Full-suite reconciliation
+## 3. Full-suite reconciliation
 
 Command, in both cases:
 
@@ -300,14 +300,15 @@ diagnosis mechanism carries production results, and the M0/M1 gate's
 
 ---
 
-## 3. Remaining gaps
+## 4. Remaining gaps
 
 Stated as gaps, not as work in progress.
 
-1. **43 required decisions are unsigned**, and roughly 15 of them have no
-   proposal in either specification — they need a decision, not a
-   transcription. Both specifications are still DRAFT and the sign-off table in
-   the production spec is blank.
+1. **43 required decisions are unsigned.** `validate` splits them: **27 have a
+   proposal** recorded in one of the specifications, and **16 have none** —
+   those need a decision, not a transcription. Both specifications are still
+   DRAFT and the sign-off table in the production spec is blank. Five further
+   decisions become required if the correlated-output diagnostic is enabled.
 2. **A signed plan would still not be a launch authorisation.** The production
    specification also requires a measured pilot, a priced trajectory budget,
    `CONFIG_REGISTRY.md` with frozen candidate identities, and a confirmation
@@ -334,7 +335,19 @@ Stated as gaps, not as work in progress.
 8. **`archive_following.source_pool` with `low_j_archive_vectors` requires an
    archive table** passed to `prepare --archive`, with a `j` column if the
    low-J neighbour rule is signed. No such table has been assembled.
-9. **Nothing checks that a child stage was merged against the same acceptance
+9. **A partially sharded stage cannot be merged at all.** Sharding is by
+   *result key*, which includes the seed, so a half-evaluated stage leaves some
+   designs with one replicate and `recompute_candidate_scores` refuses the
+   whole merge — correctly, since a predictive variance needs two draws. The
+   consequence is that a stage interrupted mid-shard produces no scored table
+   and no classification, only a `PARTIAL` manifest. Safe, but blunt: a kinder
+   behaviour would score the designs that *are* complete and leave the rest
+   `work_not_run`, which is exactly the five-state discipline. Not implemented,
+   because selectively skipping under-replicated designs is the kind of silent
+   drop this module exists to prevent, and that trade-off is yours to make. The
+   classification rule itself is therefore tested at library level
+   (`test_an_undispatched_probe_makes_its_anchor_unresolved_not_negative`).
+10. **Nothing checks that a child stage was merged against the same acceptance
    inputs as its parent.** `merge` records `target_inputs_sha256` in the
    manifest, and `validate_parent_stage` verifies the target *order* and
    register hash, but no code compares the observed-value and base-variance
@@ -348,7 +361,7 @@ Stated as gaps, not as work in progress.
 
 ---
 
-## 4. Statement
+## 5. Statement
 
 No production simulation of any kind was launched. No calibration, robust-NROY,
 scenario or PSA stage was dispatched, and `outputs/` holds no run directory
