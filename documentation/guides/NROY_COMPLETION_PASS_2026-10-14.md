@@ -141,7 +141,51 @@ three of its deliberate-failure guards were red, for exactly that reason.
 
 ---
 
-### 1.9 What the inspection step found in my own work
+### 1.9 One acceptance basis per lineage
+
+The hole this closes: `merge` hashed the observed-value and base-variance files
+into the manifest, and `validate_parent_stage` checked the target order and the
+register hash, but **nothing compared the acceptance inputs across a
+parent/child pair**. A bridges stage merged against different observed values
+than its confirmation parent would publish edge verdicts on a different
+acceptance basis, and the merge gate would not notice.
+
+| requirement | code | test |
+|---|---|---|
+| Freeze the parent's **complete** acceptance-input identity into every child | `run_robust_nroy_freeze._freeze_parent_acceptance_identity`, writing `parent_acceptance_identity.json` at `prepare`, before the manifest, so the stage's own artifact index covers it | `test_the_parent_acceptance_identity_is_frozen_into_the_child_at_prepare` (also asserts the file is in `artifacts.json`) |
+| The identity holds target order, target-register hash, observed-value hash, base-variance hash, discrepancy, scoring version and acceptance rule | `nc.ACCEPTANCE_IDENTITY_FIELDS`, `nc.acceptance_input_identity`, `nc.SCORING_VERSION`, `nc.acceptance_rule_text`, `FrozenPlan.acceptance_identity` | `test_the_identity_names_every_input_the_specification_requires` |
+| Compare at **child merge**, fail closed on any difference | `command_merge`: builds the identity from the two files and the plan, then `nc.assert_acceptance_identity` against the frozen parent before the manifest is written | `test_a_child_merged_against_different_observed_values_is_refused`; `..._different_base_variances_is_refused`; `..._a_changed_discrepancy_is_refused`; `..._changed_register_contents_is_refused` |
+| Compare **before any classification** | `_assert_acceptance_basis` in `command_classify`, before the first label is written | `test_classification_is_refused_when_the_plan_changed_after_the_merge` (asserts no `local_support.csv` is left behind) |
+| Compare **before any edge verdict** | `_assert_acceptance_basis` in `command_regions`, before `edge_verdict_table` | `test_edge_verdicts_are_refused_when_the_plan_changed_after_the_bridge_merge`; `test_the_regions_package_records_the_basis_its_verdicts_were_reached_on` |
+| No field is decorative | field-by-field mutation of a real identity | `test_every_field_of_the_identity_is_compared_not_only_the_summary_hash` (all eight fields, one at a time) |
+| A reordered target contract cannot reach a scored table | the ledger's frozen per-unit target schema in `ne.merge_seed_results` fires **first**; `target_order` and `target_contract_sha256` are the identity's backstop behind it | `test_a_child_merged_against_a_reordered_target_order_is_refused` — recorded against the gate that actually fires, not attributed to the new check |
+| A missing identity is a refusal, not a pass | `nc.assert_acceptance_identity` refuses an absent frozen *or* current identity, and `_assert_acceptance_basis` refuses a stage merged before identities were recorded | `test_an_absent_identity_is_a_refusal_not_a_pass` |
+
+Two comparisons run, not one. Against the **frozen parent identity**, for the
+complete identity including the two file hashes; and against the **current
+plan**, for everything the plan fixes, so a plan edited between `merge` and
+`classify` cannot slip through. `SCORING_VERSION` is in the identity because
+two stages scored by different arithmetic are not comparable even when every
+input file is byte-identical; bumping it deliberately invalidates every
+parent/child pair that straddles the change.
+
+**The test fixture no longer relies on the defect.** The
+negative-local/confirming-bridge case used to be built by merging the
+confirmation stage against everything-fails acceptance inputs and the bridges
+stage against everything-confirms inputs — that is, by exploiting exactly the
+hole above, which is how it came to light. A test may not require the defect it
+guards against, so the geometry now does the work: a new verification-only
+evaluator (`surrogate_islands`, which runs no engine) is plausible only within
+`0.02` of three island centres spaced along the first normalised coordinate,
+and the two anchors sit one spacing beyond each end. Every ambient probe around
+an anchor is at least `0.10` from the nearest island and fails; the declared
+25/50/75% bridge fractions interpolate *exactly* onto the three islands and
+confirm. One observed-value file, one base-variance file, one register, one
+acceptance rule, for every stage in the chain. The geometry itself is asserted
+rather than assumed (`test_the_island_field_is_plausible_only_on_its_islands`),
+so it cannot drift into testing nothing.
+
+### 1.10 What the inspection step found in my own work
 
 Recorded because the brief asked for an independent inspection against both
 specifications, and it was worth having.
@@ -188,12 +232,19 @@ No production simulation may start.
     tests/test_nroy_graph_report.py \
     tests/test_nroy_pipeline_stages.py \
     tests/test_a12_stage_structured_diagnosis_allocation.py \
-    tests/test_a12_deterministic_allocation_audit.py -q
+    tests/test_a12_deterministic_allocation_audit.py \
+    tests/test_a12_review_guards.py -q
 ```
 
 ```
-322 passed
+334 passed in 38.56s
 ```
+
+Measured at the commit this revision records. The previous revision of this
+document reported `322 passed` while printing a six-file command that collects
+306; the seventh file (`test_a12_review_guards.py`, the A-12 fingerprint guard)
+was in the run but had been dropped from the transcribed command. The command
+above is the one that produces the number above.
 
 ```bash
 # 3. The M0/M1 identity gate. RUNS THE ENGINE, on purpose, on short
@@ -289,9 +340,20 @@ AssertionError: Multiplier=1.0 should produce identical MSM diagnoses;
 
 The runner's own gate already records this as a *tolerated* failure with
 `"tolerated_failure_still_fails": true`, so it is a known, logged issue rather
-than a discovery. It is pre-existing and outside this brief.
+than a discovery. It is pre-existing, and **this pass deliberately did not
+attempt to fix it** — a 7% discrepancy in the diagnosis mechanism is not
+something to resolve as a side effect of a patch about acceptance inputs.
 
-It is worth flagging anyway, because it is the **same shape of question** as
+It is now an explicit **pre-calibration blocker** in
+`PRODUCTION_LOCKIN_SPEC_2026-10-13.md` section 4, with the exact failing test
+recorded and a required four-way diagnostic: one-step mathematical neutrality
+at `1.0`; RNG-stream coupling; amplification through the longitudinal epidemic;
+or a real change in the transition distribution. The first and last are
+mutually exclusive answers to the same question; the middle two leave the
+mechanism correct but make a paired comparison meaningless. No production
+calibration starts while it is unresolved.
+
+It is the **same shape of question** as
 the M0/M1 identity this pass just put behind a gate: an identity at a neutral
 parameter value that does not hold. At `multiplier = 1.0` the MSM-relative
 diagnosis path should reduce to the baseline, and it differs by 7%. If that is
@@ -339,29 +401,32 @@ Stated as gaps, not as work in progress.
 8. **`archive_following.source_pool` with `low_j_archive_vectors` requires an
    archive table** passed to `prepare --archive`, with a `j` column if the
    low-J neighbour rule is signed. No such table has been assembled.
-9. **A partially sharded stage cannot be merged at all.** Sharding is by
-   *result key*, which includes the seed, so a half-evaluated stage leaves some
-   designs with one replicate and `recompute_candidate_scores` refuses the
-   whole merge — correctly, since a predictive variance needs two draws. The
-   consequence is that a stage interrupted mid-shard produces no scored table
-   and no classification, only a `PARTIAL` manifest. Safe, but blunt: a kinder
-   behaviour would score the designs that *are* complete and leave the rest
-   `work_not_run`, which is exactly the five-state discipline. Not implemented,
-   because selectively skipping under-replicated designs is the kind of silent
-   drop this module exists to prevent, and that trade-off is yours to make. The
-   classification rule itself is therefore tested at library level
-   (`test_an_undispatched_probe_makes_its_anchor_unresolved_not_negative`).
-10. **Nothing checks that a child stage was merged against the same acceptance
-   inputs as its parent.** `merge` records `target_inputs_sha256` in the
-   manifest, and `validate_parent_stage` verifies the target *order* and
-   register hash, but no code compares the observed-value and base-variance
-   hashes across a parent/child pair. A bridges stage merged against different
-   observed values than its confirmation parent would publish edge verdicts on
-   a different acceptance basis, and the merge gate would not notice. The
-   verification suite exploits exactly this to build its negative-local /
-   confirming-bridge fixture, which is how it came to light. Closing it needs a
-   decision about where the check belongs — `merge` does not currently know its
-   parent directory — so it is recorded rather than half-implemented.
+**Not a gap — deliberate production behaviour.** A partially sharded stage
+cannot be merged into a scored table, and that is the intended rule rather than
+an unfinished implementation. Sharding is by *result key*, which includes the
+seed, so a half-evaluated stage leaves some designs with one replicate, and
+`recompute_candidate_scores` refuses the whole merge: a predictive variance
+needs two draws. The stage is published `PARTIAL`, it is non-parentable, and no
+selectively scored subset is produced. The alternative — score the designs that
+happen to be complete and label the rest `work_not_run` — is rejected on
+purpose, because choosing which under-replicated designs to drop is precisely
+the silent-drop failure this module exists to prevent, and because a
+selectively scored subset is a biased sample of the design: the designs that
+finish first are not a random subset of the design when work is sharded by a
+hash of the result key. Resume completes the stage and produces the same
+scientific table
+(`test_resuming_after_a_cap_completes_the_same_scientific_table`); the
+classification rule for undispatched work is tested at library level
+(`test_an_undispatched_probe_makes_its_anchor_unresolved_not_negative`). If a
+future run genuinely needs partial scoring, that is a scientific decision about
+acceptable bias in a design, not a convenience, and it belongs in the signed
+plan.
+
+**Closed by this pass.** The cross-stage acceptance-input identity — gap 10 in
+the previous revision of this document — is implemented, tested and documented
+in section 1.9. Every child stage freezes its parent's complete acceptance-input
+identity at `prepare`, and `merge`, `classify` and `regions` each fail closed on
+any difference.
 
 ---
 

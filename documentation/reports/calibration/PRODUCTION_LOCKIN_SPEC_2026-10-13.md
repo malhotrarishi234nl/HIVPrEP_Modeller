@@ -75,6 +75,25 @@ Prerequisite audit as of this review:
 - **A-25:** invalid age-bin fallback is guarded and current configs use `65-69`; final policy outputs must be regenerated on the frozen production build. The wider age-risk/mortality limitations remain disclosure/model-scope questions.
 - **A-16:** the retained rerun artifact is not the final current-build economic result. The frozen representative scenario analysis replaces it rather than treating the old artifact as closed production evidence.
 - **A-12/M1:** `_step_stage_structured_diagnosis` is currently an untriaged allocation-rounding site in the A-12 inventory. Classify it, test the six-pool allocation and conservation behaviour, and close or explicitly document the finding before M1 production use.
+- **MSM-relative-diagnosis multiplier — BLOCKER, pre-calibration.** The neutral value of the MSM-relative diagnosis multiplier does not reproduce the baseline. The failing test is exactly:
+
+  ```
+  tests/test_msm_relative_diagnosis_v13_10.py::TestStepDiagnosisBehavior
+      ::test_enabled_with_multiplier_one_matches_baseline
+  AssertionError: Multiplier=1.0 should produce identical MSM diagnoses;
+      ref=93601, mult1=86772
+  ```
+
+  It is pre-existing, is already recorded as a tolerated failure by the joint-fit runner's validate gate (`"tolerated_failure_still_fails": true`), and it is **not** caused by the robust-NROY work. It is promoted to a blocker because it is an identity at a neutral parameter value that does not hold, in the same diagnosis mechanism the production calibration depends on, and because a 7% difference in MSM diagnoses is larger than several of the effects the calibration is being asked to resolve.
+
+  Resolution requires a separate diagnostic — not a tolerance, not an allowlist entry — that distinguishes four possibilities and reports which one holds:
+
+  1. **One-step mathematical/distributional neutrality at `1.0`.** With the same state and the same draws, does the multiplier path produce the same transition *distribution* as the baseline for a single step? This is an arithmetic question and is answered without running an epidemic.
+  2. **RNG-stream coupling.** If the multiplier branch consumes draws in a different order, or re-keys a counter-based stream, the two runs are different samples from the same distribution. Diagnosed by comparing the two paths across a seed block distributionally rather than seed by seed, and by instrumenting draw counts per step.
+  3. **Amplification through the longitudinal epidemic.** A per-step difference too small to see may compound over 1980→2024 through the force of infection. Diagnosed by reporting the per-step divergence as a function of year, starting from a common state.
+  4. **An actual change in the transition distribution** — a real defect in the multiplier path, in which case the mechanism is wrong and the fix is a code fix.
+
+  (1) and (4) are mutually exclusive answers to the same question; (2) and (3) are coupling artefacts that leave the mechanism correct but make a paired comparison meaningless. The pattern to follow is the M0/M1 identity gate's `check_deliberate_failures`, which exists precisely so that an identity test cannot pass vacuously. No production calibration starts while this is unresolved.
 
 Then: write `CONFIG_REGISTRY.md` with frozen candidate identities; check seeds are disjoint from earlier runs; dry-run validation with no simulation; a small pilot to measure time per trajectory; price the full run. The robust-NROY stage must additionally pass shard, merge, resume and stage-handoff equivalence tests before distributed execution.
 

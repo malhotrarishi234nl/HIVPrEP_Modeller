@@ -87,7 +87,7 @@ runs. It is the **only** module in this stage that builds an engine.
 | command | runs the engine? | produces |
 |---|---|---|
 | `validate` | no | the unsigned-decision report; exits non-zero while any remain |
-| `prepare` | no | the frozen design, ledger and (for `bridges`) the graph |
+| `prepare` | no | the frozen design, ledger, the parent's frozen acceptance-input identity and (for `bridges`) the graph |
 | `evaluate` | only with `--evaluator production` | one shard's seed-level results |
 | `merge` | no | `seed_results.csv`, `candidate_scores.csv`, stage status |
 | `classify` | no | `design_evidence.csv`, `local_support.csv`, `p_coverage.csv` |
@@ -268,7 +268,8 @@ regions                                                         (parent: bridges
 That covers the fail-closed plan loader; the design kernels with their quotas
 and lineage; the frozen ledger; deterministic sharding; atomic writes; the
 merge gate; independent score recomputation from seed-level rows; the
-attempt/resume audit; parent-stage validation; the five evidence states;
+attempt/resume audit; parent-stage validation; the cross-stage
+acceptance-input identity; the five evidence states;
 local-support classification; the `p` coverage profile; the candidate-edge
 graph; the frozen minimal audited edge set; bridge probes; edge verdicts;
 components; geometry-only representative selection; the wall-clock cap; the

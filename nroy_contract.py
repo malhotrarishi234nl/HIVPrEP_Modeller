@@ -1113,6 +1113,160 @@ def predictive_variance(
     return out
 
 
+# ==========================================================================
+# Acceptance-input identity
+# ==========================================================================
+
+#: Version of the recomputation arithmetic in
+#: ``nroy_execution.recompute_candidate_scores``.  It is part of the acceptance
+#: identity because two stages scored by different arithmetic are not
+#: comparable even when every input file is byte-identical.  **Bump this
+#: whenever that arithmetic changes**, which deliberately invalidates every
+#: parent/child pair that straddles the change.
+SCORING_VERSION = "nroy_scoring/1.0.0"
+
+#: The complete acceptance-input identity.  Every field is part of "what it
+#: means for a candidate to pass", so a child stage that differs from its
+#: parent in any one of them is publishing verdicts on a different basis.
+ACCEPTANCE_IDENTITY_FIELDS = (
+    "scoring_version",
+    "target_order",
+    "target_register_sha256",
+    "target_contract_sha256",
+    "observed_sha256",
+    "base_variance_sha256",
+    "discrepancy",
+    "acceptance_rule",
+)
+
+#: The subset a stage can re-derive from the run plan alone, without the
+#: observed-value and base-variance files.  Used to check that the plan has not
+#: changed between ``merge`` and a later classification.
+PLAN_DERIVED_ACCEPTANCE_FIELDS = (
+    "scoring_version",
+    "target_order",
+    "target_register_sha256",
+    "target_contract_sha256",
+    "discrepancy",
+    "acceptance_rule",
+)
+
+
+def acceptance_rule_text(*, cutoff: float, variance_alpha: float | None) -> str:
+    """The frozen acceptance rule, as a string that changes when the rule does."""
+    text = f"I_max <= {float(cutoff)!r} on nominal variance B_i + s_i^2 (1 + 1/K)"
+    if variance_alpha is not None:
+        text += (
+            f"; promotion may also use the chi-square upper bound at "
+            f"alpha={float(variance_alpha)!r}, which is not acceptance"
+        )
+    return text
+
+
+def acceptance_input_identity(
+    *,
+    targets: "TargetContract",
+    observed_sha256: str,
+    base_variance_sha256: str,
+    cutoff: float,
+    discrepancy: float,
+    variance_alpha: float | None,
+    scoring_version: str = SCORING_VERSION,
+) -> dict:
+    """The complete identity of one stage's acceptance inputs.
+
+    Spec sec. 5 requires every stage of a lineage to share one acceptance
+    basis.  Recording the target order and register hash was not enough: the
+    observed values ``z_i`` and the frozen base variances ``B_i`` are the
+    numerator and denominator of every implausibility, and a child merged
+    against different ones publishes edge verdicts and support labels that
+    cannot be compared with its parent's.  This is what a child freezes from
+    its parent and re-checks at its own merge.
+    """
+    fields = {
+        "scoring_version": str(scoring_version),
+        "target_order": [str(name) for name in targets.frozen_order],
+        "target_register_sha256": str(targets.register_sha256),
+        "target_contract_sha256": str(targets.hash()),
+        "observed_sha256": str(observed_sha256),
+        "base_variance_sha256": str(base_variance_sha256),
+        "discrepancy": float(discrepancy),
+        "acceptance_rule": acceptance_rule_text(
+            cutoff=cutoff, variance_alpha=variance_alpha
+        ),
+    }
+    missing = [name for name in ACCEPTANCE_IDENTITY_FIELDS if name not in fields]
+    if missing:
+        raise ContractError(f"acceptance identity is missing {missing}")
+    return {**fields, "identity_sha256": sha256_json(fields)}
+
+
+#: Human-readable reason each field matters, used in the refusal message so the
+#: failure names the scientific consequence rather than two hashes.
+_ACCEPTANCE_FIELD_MEANING = {
+    "scoring_version": "the recomputation arithmetic",
+    "target_order": "the frozen target order",
+    "target_register_sha256": "the target register contents",
+    "target_contract_sha256": "the target contract (order, register, groups)",
+    "observed_sha256": "the observed target values z_i",
+    "base_variance_sha256": "the frozen base variances B_i",
+    "discrepancy": "the model-discrepancy term",
+    "acceptance_rule": "the acceptance rule itself",
+}
+
+
+def assert_acceptance_identity(
+    frozen: Mapping[str, Any] | None,
+    current: Mapping[str, Any] | None,
+    *,
+    what: str,
+    fields: Sequence[str] = ACCEPTANCE_IDENTITY_FIELDS,
+) -> None:
+    """Fail closed unless two acceptance identities agree on every field.
+
+    A missing identity is a failure, not a pass: a stage produced before this
+    check existed cannot be shown to share its parent's acceptance basis, and
+    the conservative reading of "cannot be shown" is "refuse".
+    """
+    if not frozen:
+        raise ContractError(
+            f"{what}: no frozen acceptance-input identity is recorded, so there is "
+            "nothing to compare. A stage whose acceptance basis cannot be shown to "
+            "match its parent's is refused rather than assumed to match. Re-run "
+            "'merge' on the parent with the current code to record one."
+        )
+    if not current:
+        raise ContractError(
+            f"{what}: this stage records no acceptance-input identity. Run 'merge' "
+            "with --observed and --base-variance before any classification or edge "
+            "verdict."
+        )
+    differences = []
+    for name in fields:
+        if name not in frozen or name not in current:
+            differences.append(
+                f"  {name}: {'absent from the frozen identity' if name not in frozen else ''}"
+                f"{'absent from this stage' if name not in current else ''}"
+                f"  [{_ACCEPTANCE_FIELD_MEANING.get(name, name)}]"
+            )
+            continue
+        if json_safe(frozen[name]) != json_safe(current[name]):
+            differences.append(
+                f"  {name} [{_ACCEPTANCE_FIELD_MEANING.get(name, name)}]\n"
+                f"      frozen:  {json_safe(frozen[name])!r}\n"
+                f"      current: {json_safe(current[name])!r}"
+            )
+    if differences:
+        raise ContractError(
+            f"{what}: the acceptance-input identity differs from the frozen one, so "
+            "this stage would publish support labels and edge verdicts on a different "
+            "acceptance basis than its parent. Differences:\n"
+            + "\n".join(differences)
+            + "\nRe-merge the whole lineage against one acceptance basis, or re-prepare "
+            "this stage from a parent that used these inputs."
+        )
+
+
 def variance_bound_factor(k: int, alpha: float) -> float:
     """Upper ``1-alpha`` confidence factor for ``sigma^2`` from ``K`` replicates.
 
@@ -1694,6 +1848,32 @@ class FrozenPlan:
 
     def bridge_fractions(self) -> tuple[float, ...]:
         return tuple(float(f) for f in self.require("graph.bridge_fractions"))
+
+    def acceptance_identity(
+        self, *, observed_sha256: str, base_variance_sha256: str
+    ) -> dict:
+        """This plan's complete acceptance-input identity, given the two files."""
+        return acceptance_input_identity(
+            targets=self.targets,
+            observed_sha256=observed_sha256,
+            base_variance_sha256=base_variance_sha256,
+            cutoff=self.cutoff,
+            discrepancy=self.discrepancy,
+            variance_alpha=float(self.require("promotion.variance_alpha")),
+        )
+
+    def plan_acceptance_fields(self) -> dict:
+        """The plan-derived subset of the acceptance identity.
+
+        Everything here is fixed by the signed plan and the target register, so
+        a stage can re-derive it at any time and check that the plan has not
+        changed since its merge.  The observed-value and base-variance hashes
+        are deliberately absent: they come from files the plan does not carry.
+        """
+        partial = self.acceptance_identity(
+            observed_sha256="", base_variance_sha256=""
+        )
+        return {name: partial[name] for name in PLAN_DERIVED_ACCEPTANCE_FIELDS}
 
     def manifest_contract(self) -> dict:
         """The frozen numerical/identity contract, for the stage manifest."""

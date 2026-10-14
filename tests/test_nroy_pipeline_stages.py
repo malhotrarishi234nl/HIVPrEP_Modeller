@@ -90,12 +90,38 @@ def _acceptance_inputs(tmp_path: Path, *, confirming: bool) -> tuple[Path, Path]
     return observed_path, variance_path
 
 
+def _write_island_anchors(path: Path, space) -> Path:
+    """Anchors placed so the bridge probes land exactly on the islands.
+
+    One spacing beyond each end island, so the declared 25/50/75% bridge
+    fractions interpolate onto the three island centres.  Every other
+    coordinate sits at 0.5, which is where the islands live, so the only
+    coordinate that moves is the one the field reads.
+    """
+    centres = runner.ISLAND_CENTRES
+    spacing = centres[1] - centres[0]
+    rows = []
+    for name, position in (("A0", centres[0] - spacing), ("A1", centres[-1] + spacing)):
+        u = np.full(space.n, 0.5)
+        u[0] = position
+        params = space.as_dict(space.denormalise(u))
+        reasons = ccs.invalid_reasons(space.space, [params[n] for n in space.names])
+        assert not reasons, f"island anchor {name} violates a declared constraint: {reasons}"
+        rows.append({"candidate_id": name, **params})
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
 class Harness:
     """Drives the real CLI through a whole stage chain with the surrogate.
 
     Deliberately uses the CLI rather than calling the library directly: the
     point of these tests is that the stages are *reachable*, which a direct
     library call would not demonstrate.
+
+    One acceptance basis is used for the whole chain, always: ``merge`` now
+    refuses a stage whose acceptance inputs differ from its parent's frozen
+    identity, so a harness that varied them per stage could not run at all.
     """
 
     def __init__(
@@ -104,15 +130,21 @@ class Harness:
         *,
         model: str = nc.MODEL_M0,
         confirming: bool = True,
+        evaluator: str = "surrogate",
+        anchors: Path | None = None,
         **overrides,
     ):
         self.tmp_path = tmp_path
         self.model = model
         self.confirming = bool(confirming)
+        self.evaluator = str(evaluator)
         self.plan_path = fx.write_signed_plan(tmp_path, **overrides)
         self.plan = nc.FrozenPlan.load(self.plan_path, root=ROOT)
         self.space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
-        self.anchors = _write_anchors(tmp_path / "anchors.csv", self.space)
+        self.anchors = (
+            Path(anchors) if anchors is not None
+            else _write_anchors(tmp_path / "anchors.csv", self.space)
+        )
         self.observed, self.variance = _acceptance_inputs(
             tmp_path, confirming=self.confirming
         )
@@ -140,25 +172,21 @@ class Harness:
             assert runner.main([
                 "evaluate", "--plan", str(self.plan_path),
                 "--stage-dir", str(self.dirs[stage]), "--shard", str(shard),
-                "--of", str(n_shards), "--evaluator", "surrogate", *extra,
+                "--of", str(n_shards), "--evaluator", self.evaluator, *extra,
             ]) == 0
 
-    def merge(self, stage: str, *, confirming: bool | None = None) -> None:
-        """Merge one stage, optionally against the other acceptance inputs.
+    def merge(self, stage: str, *, observed: Path | None = None,
+              variance: Path | None = None) -> int:
+        """Merge one stage against the chain's single acceptance basis.
 
-        The per-stage override is a **fixture device**, used only to build the
-        "no local support but a supported bridge" case that region support
-        needs.  A real run uses one frozen contract for every stage; see the
-        recorded gap about cross-stage acceptance-input hashes.
+        ``observed`` and ``variance`` override it only for the adversarial
+        tests, which exist to show that an override is *refused*.
         """
-        observed, variance = (
-            (self.observed, self.variance) if confirming is None
-            else _acceptance_inputs(self.tmp_path, confirming=confirming)
-        )
-        assert runner.main([
+        return runner.main([
             "merge", "--plan", str(self.plan_path), "--stage-dir", str(self.dirs[stage]),
-            "--observed", str(observed), "--base-variance", str(variance),
-        ]) == 0
+            "--observed", str(observed or self.observed),
+            "--base-variance", str(variance or self.variance),
+        ])
 
     def classify(self, stage: str) -> pd.DataFrame:
         assert runner.main([
@@ -170,7 +198,7 @@ class Harness:
     def full_local_stage(self, stage: str, *, parent: str | None = None) -> Path:
         self.prepare(stage, parent=parent)
         self.evaluate(stage)
-        self.merge(stage)
+        assert self.merge(stage) == 0, f"merge {stage} failed"
         self.classify(stage)
         return self.dirs[stage]
 
@@ -183,7 +211,7 @@ class Harness:
         self.chain_to_confirmation()
         self.prepare(nc.STAGE_BRIDGES, parent=nc.STAGE_CONFIRMATION)
         self.evaluate(nc.STAGE_BRIDGES)
-        self.merge(nc.STAGE_BRIDGES)
+        assert self.merge(nc.STAGE_BRIDGES) == 0, "merge bridges failed"
         return self.dirs[nc.STAGE_BRIDGES]
 
     def regions(self) -> Path:
@@ -623,23 +651,317 @@ def test_regions_refuses_a_bridges_stage_that_was_not_scored(tmp_path):
 
 
 def _chain_with_negative_local_support(tmp_path: Path) -> Harness:
-    """Local assessment negative, bridges confirming.
+    """Local assessment negative, bridges confirming -- on ONE acceptance basis.
 
-    Built legitimately rather than by editing a completed artifact: the
-    confirmation stage is merged against the everything-fails acceptance
-    inputs, so every anchor is ``no_local_support_detected``, and the bridges
-    stage is merged against the everything-confirms inputs, so every bridge
-    probe confirms.  Editing ``graph_nodes.csv`` instead is correctly refused
-    by the artifact-index hash check.
+    This case used to be built by merging the confirmation stage against
+    everything-fails acceptance inputs and the bridges stage against
+    everything-confirms inputs.  That was the hole the cross-stage identity
+    check now closes, and a test may not require the very defect it is meant
+    to guard against, so the geometry does the work instead.
+
+    ``surrogate_islands`` is plausible only within a small radius of three
+    island centres, spaced along the first normalised coordinate.  The two
+    anchors sit one spacing beyond each end, so:
+
+    * every ambient probe around an anchor is at least 0.10 from the nearest
+      island and fails, making both anchors ``no_local_support_detected``;
+    * the declared 25/50/75% bridge fractions interpolate exactly onto the
+      three islands, so every probe on the edge confirms.
+
+    One observed-value file, one base-variance file, one target register, one
+    acceptance rule, for every stage in the chain -- which is the point.
     """
-    harness = Harness(tmp_path, confirming=False)
+    harness = Harness(
+        tmp_path,
+        confirming=False,  # observed = 0, B_i = 1, so recomputed I_max IS the field
+        evaluator="surrogate_islands",
+        anchors=_write_island_anchors(tmp_path / "island_anchors.csv", fx.m0_space()),
+    )
     harness.full_local_stage(nc.STAGE_DISCOVERY)
     harness.full_local_stage(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
     harness.full_local_stage(nc.STAGE_CONFIRMATION, parent=nc.STAGE_PROMOTION)
     harness.prepare(nc.STAGE_BRIDGES, parent=nc.STAGE_CONFIRMATION)
     harness.evaluate(nc.STAGE_BRIDGES)
-    harness.merge(nc.STAGE_BRIDGES, confirming=True)
+    assert harness.merge(nc.STAGE_BRIDGES) == 0, "merge bridges failed"
     return harness
+
+
+def test_the_island_field_is_plausible_only_on_its_islands():
+    """The fixture's geometry, asserted rather than assumed.
+
+    If this drifts, ``_chain_with_negative_local_support`` stops testing what
+    it claims to test, so the field's two relevant properties are checked
+    directly: the islands are plausible and an anchor one spacing away is not.
+    """
+    centres = runner.ISLAND_CENTRES
+    spacing = centres[1] - centres[0]
+    n = 33
+    for position in centres:
+        assert runner.island_field_i_max(runner.island_centre(position, n)) <= 3.0
+    for position in (centres[0] - spacing, centres[-1] + spacing):
+        anchor = runner.island_centre(position, n)
+        assert runner.island_field_i_max(anchor) > 3.0
+        # And so is everything an ambient probe at the largest declared scale
+        # could reach from there.
+        for scale in (0.025, 0.05):
+            moved = anchor.copy()
+            moved[0] += scale if position < 0.5 else -scale
+            assert runner.island_field_i_max(moved) > 3.0
+
+
+# ==========================================================================
+# One acceptance basis per lineage (the cross-stage identity check)
+# ==========================================================================
+
+def _variant_plan(tmp_path: Path, name: str, **overrides) -> Path:
+    """A second signed plan file, so the baseline one is not overwritten."""
+    path = tmp_path / name
+    path.write_text(json.dumps(fx.signed_plan_dict(**overrides), indent=1))
+    return path
+
+
+def _refused_because(capsys) -> str:
+    """The refusal text a CLI command printed, so a test can check the reason.
+
+    An exit code of 1 only says "some contract error". These tests are about
+    one specific refusal, so they assert which one.
+    """
+    return capsys.readouterr().err
+
+
+def _chain_to_a_prepared_child(tmp_path: Path) -> Harness:
+    """Discovery merged and classified, promotion prepared from it."""
+    harness = Harness(tmp_path)
+    harness.full_local_stage(nc.STAGE_DISCOVERY)
+    harness.prepare(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
+    harness.evaluate(nc.STAGE_PROMOTION)
+    return harness
+
+
+def test_the_parent_acceptance_identity_is_frozen_into_the_child_at_prepare(tmp_path):
+    """The freeze itself: complete, and covering every field the spec names."""
+    harness = _chain_to_a_prepared_child(tmp_path)
+    child = harness.dirs[nc.STAGE_PROMOTION]
+    frozen = json.loads((child / runner.PARENT_IDENTITY_FILENAME).read_text())
+    identity = frozen["acceptance_input_identity"]
+
+    for field in nc.ACCEPTANCE_IDENTITY_FIELDS:
+        assert field in identity, f"the frozen identity omits {field}"
+    assert identity["identity_sha256"]
+    parent_manifest = json.loads(
+        (harness.dirs[nc.STAGE_DISCOVERY] / "manifest.json").read_text()
+    )
+    assert parent_manifest["extra"]["acceptance_input_identity"] == identity
+    # And it is covered by the child's own artifact index, so it cannot be
+    # quietly edited later.
+    index = json.loads((child / "artifacts.json").read_text())
+    assert runner.PARENT_IDENTITY_FILENAME in {row["path"] for row in index["files"]}
+
+
+def test_the_identity_names_every_input_the_specification_requires():
+    """Target order, register, observed, base variance, scoring, rule."""
+    assert set(nc.ACCEPTANCE_IDENTITY_FIELDS) == {
+        "scoring_version", "target_order", "target_register_sha256",
+        "target_contract_sha256", "observed_sha256", "base_variance_sha256",
+        "discrepancy", "acceptance_rule",
+    }
+    # The observed and base-variance hashes are the two that were missing, and
+    # they are the two the plan cannot re-derive, so they must not appear in
+    # the plan-derived subset.
+    assert "observed_sha256" not in nc.PLAN_DERIVED_ACCEPTANCE_FIELDS
+    assert "base_variance_sha256" not in nc.PLAN_DERIVED_ACCEPTANCE_FIELDS
+
+
+def test_a_child_merged_against_different_observed_values_is_refused(tmp_path, capsys):
+    """The exact hole: a child scored against other observed values z_i."""
+    harness = _chain_to_a_prepared_child(tmp_path)
+    other = tmp_path / "other_observed.json"
+    other.write_text(json.dumps({name: 104.0 for name in TARGETS}))
+    code = harness.merge(nc.STAGE_PROMOTION, observed=other)
+    assert code == 1
+    reason = _refused_because(capsys)
+    assert "observed_sha256" in reason and "observed target values" in reason
+    assert not (harness.dirs[nc.STAGE_PROMOTION] / "candidate_scores.csv").exists(), (
+        "a refused merge must not leave a scored table behind"
+    )
+
+
+def test_a_child_merged_against_different_base_variances_is_refused(tmp_path, capsys):
+    """And the denominator, which is just as much of the acceptance rule."""
+    harness = _chain_to_a_prepared_child(tmp_path)
+    variance = tmp_path / "wider_variance.json"
+    variance.write_text(json.dumps({name: 250000.0 for name in TARGETS}))
+    assert harness.merge(nc.STAGE_PROMOTION, variance=variance) == 1
+    reason = _refused_because(capsys)
+    assert "base_variance_sha256" in reason and "base variances" in reason
+
+
+def test_a_child_merged_against_a_changed_discrepancy_is_refused(tmp_path, capsys):
+    """The discrepancy is part of the variance budget, so it is part of the rule."""
+    harness = _chain_to_a_prepared_child(tmp_path)
+    altered = _variant_plan(
+        tmp_path, "plan_other_discrepancy.json",
+        **{"acceptance.discrepancy": 0.25},
+    )
+    code = runner.main([
+        "merge", "--plan", str(altered),
+        "--stage-dir", str(harness.dirs[nc.STAGE_PROMOTION]),
+        "--observed", str(harness.observed), "--base-variance", str(harness.variance),
+    ])
+    assert code == 1
+    reason = _refused_because(capsys)
+    differences = reason.split("Differences:")[1]
+    assert "discrepancy" in differences
+    # Only the discrepancy moved, so nothing else may be reported as differing.
+    assert "observed_sha256" not in differences
+    assert "target_order" not in differences
+
+
+def test_a_child_merged_against_changed_register_contents_is_refused(tmp_path, capsys):
+    """Same target names, same order, changed register contents.
+
+    The identity pins the register by hash, so **any** change to it
+    invalidates the comparison -- deliberately, because deciding which fields
+    of a target register are acceptance-relevant is exactly the judgement a
+    fail-closed check should not be making.  The edit here is a version
+    string, which is the mildest change the register admits; a changed ``z_i``
+    or ``v_obs`` is caught by the same comparison.
+    """
+    harness = _chain_to_a_prepared_child(tmp_path)
+    register_path = Path(harness.plan.targets.register_path)
+    if not register_path.is_absolute():
+        register_path = ROOT / register_path
+    edited = tmp_path / "edited_register.json"
+    payload = json.loads(register_path.read_text())
+    payload["version"] = str(payload.get("version", "")) + "-edited"
+    edited.write_text(json.dumps(payload, indent=1))
+    altered = _variant_plan(
+        tmp_path, "plan_other_register.json",
+        **{
+            "target_contract.register_path": str(edited),
+            "target_contract.register_sha256": ccs.sha256_file(edited),
+        },
+    )
+    code = runner.main([
+        "merge", "--plan", str(altered),
+        "--stage-dir", str(harness.dirs[nc.STAGE_PROMOTION]),
+        "--observed", str(harness.observed), "--base-variance", str(harness.variance),
+    ])
+    assert code == 1
+    reason = _refused_because(capsys)
+    assert "target_register_sha256" in reason
+
+
+def test_a_child_merged_against_a_reordered_target_order_is_refused(tmp_path, capsys):
+    """A reordered contract at merge time is refused -- by the earlier gate.
+
+    Recorded with the gate that actually fires, rather than attributed to the
+    new check: each work unit carries the frozen target schema, so a plan whose
+    order was reversed after ``prepare`` is rejected by the ledger's own schema
+    comparison in ``merge_seed_results``, before any score exists to compare.
+    The acceptance identity is the backstop behind it -- ``target_order`` and
+    ``target_contract_sha256`` are both compared, which
+    ``test_every_field_of_the_identity_is_compared_not_only_the_summary_hash``
+    drives directly -- and it is what would catch a reordering that somehow
+    reached a scored table.
+    """
+    harness = _chain_to_a_prepared_child(tmp_path)
+    reordered = _variant_plan(
+        tmp_path, "plan_reordered_targets.json",
+        **{"target_contract.frozen_order": list(reversed(list(TARGETS)))},
+    )
+    code = runner.main([
+        "merge", "--plan", str(reordered),
+        "--stage-dir", str(harness.dirs[nc.STAGE_PROMOTION]),
+        "--observed", str(harness.observed), "--base-variance", str(harness.variance),
+    ])
+    assert code == 1
+    assert "target schema does not match the contract" in _refused_because(capsys)
+    assert not (harness.dirs[nc.STAGE_PROMOTION] / "candidate_scores.csv").exists()
+
+
+def test_every_field_of_the_identity_is_compared_not_only_the_summary_hash(tmp_path):
+    """One field at a time, including the target order.
+
+    The end-to-end tests above vary one real input each.  This one drives the
+    comparison directly so that *every* field is shown to be load-bearing,
+    including the two -- the scoring version and the acceptance rule -- that no
+    command line can currently vary.
+    """
+    plan = fx.signed_plan(tmp_path)
+    base = plan.acceptance_identity(observed_sha256="aa", base_variance_sha256="bb")
+    mutations = {
+        "scoring_version": "nroy_scoring/9.9.9",
+        "target_order": list(reversed(base["target_order"])),
+        "target_register_sha256": "0" * 64,
+        "target_contract_sha256": "1" * 64,
+        "observed_sha256": "cc",
+        "base_variance_sha256": "dd",
+        "discrepancy": float(base["discrepancy"]) + 1.0,
+        "acceptance_rule": "I_max <= 4.0",
+    }
+    assert set(mutations) == set(nc.ACCEPTANCE_IDENTITY_FIELDS)
+    for field, value in mutations.items():
+        nc.assert_acceptance_identity(base, base, what="unchanged")
+        with pytest.raises(ContractError) as excinfo:
+            nc.assert_acceptance_identity(base, {**base, field: value}, what="changed")
+        assert field in str(excinfo.value)
+
+
+def test_an_absent_identity_is_a_refusal_not_a_pass():
+    """A stage that cannot show its acceptance basis is refused."""
+    for frozen, current in (({}, {"a": 1}), ({"a": 1}, {}), (None, None)):
+        with pytest.raises(ContractError):
+            nc.assert_acceptance_identity(frozen, current, what="missing", fields=("a",))
+
+
+def test_classification_is_refused_when_the_plan_changed_after_the_merge(tmp_path, capsys):
+    """Before any label is written, not after."""
+    harness = Harness(tmp_path)
+    harness.prepare(nc.STAGE_DISCOVERY)
+    harness.evaluate(nc.STAGE_DISCOVERY)
+    assert harness.merge(nc.STAGE_DISCOVERY) == 0
+    altered = _variant_plan(
+        tmp_path, "plan_classify_drift.json", **{"acceptance.discrepancy": 0.75}
+    )
+    code = runner.main([
+        "classify", "--plan", str(altered),
+        "--stage-dir", str(harness.dirs[nc.STAGE_DISCOVERY]),
+    ])
+    assert code == 1
+    reason = _refused_because(capsys)
+    assert "acceptance-input identity" in reason and "discrepancy" in reason
+    assert not (harness.dirs[nc.STAGE_DISCOVERY] / "local_support.csv").exists()
+
+
+def test_edge_verdicts_are_refused_when_the_plan_changed_after_the_bridge_merge(tmp_path, capsys):
+    """The same gate in front of the graph, which is where it matters most."""
+    harness = Harness(tmp_path)
+    harness.chain_to_bridges()
+    altered = _variant_plan(
+        tmp_path, "plan_regions_drift.json", **{"acceptance.discrepancy": 0.75}
+    )
+    code = runner.main([
+        "regions", "--plan", str(altered),
+        "--parent-dir", str(harness.dirs[nc.STAGE_BRIDGES]),
+        "--out", str(tmp_path / "regions_drift"),
+    ])
+    assert code == 1
+    reason = _refused_because(capsys)
+    assert "edge verdicts" in reason and "acceptance-input identity" in reason
+    assert not (tmp_path / "regions_drift" / "edge_verdicts.csv").exists()
+
+
+def test_the_regions_package_records_the_basis_its_verdicts_were_reached_on(tmp_path):
+    harness = Harness(tmp_path)
+    harness.chain_to_bridges()
+    out = harness.regions()
+    manifest = json.loads((out / "manifest.json").read_text())
+    bridges = json.loads((harness.dirs[nc.STAGE_BRIDGES] / "manifest.json").read_text())
+    assert (
+        manifest["extra"]["acceptance_input_identity"]
+        == bridges["extra"]["acceptance_input_identity"]
+    )
 
 
 def test_a_point_with_neither_local_nor_region_support_gets_no_representative(tmp_path):

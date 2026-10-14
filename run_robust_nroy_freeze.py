@@ -38,11 +38,20 @@ Nothing else here starts a simulation on its own.
   :meth:`nroy_contract.FrozenPlan.load`, which **refuses** while a required
   value is unsigned.  With the production plan as shipped, every subcommand
   below ``validate`` therefore stops before touching the engine.
-* ``evaluate`` requires an explicit ``--evaluator``.  ``surrogate`` is for the
-  verification suite and runs no engine; ``production`` is the real simulator
+* ``evaluate`` requires an explicit ``--evaluator``.  ``surrogate`` and
+  ``surrogate_islands`` are for the verification suite and run no engine --
+  the second is a closed-form field that is plausible only on a few isolated
+  islands, which is how the suite builds a supported bridge between two points
+  with no local support **without** varying the acceptance inputs between
+  stages; ``production`` is the real simulator
   and is refused unless the plan is signed *and* ``--i-have-priced-the-budget``
   is passed, because the production spec requires a priced trajectory budget
   and a measured pilot before launch.
+* Every stage beyond the first freezes its parent's complete
+  **acceptance-input identity** at ``prepare`` -- target order, target-register
+  hash, observed-value hash, base-variance hash, discrepancy, scoring version
+  and acceptance rule -- and ``merge``, ``classify`` and ``regions`` each fail
+  closed on any difference.  One lineage, one acceptance basis.
 
 A worker may evaluate only the frozen ledger rows assigned to its shard.  It
 cannot generate, substitute or re-draw a proposal: the design exists only in
@@ -123,6 +132,115 @@ def command_validate(args: argparse.Namespace) -> int:
         for item in without:
             print(f"  {item.path}: {item.description}")
     return 2
+
+
+# ==========================================================================
+# Acceptance-input identity: one acceptance basis per lineage
+# ==========================================================================
+
+#: Name of the file a child stage writes at ``prepare`` to freeze its parent's
+#: complete acceptance-input identity.  It is written before the manifest, so
+#: it is covered by the stage's own artifact index and cannot be edited later
+#: without that index noticing.
+PARENT_IDENTITY_FILENAME = "parent_acceptance_identity.json"
+
+
+def _recorded_acceptance_identity(manifest: Mapping) -> dict | None:
+    """The acceptance-input identity a stage recorded at its own merge."""
+    extra = manifest.get("extra") or {}
+    recorded = extra.get("acceptance_input_identity")
+    return dict(recorded) if recorded else None
+
+
+def _freeze_parent_acceptance_identity(
+    out: Path, parent_manifest: Mapping, *, parent_dir: Path
+) -> dict:
+    """Freeze the parent's complete acceptance-input identity into the child.
+
+    A child stage's verdicts are only comparable with its parent's if both were
+    scored against the same observed values, the same frozen base variances,
+    the same target register and order, the same discrepancy, the same scoring
+    arithmetic and the same acceptance rule.  Recording the parent *manifest*
+    hash does not establish that: the manifest hash changes for a hundred
+    irrelevant reasons and did not cover the two acceptance-input files at all.
+
+    So the identity is frozen here, once, at the moment the parent is
+    validated, and re-checked at the child's own merge and before any
+    classification or edge verdict.
+    """
+    identity = _recorded_acceptance_identity(parent_manifest)
+    if not identity:
+        raise ContractError(
+            f"the parent stage at {parent_dir} records no acceptance-input identity, so "
+            "there is nothing for this stage to freeze and no way to show the two share "
+            "one acceptance basis. Re-run 'merge' on the parent with --observed and "
+            "--base-variance under the current code."
+        )
+    ne.atomic_write_json(out / PARENT_IDENTITY_FILENAME, {
+        "frozen_from": str(parent_dir),
+        "parent_stage": str(parent_manifest.get("stage") or ""),
+        "parent_manifest_sha256": ccs.sha256_json(nc.json_safe(parent_manifest)),
+        "acceptance_input_identity": identity,
+        "meaning": (
+            "the parent's complete acceptance-input identity, frozen at prepare. This "
+            "stage's merge, classification and edge verdicts must all match it exactly."
+        ),
+    })
+    return identity
+
+
+def _frozen_parent_acceptance_identity(stage_dir: Path) -> dict | None:
+    """The parent identity this stage froze at prepare, if it has a parent."""
+    path = Path(stage_dir) / PARENT_IDENTITY_FILENAME
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    identity = payload.get("acceptance_input_identity")
+    if not identity:
+        raise ContractError(
+            f"{path} exists but records no acceptance-input identity; refusing to treat "
+            "an empty freeze as agreement"
+        )
+    return dict(identity)
+
+
+def _assert_acceptance_basis(
+    stage_dir: Path, manifest: Mapping, plan: nc.FrozenPlan, *, what: str
+) -> dict:
+    """Re-check a merged stage's acceptance basis before it is interpreted.
+
+    Two comparisons, both fail-closed:
+
+    * against the **current plan**, for everything the plan fixes (target
+      order, register hash, discrepancy, scoring version, acceptance rule), so
+      a plan edited between ``merge`` and ``classify`` cannot slip through;
+    * against the **frozen parent identity**, for the complete identity
+      including the observed-value and base-variance hashes, so a child cannot
+      be classified on a different acceptance basis than its parent.
+
+    A stage with no recorded identity is refused: it was merged before the
+    acceptance inputs were hashed, and nothing can establish what it was
+    scored against.
+    """
+    recorded = _recorded_acceptance_identity(manifest)
+    if not recorded:
+        raise ContractError(
+            f"{stage_dir} records no acceptance-input identity, so what its scores mean "
+            "cannot be established. Re-run 'merge' with --observed and --base-variance "
+            f"before {what}."
+        )
+    nc.assert_acceptance_identity(
+        plan.plan_acceptance_fields(), recorded,
+        what=f"{what}: this stage against the run plan it is being read with",
+        fields=nc.PLAN_DERIVED_ACCEPTANCE_FIELDS,
+    )
+    frozen_parent = _frozen_parent_acceptance_identity(stage_dir)
+    if frozen_parent is not None:
+        nc.assert_acceptance_identity(
+            frozen_parent, recorded,
+            what=f"{what}: this stage against its frozen parent identity",
+        )
+    return recorded
 
 
 # ==========================================================================
@@ -578,11 +696,20 @@ def command_prepare(args: argparse.Namespace) -> int:
                        **a.params} for a in anchors]),
     )
     ledger.save(out)
+    frozen_identity = None
+    if parent_manifest is not None:
+        frozen_identity = _freeze_parent_acceptance_identity(
+            out, parent_manifest, parent_dir=_stage_directory(args.parent_dir)
+        )
     ne.write_stage_manifest(
         out, stage=args.stage, model=model.model, status=nc.STATUS_PREPARED,
         ledger=ledger, contract=plan.manifest_contract(),
         parent_manifest=parent_manifest,
-        extra={"n_anchors": len(anchors), "n_proposals": len(proposals), **extra},
+        extra={
+            "n_anchors": len(anchors), "n_proposals": len(proposals),
+            **({"parent_acceptance_identity": frozen_identity} if frozen_identity else {}),
+            **extra,
+        },
     )
     budget = int(plan.require("budget.max_trajectories"))
     print(f"PREPARED {args.stage}/{model.model} in {out}")
@@ -645,6 +772,64 @@ def surrogate_evaluator(
         [int(unit.seed), int(unit.vector_hash[:16], 16) % (2 ** 63)]
     )
     return tuple(100.0 + 10.0 * rng.random(len(targets)))
+
+
+#: Plausible islands for the ``surrogate_islands`` evaluator, as positions of
+#: the **first declared coordinate** in normalised space; every other
+#: coordinate sits at 0.5.  Equally spaced on purpose, so that two anchors
+#: placed one spacing beyond each end put the 25/50/75% bridge probes exactly
+#: on the three islands.
+ISLAND_CENTRES = (0.35, 0.5, 0.65)
+
+#: Island radius in normalised Euclidean distance.  Small enough that no
+#: ambient probe (declared scales 0.025 and 0.05) around an anchor one spacing
+#: away can reach one.
+ISLAND_RADIUS = 0.02
+
+
+def island_field_i_max(u: Sequence[float]) -> float:
+    """``I_max`` of a field that is plausible only on a few isolated islands.
+
+    Closed form, deterministic in the vector, and arranged so that a point is
+    plausible (``I_max <= 3``) only within :data:`ISLAND_RADIUS` of an island
+    centre.  This is the honest way to build the "no local support but a
+    supported bridge" case: *one* acceptance basis, applied identically at
+    every stage, over a geometry where the plausible set lies between the
+    anchors rather than at them.  It is also a fair caricature of the thing
+    this stage exists to detect, and of the thing it must not overclaim:
+    bridge probes confirming a straight path says nothing about continuity.
+    """
+    point = np.asarray(u, dtype=float)
+    best = min(
+        float(np.linalg.norm(point - island_centre(position, point.size)))
+        for position in ISLAND_CENTRES
+    )
+    return 1.0 if best <= ISLAND_RADIUS else 1.0 + 1000.0 * best
+
+
+def island_centre(position: float, n: int) -> np.ndarray:
+    """One island centre: ``position`` on the first coordinate, 0.5 elsewhere."""
+    centre = np.full(int(n), 0.5)
+    centre[0] = float(position)
+    return centre
+
+
+def _island_surrogate(space: nc.ModelSpace) -> Callable:
+    """The island field as an evaluator.  Runs no engine; verification only.
+
+    With ``observed = 0`` and ``B_i = 1`` the recomputed ``I_max`` of the first
+    target reproduces the field, which is the convention the rest of the
+    verification suite already uses.  A tiny per-seed perturbation keeps the
+    replicate variance non-degenerate without moving any verdict.
+    """
+    def evaluate(
+        unit: ne.WorkUnit, params: Mapping[str, float], targets: Sequence[str]
+    ) -> tuple[float, ...]:
+        u = space.normalise([float(params[name]) for name in space.names])
+        signal = island_field_i_max(u) + 1e-6 * float(int(unit.seed) % 3)
+        return tuple([signal] + [0.0] * (len(targets) - 1))
+
+    return evaluate
 
 
 class ProductionEvaluator:
@@ -807,6 +992,9 @@ def production_evaluator(
 
 EVALUATORS: dict[str, Callable] = {
     "surrogate": surrogate_evaluator,
+    # Built per model space, because the field is defined on normalised
+    # coordinates; resolved in resolve_evaluator rather than stored here.
+    "surrogate_islands": None,
     "production": production_evaluator,
 }
 
@@ -830,6 +1018,8 @@ def resolve_evaluator(
     """
     if name not in EVALUATORS:
         raise ContractError(f"unknown evaluator {name!r}; choose from {sorted(EVALUATORS)}")
+    if name == "surrogate_islands":
+        return _island_surrogate(_model_spaces(plan)[str(ledger.model)])
     if name != "production":
         return EVALUATORS[name]
     if not priced:
@@ -1040,6 +1230,21 @@ def command_merge(args: argparse.Namespace) -> int:
         "observed": ccs.sha256_file(args.observed),
         "base_variance": ccs.sha256_file(args.base_variance),
     }
+    # The complete acceptance-input identity, and the comparison that closes
+    # the cross-stage hole: a child merged against different observed values or
+    # different base variances than its confirmation parent would publish
+    # support labels and edge verdicts on a different acceptance basis, and
+    # nothing used to notice. The parent's identity was frozen at prepare.
+    identity = plan.acceptance_identity(
+        observed_sha256=target_inputs_sha256["observed"],
+        base_variance_sha256=target_inputs_sha256["base_variance"],
+    )
+    frozen_parent = _frozen_parent_acceptance_identity(stage_dir)
+    if frozen_parent is not None:
+        nc.assert_acceptance_identity(
+            frozen_parent, identity,
+            what=f"merge {stage_dir}: these acceptance inputs against the frozen parent",
+        )
     scoring_note = ""
     if seed_frame.empty:
         # No result exists to score. That is only ever legitimate for a stage
@@ -1075,8 +1280,10 @@ def command_merge(args: argparse.Namespace) -> int:
         status=resume.status, ledger=ledger, contract=plan.manifest_contract(),
         parent_manifest=None,
         extra={
+            **(manifest.get("extra") or {}),
             "resume": resume.as_row(),
             "target_inputs_sha256": target_inputs_sha256,
+            "acceptance_input_identity": identity,
             **({"scores_not_recomputed_reason": scoring_note} if scoring_note else {}),
         },
         overwrite_completed=True,
@@ -1167,6 +1374,12 @@ def command_classify(args: argparse.Namespace) -> int:
             f"{stage_dir} has no candidate_scores.csv, so no acceptance decision exists "
             "to classify. Run 'merge' with --observed and --base-variance first."
         )
+    # Before any label is written: these scores must have been produced on the
+    # same acceptance basis as the parent they descend from, and on the one the
+    # current plan describes.
+    identity = _assert_acceptance_basis(
+        stage_dir, manifest, plan, what="classification"
+    )
     # A classification is a completed artifact, and a child stage may already
     # have validated this stage's artifact index against it. Silently
     # reclassifying would leave that child's recorded parent hash describing a
@@ -1220,6 +1433,7 @@ def command_classify(args: argparse.Namespace) -> int:
         contract=plan.manifest_contract(), parent_manifest=None,
         extra={
             **(manifest.get("extra") or {}),
+            "acceptance_input_identity": identity,
             "local_support_counts": {
                 label: int((support["local_support_label"] == label).sum())
                 for label in nc.LOCAL_SUPPORT_LABELS
@@ -1272,6 +1486,14 @@ def command_regions(args: argparse.Namespace) -> int:
             f"{parent_dir} has no candidate_scores.csv; bridge probes must be merged and "
             "scored before any edge can be labelled"
         )
+    # Before the first edge verdict: the bridges stage must have been scored on
+    # the same acceptance basis as the confirmation stage whose local assessment
+    # the graph's nodes carry. Otherwise an edge could be "sampled-path
+    # supported" under one acceptance rule while its endpoints were assessed
+    # under another, and the region report would mix the two silently.
+    identity = _assert_acceptance_basis(
+        parent_dir, parent_manifest, plan, what="edge verdicts"
+    )
     nodes = ne.read_frame_exact(parent_dir / "graph_nodes.csv")
     edges_frame = ne.read_frame_exact(parent_dir / "candidate_edges.csv")
     proposals = ne.read_frame_exact(parent_dir / "design_proposals.csv")
@@ -1354,11 +1576,13 @@ def command_regions(args: argparse.Namespace) -> int:
     # by construction rather than an unfinished one.
     empty = ne.Ledger(stage=nc.STAGE_REGIONS, model=model.model, units=())
     empty.save(out)
+    _freeze_parent_acceptance_identity(out, validated, parent_dir=parent_dir)
     ne.write_stage_manifest(
         out, stage=nc.STAGE_REGIONS, model=model.model, status=nc.STATUS_COMPLETE,
         ledger=empty, contract=plan.manifest_contract(),
         parent_manifest=validated,
         extra={
+            "acceptance_input_identity": identity,
             "n_nodes": len(node_ids),
             "n_minimal_edges": len(minimal),
             "n_sampled_path_supported_edges": sum(1 for v in verdicts if v.supported),
