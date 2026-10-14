@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "design": "temporal_diagnosis_shape_audit_20260921",
+  "status": "READY_FOR_BOUNDED_DIAGNOSTIC",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_confirmation": "outputs/calibration/coupled_forecast_windows_20260921_confirmation",
+  "source_confirmation_manifest_sha256": "d5195301feba73e2fb632fb76a603bd967f22b5d72ac13129db6668c6013c757",
+  "candidate_ids": [1326, 1788],
+  "replicate_seeds": [200800, 200801, 200802, 200803, 200804],
+  "profiles": [
+    {
+      "id": "baseline",
+      "stage": "reference",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {}
+    },
+    {
+      "id": "base_hazard_linear",
+      "stage": "anchor_preserving_geometry",
+      "base_geometry": "linear_hazard",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {}
+    },
+    {
+      "id": "base_logit_linear",
+      "stage": "anchor_preserving_geometry",
+      "base_geometry": "linear_logit",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {}
+    },
+    {
+      "id": "msm_log_linear",
+      "stage": "anchor_preserving_geometry",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "log_linear_multiplier",
+      "post2019_factors": {}
+    },
+    {
+      "id": "joint_hazard_log",
+      "stage": "anchor_preserving_geometry",
+      "base_geometry": "linear_hazard",
+      "msm_geometry": "log_linear_multiplier",
+      "post2019_factors": {}
+    },
+    {
+      "id": "stepwise_both",
+      "stage": "anchor_preserving_geometry_boundary",
+      "base_geometry": "stepwise_probability",
+      "msm_geometry": "stepwise_multiplier",
+      "post2019_factors": {}
+    },
+    {
+      "id": "recent_gradual_up_15",
+      "stage": "post2019_shape",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {"2019.999999": 1.0, "2024": 1.15}
+    },
+    {
+      "id": "recent_gradual_up_30",
+      "stage": "post2019_shape",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {"2019.999999": 1.0, "2024": 1.30}
+    },
+    {
+      "id": "recent_late_up_15",
+      "stage": "post2019_shape",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {"2019.999999": 1.0, "2022": 1.0, "2024": 1.15}
+    },
+    {
+      "id": "recent_late_up_30",
+      "stage": "post2019_shape",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {"2019.999999": 1.0, "2022": 1.0, "2024": 1.30}
+    },
+    {
+      "id": "recent_gradual_down_15",
+      "stage": "post2019_shape_boundary",
+      "base_geometry": "linear_probability",
+      "msm_geometry": "linear_multiplier",
+      "post2019_factors": {"2019.999999": 1.0, "2024": 0.85}
+    }
+  ],
+  "profile_contract": {
+    "quarter_step": 0.25,
+    "post2019_minimum_factor": 0.85,
+    "post2019_maximum_factor": 1.30,
+    "post2019_first_change_not_before": 2019.999999,
+    "pre2020_output_absolute_tolerance": 0.0
+  },
+  "trajectory_budget": 110,
+  "workers_recommended": 8,
+  "outputs": {
+    "annual_years": [1996, 2000, 2004, 2005, 2010, 2015, 2019, 2020, 2021, 2022, 2023, 2024],
+    "annual_series": [
+      "new_infections_msm",
+      "new_diagnoses_msm",
+      "aids_first_diagnosis_proxy_msm",
+      "msm_undiagnosed_hiv_pos",
+      "on_art_stock"
+    ]
+  },
+  "decision_contract": [
+    "This is a paired structural sensitivity audit, not recalibration, confirmation or a policy scenario.",
+    "Betas, contacts, mixing, ART, PrEP, seeding and progression parameters remain fixed.",
+    "Anchor-preserving profiles retain every existing diagnosis anchor exactly and add no fitted parameter.",
+    "Post-2019 profiles retain the calibrated path through 2019 and vary only the MSM-relative diagnosis multiplier from 2020 onward.",
+    "A strict post-2019 response must improve 2024 diagnosis level and 2024/2019 shape, leave pre-2020 outputs exactly unchanged under paired seeds, and not worsen 2022 AIDS absolute error.",
+    "A geometry profile is useful only if it improves diagnosis RMSE across the scored years and diagnostic primary I_max without relying on a new anchor.",
+    "No profile may enter calibration or the HTA baseline directly from this audit."
+  ]
+}

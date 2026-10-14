@@ -1,0 +1,278 @@
+{
+  "schema_version": "0.1",
+  "suite_id": "prep_policy_matrix_2008_primary_2010_bridge",
+  "status": "PREPARED_NOT_AUTHORIZED",
+  "base_runtime_config": "configs/hta_runtime_config.json",
+  "description": "Oral PrEP and lenacapavir policy matrix with explicit coverage and persistence assumptions. This overlay is materialized into a normal HTA runtime config before execution.",
+  "replace_top_level": {
+    "prep_target_pathways": {
+      "oral_hold_13000": {
+        "_notes": "Decision comparator: hold oral PrEP at 13,000 from the 2025 fork through the evaluation horizon.",
+        "product": "Oral_PrEP",
+        "mode": "target_stock",
+        "target_stock": {
+          "value": {"2025": 13000, "2030": 13000, "2040": 13000, "2064": 13000},
+          "source": "Scenario assumption agreed for the policy matrix; not a literature estimate.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["Medium", "High"]}
+      },
+      "oral_matched_add_500": {
+        "product": "Oral_PrEP",
+        "mode": "target_stock",
+        "target_stock": {
+          "value": {"2025": 13000, "2030": 13500, "2040": 13500, "2064": 13500},
+          "source": "Matched product-comparison scenario assumption.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["Medium", "High"]}
+      },
+      "oral_matched_add_1500": {
+        "product": "Oral_PrEP",
+        "mode": "target_stock",
+        "target_stock": {
+          "value": {"2025": 13000, "2030": 14500, "2040": 14500, "2064": 14500},
+          "source": "Matched product-comparison scenario assumption.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["Medium", "High"]}
+      },
+      "oral_matched_add_3000": {
+        "product": "Oral_PrEP",
+        "mode": "target_stock",
+        "target_stock": {
+          "value": {"2025": 13000, "2030": 16000, "2040": 16000, "2064": 16000},
+          "source": "Matched product-comparison scenario assumption.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["Medium", "High"]}
+      },
+      "oral_wang_28000": {
+        "product": "Oral_PrEP",
+        "mode": "target_stock",
+        "target_stock": {
+          "value": {"2025": 13000, "2030": 28000, "2040": 28000, "2064": 28000},
+          "source": "Full oral PrEP expansion benchmark target.",
+          "benchmark_references": ["wang_2025"],
+          "distribution_status": "literature_anchor"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["Medium", "High"]}
+      },
+      "lena_substitution_grid": {
+        "product": "Lenacapavir",
+        "mode": "switch_share",
+        "base_pathway": "oral_hold_13000",
+        "switch_share_of_eligible_oral_users": {
+          "value": [0.1, 0.25, 0.5, 0.75, 1.0],
+          "source": "Scenario grid; denominator is eligible high-activity oral PrEP users, not all 13,000 users.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["High"]}
+      },
+      "lena_substitution_50": {
+        "product": "Lenacapavir",
+        "mode": "switch_share",
+        "base_pathway": "oral_hold_13000",
+        "switch_share_of_eligible_oral_users": {
+          "value": 0.5,
+          "source": "Representative persistence-sensitivity case.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["High"]}
+      },
+      "lena_add_on_grid": {
+        "product": "Lenacapavir",
+        "mode": "additional_target_stock",
+        "base_pathway": "oral_hold_13000",
+        "additional_target_stock": {
+          "value": [
+            {"label": "add_on_500", "target_stock": {"2025": 0, "2030": 500, "2040": 500, "2064": 500}},
+            {"label": "add_on_1500", "target_stock": {"2025": 0, "2030": 1500, "2040": 1500, "2064": 1500}},
+            {"label": "add_on_3000", "target_stock": {"2025": 0, "2030": 3000, "2040": 3000, "2064": 3000}}
+          ],
+          "source": "Scenario grid agreed for programme-expansion analysis.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["High"]}
+      },
+      "lena_add_on_1500": {
+        "product": "Lenacapavir",
+        "mode": "additional_target_stock",
+        "base_pathway": "oral_hold_13000",
+        "additional_target_stock": {
+          "value": {"2025": 0, "2030": 1500, "2040": 1500, "2064": 1500},
+          "source": "Representative persistence-sensitivity case.",
+          "distribution_status": "scenario_assumption"
+        },
+        "eligible_population": {"risk_groups": ["MSM"], "activity_classes": ["High"]}
+      }
+    },
+    "scenarios": {
+      "scenario_oral_matched_add_500": {
+        "label": "Matched oral PrEP expansion to 13,500",
+        "comparison_type": "oral_expansion_benchmark",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "oral_matched_add_500", "engine_arm": "oral_prep_expansion", "interventions": [{"pathway": "oral_matched_add_500"}]},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": false},
+        "analysis_metadata": {"family": "oral_matched_expansion", "coverage_change_by_2030": 500}
+      },
+      "scenario_oral_matched_add_1500": {
+        "label": "Matched oral PrEP expansion to 14,500",
+        "comparison_type": "oral_expansion_benchmark",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "oral_matched_add_1500", "engine_arm": "oral_prep_expansion", "interventions": [{"pathway": "oral_matched_add_1500"}]},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": false},
+        "analysis_metadata": {"family": "oral_matched_expansion", "coverage_change_by_2030": 1500}
+      },
+      "scenario_oral_matched_add_3000": {
+        "label": "Matched oral PrEP expansion to 16,000",
+        "comparison_type": "oral_expansion_benchmark",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "oral_matched_add_3000", "engine_arm": "oral_prep_expansion", "interventions": [{"pathway": "oral_matched_add_3000"}]},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": false},
+        "analysis_metadata": {"family": "oral_matched_expansion", "coverage_change_by_2030": 3000}
+      },
+      "scenario_oral_wang_28000": {
+        "label": "Wang oral PrEP benchmark to 28,000",
+        "comparison_type": "oral_expansion_benchmark",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "oral_wang_28000", "engine_arm": "oral_prep_expansion", "interventions": [{"pathway": "oral_wang_28000"}]},
+        "benchmark_references": ["wang_2025"],
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": false},
+        "analysis_metadata": {"family": "oral_benchmark", "coverage_change_by_2030": 15000}
+      },
+      "scenario_lena_substitution": {
+        "label": "Lenacapavir substitution within 13,000 total PrEP stock",
+        "comparison_type": "substitution",
+        "primary_comparison": true,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_substitution", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_substitution_grid"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.05}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_substitution", "annual_lena_discontinuation": 0.05}
+      },
+      "scenario_lena_add_on": {
+        "label": "Lenacapavir add-on above 13,000 oral PrEP users",
+        "comparison_type": "add_on",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_add_on", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_add_on_grid"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.05}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_add_on", "annual_lena_discontinuation": 0.05}
+      },
+      "scenario_lena_persistence_substitution_50_annual_10": {
+        "label": "LENA 50% substitution, 10% annual discontinuation",
+        "comparison_type": "substitution",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_substitution_50", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_substitution_50"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.10}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_persistence_sensitivity", "deployment": "substitution_50", "annual_lena_discontinuation": 0.10}
+      },
+      "scenario_lena_persistence_substitution_50_annual_20": {
+        "label": "LENA 50% substitution, 20% annual discontinuation",
+        "comparison_type": "substitution",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_substitution_50", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_substitution_50"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.20}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_persistence_sensitivity", "deployment": "substitution_50", "annual_lena_discontinuation": 0.20}
+      },
+      "scenario_lena_persistence_substitution_50_annual_30": {
+        "label": "LENA 50% substitution, 30% annual discontinuation",
+        "comparison_type": "substitution",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_substitution_50", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_substitution_50"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.30}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_persistence_sensitivity", "deployment": "substitution_50", "annual_lena_discontinuation": 0.30}
+      },
+      "scenario_lena_persistence_add_on_1500_annual_10": {
+        "label": "LENA +1,500 add-on, 10% annual discontinuation",
+        "comparison_type": "add_on",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_add_on_1500", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_add_on_1500"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.10}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_persistence_sensitivity", "deployment": "add_on_1500", "annual_lena_discontinuation": 0.10}
+      },
+      "scenario_lena_persistence_add_on_1500_annual_20": {
+        "label": "LENA +1,500 add-on, 20% annual discontinuation",
+        "comparison_type": "add_on",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_add_on_1500", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_add_on_1500"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.20}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_persistence_sensitivity", "deployment": "add_on_1500", "annual_lena_discontinuation": 0.20}
+      },
+      "scenario_lena_persistence_add_on_1500_annual_30": {
+        "label": "LENA +1,500 add-on, 30% annual discontinuation",
+        "comparison_type": "add_on",
+        "primary_comparison": false,
+        "comparator_base_case": "oral_prep_standard_of_care",
+        "intervention_arm": {"id": "lena_add_on_1500", "interventions": [{"pathway": "oral_hold_13000"}, {"pathway": "lena_add_on_1500"}]},
+        "prep_schedule_overrides": {"oral_prep_plus_lena": {"Lenacapavir": {"discontinuation": {"2025": 0.30}}}},
+        "reporting": {"include_in_decision_summary": true, "include_in_epidemiology": true, "include_price_sensitivity": true},
+        "analysis_metadata": {"family": "lena_persistence_sensitivity", "deployment": "add_on_1500", "annual_lena_discontinuation": 0.30}
+      }
+    }
+  },
+  "patches": [
+    {"op": "replace", "path": "/_format_version", "value": "hta_runtime_config_v4_prep_policy_suite"},
+    {"op": "replace", "path": "/base_cases/oral_prep_standard_of_care/label", "value": "Oral PrEP held at 13,000"},
+    {"op": "replace", "path": "/base_cases/oral_prep_standard_of_care/interventions", "value": [{"pathway": "oral_hold_13000"}]},
+    {"op": "replace", "path": "/base_cases/oral_prep_standard_of_care/prep_stock_handling/notes", "value": "Preserves observed PrEP stock at the 2025 fork, then holds the forward oral PrEP target at 13,000."}
+  ],
+  "analysis_plan": {
+    "simulation_seeds": [42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56],
+    "seed_policy": "common_random_numbers_across_all_policy_scenarios_and_both_break_year_backbones",
+    "primary_backbone": "selected_break_2008_calibration_candidate",
+    "primary_scenarios": "all_19_expanded_scenarios",
+    "bridge_backbone": "selected_break_2010_calibration_candidate",
+    "bridge_scenarios": [
+      "base_case_context",
+      "scenario_oral_matched_add_1500",
+      "scenario_oral_wang_28000",
+      "scenario_lena_substitution__switch_50",
+      "scenario_lena_add_on__add_on_1500"
+    ],
+    "trajectory_budget": {
+      "primary_2008": {"scenarios": 19, "forward_arms_per_seed": 38, "historical_prefreeze_per_seed": 1, "seeds": 15, "maximum_trajectories": 585},
+      "bridge_2010": {"scenarios": 5, "forward_arms_per_seed": 10, "historical_prefreeze_per_seed": 1, "seeds": 15, "maximum_trajectories": 165},
+      "maximum_total": 750
+    }
+  },
+  "persistence": {
+    "annual_probabilities": [0.05, 0.10, 0.20, 0.30],
+    "quarterly_equivalents": {
+      "0.05": 0.012741455098566168,
+      "0.10": 0.025996253574703254,
+      "0.20": 0.05425839099682417,
+      "0.30": 0.08530878077130559
+    },
+    "conversion_formula": "1 - (1 - annual_probability)^(1/4)",
+    "interpretation": "5% is the optimistic base scenario; 10%, 20%, and 30% are explicit sensitivity assumptions, not claimed literature estimates."
+  },
+  "report_profile": {
+    "workbook_tabs": ["Executive summary", "Scenario definitions", "Oral benchmarks", "Main LENA results", "Persistence sensitivity", "2008 vs 2010 bridge", "Seed-level audit", "Checks and provenance"],
+    "figures": ["PrEP coverage over time", "Matched oral vs LENA expansion", "Substitution vs add-on", "Persistence sensitivity", "Paired 2008 minus 2010 differences"],
+    "layout_rule": "Use long tables and grouped figures; do not create one worksheet per scenario."
+  },
+  "launch": {
+    "ready": false,
+    "blockers": [
+      "The selected calibrated model configs do not exist until the 2008-vs-2010 calibration suite completes and is reviewed.",
+      "The user has not authorized the 750-trajectory economic run."
+    ]
+  }
+}

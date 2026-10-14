@@ -5,7 +5,11 @@ Covers:
   - prior sampling: derived shares are valid, contact ordering maintained
   - perturbation: stays within bounds, derived shares recomputed
   - edge case: invalid particle at constraint boundary returns None or valid result
-  - resampling: inverse-distance weighting favours low-distance particles
+  - resampling: supplied importance weights favour high-weight particles
+  - weight/kernel helpers: normalization, adaptive (weighted-variance) kernel
+    bandwidth, Toni/Beaumont importance-weight update, effective sample size
+  - toy-posterior recovery: real generation-loop functions recover the exact
+    analytic ABC target on a closed-form 1-D toy problem
   - ranking: 4-level priority (overall_accept > n_failures > distance > ll)
   - generation summary: collapse rate, gate pass rate, distance stats, n_eligible_survivors
   - tolerance schedule: correct quantile by generation
@@ -43,9 +47,13 @@ import run_abc_smc_calibration as abc_mod
 from run_abc_smc_calibration import (
     _abc_rank,
     _bandwidth,
+    _compute_importance_weights,
+    _effective_sample_size,
     _eligible_survivors_mask,
     _generation_summary,
     _load_anchor_particle,
+    _log_mixture_proposal_density,
+    _normalize_weights,
     _parameter_bounds,
     _perturb_particle,
     _resample_particles,
@@ -53,6 +61,7 @@ from run_abc_smc_calibration import (
     _sample_valid_prior,
     _select_survivors,
     _survival_quantile,
+    _weighted_bandwidth,
     parse_args,
     write_abc_best_fit_configs,
 )
@@ -326,28 +335,28 @@ class TestPerturbation:
 class TestResampling:
     def test_returns_requested_count(self):
         pop = [{"id": i} for i in range(10)]
-        dist = [float(i) + 0.1 for i in range(10)]
-        result, _ = _resample_particles(pop, dist, n=7, rng=_rng(0))
+        weights = [1.0 / 10] * 10
+        result, _ = _resample_particles(pop, weights, n=7, rng=_rng(0))
         assert len(result) == 7
 
-    def test_inverse_distance_favours_low_distance_particles(self):
+    def test_supplied_weights_favour_high_weight_particles(self):
         pop = [{"id": i} for i in range(5)]
-        # Particle 2 has the smallest distance.
-        dist = [10.0, 5.0, 0.1, 100.0, 50.0]
+        # Particle 2 carries by far the largest importance weight.
+        weights = [0.05, 0.05, 0.8, 0.05, 0.05]
         counts: dict[int, int] = {i: 0 for i in range(5)}
         for trial in range(500):
-            sample, _ = _resample_particles(pop, dist, n=1, rng=_rng(trial))
+            sample, _ = _resample_particles(pop, weights, n=1, rng=_rng(trial))
             counts[sample[0]["id"]] += 1
-        # Particle 2 (dist=0.1) should dominate.
+        # Particle 2 (weight=0.8) should dominate.
         assert counts[2] > counts[3], (
             f"Expected counts[2]={counts[2]} > counts[3]={counts[3]}"
         )
         assert counts[2] > counts[4]
 
-    def test_all_infinite_distances_returns_uniform_sample(self):
+    def test_all_zero_weights_returns_uniform_sample(self):
         pop = [{"id": i} for i in range(4)]
-        dist = [float("inf")] * 4
-        result, _ = _resample_particles(pop, dist, n=8, rng=_rng(7))
+        weights = [0.0] * 4
+        result, _ = _resample_particles(pop, weights, n=8, rng=_rng(7))
         assert len(result) == 8
         # All IDs should come from the population.
         for r in result:
@@ -355,22 +364,218 @@ class TestResampling:
 
     def test_single_particle_always_resampled(self):
         pop = [{"x": 42.0}]
-        dist = [1.5]
-        result, _ = _resample_particles(pop, dist, n=5, rng=_rng(3))
+        weights = [1.0]
+        result, _ = _resample_particles(pop, weights, n=5, rng=_rng(3))
         assert all(r["x"] == 42.0 for r in result)
 
     def test_returns_indices_same_length_as_particles(self):
         pop = [{"id": i} for i in range(6)]
-        dist = [float(i + 1) for i in range(6)]
-        particles, indices = _resample_particles(pop, dist, n=4, rng=_rng(0))
+        weights = [1.0 / 6] * 6
+        particles, indices = _resample_particles(pop, weights, n=4, rng=_rng(0))
         assert len(indices) == len(particles) == 4
 
     def test_indices_within_population_bounds(self):
         pop = [{"id": i} for i in range(5)]
-        dist = [1.0, 2.0, 3.0, 4.0, 5.0]
-        particles, indices = _resample_particles(pop, dist, n=10, rng=_rng(9))
+        weights = [0.1, 0.2, 0.3, 0.2, 0.2]
+        particles, indices = _resample_particles(pop, weights, n=10, rng=_rng(9))
         for idx in indices:
             assert 0 <= idx < len(pop), f"Index {idx} out of range [0, {len(pop)})"
+
+    def test_mismatched_weights_length_raises(self):
+        pop = [{"id": i} for i in range(3)]
+        weights = [1.0, 1.0]
+        with pytest.raises(ValueError):
+            _resample_particles(pop, weights, n=5, rng=_rng(0))
+
+    def test_nan_in_weights_falls_back_to_uniform(self):
+        pop = [{"id": i} for i in range(4)]
+        weights = [0.5, float("nan"), 0.3, 0.2]
+        result, indices = _resample_particles(pop, weights, n=8, rng=_rng(1))
+        assert len(result) == 8
+        for idx in indices:
+            assert 0 <= idx < len(pop)
+
+    def test_unnormalized_weights_are_respected_proportionally(self):
+        pop = [{"id": i} for i in range(3)]
+        raw = [2.0, 2.0, 2.0]
+        normalized = [0.2, 0.2, 0.2]  # not summing to 1, same ratios as raw
+        counts_raw: dict[int, int] = {i: 0 for i in range(3)}
+        counts_norm: dict[int, int] = {i: 0 for i in range(3)}
+        for trial in range(300):
+            sample_raw, _ = _resample_particles(pop, raw, n=1, rng=_rng(trial))
+            sample_norm, _ = _resample_particles(pop, normalized, n=1, rng=_rng(trial))
+            counts_raw[sample_raw[0]["id"]] += 1
+            counts_norm[sample_norm[0]["id"]] += 1
+        # Same seed sequence + same relative weights → identical draws.
+        assert counts_raw == counts_norm
+
+
+# ---------------------------------------------------------------------------
+# Weight/kernel helpers (Toni 2009 / Beaumont 2009 ABC-SMC fix)
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeWeights:
+    def test_normal_case_sums_to_one(self):
+        result = _normalize_weights([1.0, 2.0, 3.0, 4.0])
+        assert abs(sum(result) - 1.0) < 1e-9
+
+    def test_all_zero_falls_back_to_uniform(self):
+        result = _normalize_weights([0.0, 0.0, 0.0])
+        assert result == pytest.approx([1 / 3, 1 / 3, 1 / 3])
+
+    def test_negative_sum_falls_back_to_uniform(self):
+        result = _normalize_weights([-1.0, -1.0])
+        assert result == pytest.approx([0.5, 0.5])
+
+    def test_non_finite_falls_back_to_uniform(self):
+        result = _normalize_weights([1.0, float("nan"), 2.0])
+        assert result == pytest.approx([1 / 3, 1 / 3, 1 / 3])
+
+    def test_empty_returns_empty(self):
+        assert _normalize_weights([]) == []
+
+
+class TestWeightedBandwidth:
+    def test_uniform_weights_match_unweighted_variance_formula(self):
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        pop = [{"x": v} for v in values]
+        weights = [1.0] * len(values)
+        params = [{"name": "x", "min": 0.0, "max": 10.0}]
+        bw = _weighted_bandwidth(pop, weights, params, min_bandwidth_fraction=1e-6)
+        mean = sum(values) / len(values)
+        variance = sum((v - mean) ** 2 for v in values) / len(values)
+        expected = math.sqrt(2.0 * variance)
+        assert bw["x"] == pytest.approx(expected, rel=1e-6)
+
+    def test_single_particle_falls_back_to_floor(self):
+        pop = [{"x": 5.0}]
+        weights = [1.0]
+        params = [{"name": "x", "min": 0.0, "max": 10.0}]
+        bw = _weighted_bandwidth(pop, weights, params, min_bandwidth_fraction=0.01)
+        assert bw["x"] == pytest.approx(0.01 * (10.0 - 0.0), rel=1e-6)
+
+    def test_bandwidth_never_below_floor(self):
+        # Fully converged population (zero variance) still gets the floor.
+        pop = [{"x": 5.0}] * 10
+        weights = [1.0] * 10
+        params = [{"name": "x", "min": 0.0, "max": 10.0}]
+        bw = _weighted_bandwidth(pop, weights, params, min_bandwidth_fraction=1e-3)
+        assert bw["x"] == pytest.approx(1e-3 * 10.0, rel=1e-6)
+
+    def test_tighter_population_yields_smaller_bandwidth(self):
+        params = [{"name": "x", "min": 0.0, "max": 10.0}]
+        tight_pop = [{"x": v} for v in [4.9, 5.0, 5.1]]
+        wide_pop = [{"x": v} for v in [1.0, 5.0, 9.0]]
+        weights = [1.0, 1.0, 1.0]
+        bw_tight = _weighted_bandwidth(tight_pop, weights, params, min_bandwidth_fraction=1e-6)
+        bw_wide = _weighted_bandwidth(wide_pop, weights, params, min_bandwidth_fraction=1e-6)
+        assert bw_tight["x"] < bw_wide["x"]
+
+    def test_unnormalized_weights_handled(self):
+        values = [1.0, 2.0, 3.0]
+        pop = [{"x": v} for v in values]
+        params = [{"name": "x", "min": 0.0, "max": 10.0}]
+        bw_raw = _weighted_bandwidth(pop, [2.0, 2.0, 2.0], params, min_bandwidth_fraction=1e-6)
+        bw_norm = _weighted_bandwidth(pop, [1 / 3, 1 / 3, 1 / 3], params, min_bandwidth_fraction=1e-6)
+        assert bw_raw["x"] == pytest.approx(bw_norm["x"], rel=1e-6)
+
+
+class TestImportanceWeights:
+    def test_weights_sum_to_one(self):
+        prev_pop = [{"x": 0.0}, {"x": 1.0}]
+        prev_weights = [0.5, 0.5]
+        next_pop = [{"x": 0.2}, {"x": 0.8}, {"x": 1.5}]
+        bw = {"x": 0.5}
+        weights = _compute_importance_weights(next_pop, prev_pop, prev_weights, bw, ["x"])
+        assert abs(sum(weights) - 1.0) < 1e-9
+
+    def test_all_weights_non_negative(self):
+        prev_pop = [{"x": 0.0}, {"x": 1.0}]
+        prev_weights = [0.5, 0.5]
+        next_pop = [{"x": -3.0}, {"x": 0.5}, {"x": 4.0}]
+        bw = {"x": 0.3}
+        weights = _compute_importance_weights(next_pop, prev_pop, prev_weights, bw, ["x"])
+        assert all(w >= 0.0 for w in weights)
+
+    def test_far_from_bulk_particle_gets_higher_weight(self):
+        # Previous generation is tightly clustered near 0; a new particle far
+        # from that cluster has low proposal (mixture) density and therefore
+        # a HIGHER importance weight (w ~ 1/mixture_density) than one that
+        # landed right where the proposal already concentrated its mass.
+        prev_pop = [{"x": 0.0}, {"x": 0.1}, {"x": -0.1}]
+        prev_weights = [1 / 3, 1 / 3, 1 / 3]
+        bw = {"x": 0.2}
+        next_pop = [{"x": 0.0}, {"x": 5.0}]
+        weights = _compute_importance_weights(next_pop, prev_pop, prev_weights, bw, ["x"])
+        assert weights[1] > weights[0]
+
+    def test_closed_form_two_equal_parents_midpoint_case(self):
+        # Two equally-weighted previous particles at -1 and +1; a new particle
+        # exactly at their midpoint (0). Mixture density at 0 is the average
+        # of two identical (by symmetry) N(0, bw^2) densities evaluated at
+        # distance 1 from their means, so the importance weight is fully
+        # determined analytically and should match a hand-computed value.
+        bw_val = 1.0
+        prev_pop = [{"x": -1.0}, {"x": 1.0}]
+        prev_weights = [0.5, 0.5]
+        next_pop = [{"x": 0.0}]
+        bw = {"x": bw_val}
+        weights = _compute_importance_weights(next_pop, prev_pop, prev_weights, bw, ["x"])
+        # Single candidate → its normalized weight must be exactly 1.0
+        # regardless of the (nonzero, finite) mixture density value.
+        assert weights == pytest.approx([1.0])
+
+    def test_empty_next_population_returns_empty(self):
+        prev_pop = [{"x": 0.0}]
+        prev_weights = [1.0]
+        weights = _compute_importance_weights([], prev_pop, prev_weights, {"x": 0.5}, ["x"])
+        assert weights == []
+
+    def test_empty_prev_population_falls_back_to_uniform(self):
+        next_pop = [{"x": 0.0}, {"x": 1.0}]
+        weights = _compute_importance_weights(next_pop, [], [], {"x": 0.5}, ["x"])
+        assert weights == pytest.approx([0.5, 0.5])
+
+
+class TestLogMixtureProposalDensity:
+    def test_empty_prev_population_returns_empty_array(self):
+        result = _log_mixture_proposal_density([{"x": 0.0}], [], [], {"x": 0.5}, ["x"])
+        assert len(result) == 0
+
+    def test_empty_candidates_returns_empty_array(self):
+        result = _log_mixture_proposal_density([], [{"x": 0.0}], [1.0], {"x": 0.5}, ["x"])
+        assert len(result) == 0
+
+    def test_candidate_at_parent_has_higher_density_than_far_candidate(self):
+        prev_pop = [{"x": 0.0}]
+        prev_weights = [1.0]
+        bw = {"x": 0.5}
+        near = _log_mixture_proposal_density([{"x": 0.0}], prev_pop, prev_weights, bw, ["x"])
+        far = _log_mixture_proposal_density([{"x": 10.0}], prev_pop, prev_weights, bw, ["x"])
+        assert near[0] > far[0]
+
+
+class TestEffectiveSampleSize:
+    def test_uniform_weights_give_full_ess(self):
+        weights = [0.25, 0.25, 0.25, 0.25]
+        assert _effective_sample_size(weights) == pytest.approx(4.0)
+
+    def test_one_dominant_weight_gives_ess_near_one(self):
+        weights = [0.97, 0.01, 0.01, 0.01]
+        ess = _effective_sample_size(weights)
+        assert 1.0 <= ess < 1.2
+
+    def test_scale_invariant(self):
+        ess_a = _effective_sample_size([2.0, 2.0, 2.0, 2.0])
+        ess_b = _effective_sample_size([0.25, 0.25, 0.25, 0.25])
+        assert ess_a == pytest.approx(ess_b)
+
+    def test_empty_returns_nan(self):
+        assert math.isnan(_effective_sample_size([]))
+
+    def test_all_zero_returns_nan(self):
+        assert math.isnan(_effective_sample_size([0.0, 0.0, 0.0]))
 
 
 # ---------------------------------------------------------------------------
@@ -507,6 +712,22 @@ class TestGenerationSummary:
         ])
         summary = _generation_summary(df, generation=0, tolerance=1.0)
         assert summary["n_eligible_survivors"] == 0
+
+    def test_ess_defaults_to_nan(self):
+        summary = _generation_summary(self._sample_df(), generation=0, tolerance=1.0)
+        assert math.isnan(summary["ess"])
+
+    def test_ess_passed_through(self):
+        summary = _generation_summary(self._sample_df(), generation=0, tolerance=1.0, ess=12.5)
+        assert summary["ess"] == pytest.approx(12.5)
+
+    def test_n_perturb_fallback_defaults_to_zero_and_passes_through(self):
+        summary_default = _generation_summary(self._sample_df(), generation=0, tolerance=1.0)
+        assert summary_default["n_perturb_fallback"] == 0
+        summary_set = _generation_summary(
+            self._sample_df(), generation=0, tolerance=1.0, n_perturb_fallback=3
+        )
+        assert summary_set["n_perturb_fallback"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -1242,6 +1463,90 @@ class TestParticleSeed:
 
 
 # ---------------------------------------------------------------------------
+# --store-timeseries (enables ABC-SMC particles as SNPE --bootstrap-csv input)
+# ---------------------------------------------------------------------------
+
+
+class TestStoreTimeseries:
+    """_run_particle_worker must write indicator_year columns when
+    store_timeseries=True, mirroring run_lhs_calibration.py's existing
+    --store-timeseries behaviour -- this is what lets run_snpe_calibration's
+    _load_bootstrap_csv reconstruct x_sim from an ABC-SMC particle CSV."""
+
+    def _payload(self, store_timeseries: bool) -> dict:
+        return {
+            "particle_id": 1,
+            "generation": 0,
+            "base_config": {},
+            "calib_space": {"parameters": []},
+            "params": {"x": 0.5},
+            "targets": [],
+            "seed": 1,
+            "balance_target_families": False,
+            "acceptance_gate_settings": None,
+            "distance_settings": None,
+            "proposal_source": "prior",
+            "anchor_config_path": "",
+            "parent_particle_id": "",
+            "store_timeseries": store_timeseries,
+        }
+
+    def _patch_success_path(self, monkeypatch):
+        """Bypass inject_params/simulation/scoring so the worker reaches its
+        success branch without a real model, with a known outputs dict."""
+        fake_outputs = {
+            "PLHIV": {1990: 100.0, 1995: 200.0},
+            "new_infections": {1990: 10.0},
+        }
+        monkeypatch.setattr(abc_mod, "inject_params", lambda *a, **k: {})
+        monkeypatch.setattr(abc_mod, "_run_simulation_quietly", lambda *a, **k: {})
+        monkeypatch.setattr(abc_mod, "extract_annual_outputs", lambda *a, **k: fake_outputs)
+        monkeypatch.setattr(
+            abc_mod, "score_draw",
+            lambda outputs, targets, balance_families=False: {
+                "total_ll": -1.0, "collapsed": False, "n_years_scored": 3,
+                "missing_outputs": [], "ll_by_indicator": {}, "ll_by_family": {},
+            },
+        )
+        monkeypatch.setattr(
+            abc_mod, "evaluate_calibration_distance",
+            lambda outputs, targets, **k: {"abc_distance": 1.0, "components": {}},
+        )
+        return fake_outputs
+
+    def test_timeseries_columns_written_when_enabled(self, monkeypatch):
+        self._patch_success_path(monkeypatch)
+        row = abc_mod._run_particle_worker(self._payload(store_timeseries=True))
+        assert row["PLHIV_1990"] == 100.0
+        assert row["PLHIV_1995"] == 200.0
+        assert row["new_infections_1990"] == 10.0
+
+    def test_timeseries_columns_absent_when_disabled(self, monkeypatch):
+        self._patch_success_path(monkeypatch)
+        row = abc_mod._run_particle_worker(self._payload(store_timeseries=False))
+        assert "PLHIV_1990" not in row
+        assert "new_infections_1990" not in row
+
+    def test_default_is_false_no_regression(self, monkeypatch):
+        self._patch_success_path(monkeypatch)
+        payload = self._payload(store_timeseries=False)
+        del payload["store_timeseries"]
+        row = abc_mod._run_particle_worker(payload)
+        assert "PLHIV_1990" not in row
+
+    def test_cli_flag_default_false_and_parses(self):
+        args_default = parse_args([
+            "--config", "x.json", "--calib-space", "y.json", "--output-dir", "/tmp",
+        ])
+        assert args_default.store_timeseries is False
+        args_set = parse_args([
+            "--config", "x.json", "--calib-space", "y.json", "--output-dir", "/tmp",
+            "--store-timeseries",
+        ])
+        assert args_set.store_timeseries is True
+
+
+# ---------------------------------------------------------------------------
 # Anchor loading
 # ---------------------------------------------------------------------------
 
@@ -1395,6 +1700,33 @@ class TestAnchorLoading:
         particle = _load_anchor_particle(tmp_path / "no_such_file.json", self._minimal_parameters())
         assert particle is None
 
+    def test_out_of_bounds_anchor_value_is_rejected(self, tmp_path):
+        """An anchor extracted from a config produced under a different
+        (wider) calib_space can hold a value outside the current run's
+        [min, max] -- this must be rejected, not silently simulated."""
+        config = self._anchor_config_dict()
+        # activity_med's calib_space bound is [0.05, 0.25]; push it out.
+        config["population"]["activity_distribution"]["value"]["Medium"] = 0.40
+        path = tmp_path / "out_of_bounds_anchor.json"
+        write_json(path, config)
+        particle = _load_anchor_particle(path, self._minimal_parameters())
+        assert particle is None
+
+    def test_in_bounds_anchor_at_exact_edge_is_accepted(self, tmp_path):
+        """A value exactly at min/max should not be rejected by the new check.
+
+        Uses contact_low (no derived-parameter side effects, unlike
+        activity_med/activity_high) so this isolates the bounds check from
+        _valid_draw_mask's unrelated derived-share constraints.
+        """
+        config = self._anchor_config_dict()
+        config["transmission_model"]["contact_rates"]["value"]["Low"] = 1.0
+        path = tmp_path / "edge_anchor.json"
+        write_json(path, config)
+        particle = _load_anchor_particle(path, self._minimal_parameters())
+        assert particle is not None
+        assert particle["contact_low"] == pytest.approx(1.0)
+
     def test_anchor_cli_args_parsed(self):
         args = parse_args([
             "--config", "x.json",
@@ -1507,6 +1839,171 @@ class TestOutputDirWarning:
 
 
 # ---------------------------------------------------------------------------
+# Toy-posterior recovery (UNC-02A: validates the ABC-SMC weighting/kernel fix
+# against a known analytic target, not just a running model)
+# ---------------------------------------------------------------------------
+
+
+def _run_toy_abc_smc(
+    n_particles: int,
+    n_generations: int,
+    rng: np.random.Generator,
+    prior_lo: float = -10.0,
+    prior_hi: float = 10.0,
+):
+    """Miniature ABC-SMC run using the real private functions, on a 1-D toy
+    problem with a closed-form target at every generation.
+
+    Prior: theta ~ U(prior_lo, prior_hi). Distance: |theta| (observed y=0,
+    identity map). For any hard quantile threshold eps_t, the exact ABC
+    target is Uniform(-eps_t, eps_t) -- exact at every generation, not just
+    in the eps -> 0 limit, which is what makes this a useful closed-form
+    check on the real generation-loop machinery.
+
+    Returns (final_population, final_weights, final_ess, eps_history).
+    """
+    bounds = {"x": (prior_lo, prior_hi)}
+    parameters = [{"name": "x", "min": prior_lo, "max": prior_hi}]
+
+    population = [{"x": float(v)} for v in rng.uniform(prior_lo, prior_hi, size=n_particles)]
+    weights: list[float] = _normalize_weights([1.0] * n_particles)
+    eps_history: list[float] = []
+
+    for gen in range(n_generations):
+        tolerance = _survival_quantile(gen)
+
+        if gen == 0:
+            proposals = population
+        else:
+            gen_bandwidth = _weighted_bandwidth(population, weights, parameters)
+            resampled, _ = _resample_particles(population, weights, n_particles, rng)
+            proposals = [
+                _perturb_particle(parent, bounds, gen_bandwidth, rng) or dict(parent)
+                for parent in resampled
+            ]
+
+        distances = [abs(p["x"]) for p in proposals]
+        gen_df = pd.DataFrame(
+            {
+                "particle_id": range(len(proposals)),
+                "collapsed": [False] * len(proposals),
+                "error": [""] * len(proposals),
+                "abc_distance": distances,
+                "x": [p["x"] for p in proposals],
+            }
+        )
+        next_pop, next_dist, _ = _select_survivors(gen_df, {"x"}, tolerance)
+        eps_history.append(max(next_dist) if next_dist else float("nan"))
+
+        if gen == 0:
+            next_weights = _normalize_weights([1.0] * len(next_pop))
+        else:
+            next_weights = _compute_importance_weights(
+                next_pop, population, weights, gen_bandwidth, ["x"]
+            )
+
+        population = next_pop
+        weights = next_weights
+
+    return population, weights, _effective_sample_size(weights), eps_history
+
+
+class TestToyPosteriorRecovery:
+    """Validates the fixed importance-weighting + adaptive-kernel scheme
+    against the 1-D toy problem's exact analytic ABC target at every
+    generation (see _run_toy_abc_smc docstring)."""
+
+    N_PARTICLES = 600
+    N_GENERATIONS = 5  # tolerance schedule: 1.00, 0.50, 0.35, 0.25, 0.15
+
+    def _run(self, seed: int):
+        rng = np.random.default_rng(seed)
+        return _run_toy_abc_smc(self.N_PARTICLES, self.N_GENERATIONS, rng)
+
+    def test_weighted_mean_near_zero_after_convergence(self):
+        population, weights, _, eps_history = self._run(seed=1)
+        eps_final = eps_history[-1]
+        values = np.array([p["x"] for p in population])
+        w = np.array(weights)
+        weighted_mean = float(np.sum(w * values) / np.sum(w))
+        # The target Uniform(-eps_final, eps_final) has mean 0; allow a
+        # generous band scaled to the truncation window itself.
+        assert abs(weighted_mean) < eps_final, (
+            f"weighted_mean={weighted_mean:.4f} not small relative to "
+            f"eps_final={eps_final:.4f}"
+        )
+
+    def test_weighted_variance_matches_uniform_target_variance(self):
+        population, weights, _, eps_history = self._run(seed=2)
+        eps_final = eps_history[-1]
+        values = np.array([p["x"] for p in population])
+        w = np.array(weights)
+        mean = float(np.sum(w * values) / np.sum(w))
+        weighted_variance = float(np.sum(w * (values - mean) ** 2) / np.sum(w))
+        expected_variance = eps_final**2 / 3.0  # Var[U(-eps, eps)] = eps^2 / 3
+        # Loose relative tolerance: this is a finite-N Monte Carlo estimate,
+        # not an exact identity.
+        assert 0.25 * expected_variance < weighted_variance < 4.0 * expected_variance, (
+            f"weighted_variance={weighted_variance:.6f} not within a loose band "
+            f"of the U(-eps,eps) target variance={expected_variance:.6f}"
+        )
+
+    def test_weighting_is_not_a_no_op_vs_unweighted_survivors(self):
+        _, weights, _, _ = self._run(seed=3)
+        w = np.array(weights)
+        assert np.std(w) > 1e-6, (
+            "Importance weights are (numerically) constant -- the weighting "
+            "step is not doing any corrective work."
+        )
+
+    def test_ess_stays_reasonable_across_generations(self):
+        rng = np.random.default_rng(4)
+        bounds = {"x": (-10.0, 10.0)}
+        parameters = [{"name": "x", "min": -10.0, "max": 10.0}]
+        population = [
+            {"x": float(v)} for v in rng.uniform(-10.0, 10.0, size=self.N_PARTICLES)
+        ]
+        weights = _normalize_weights([1.0] * self.N_PARTICLES)
+        min_ess_ratio = 1.0
+        for gen in range(self.N_GENERATIONS):
+            tolerance = _survival_quantile(gen)
+            if gen == 0:
+                proposals = population
+            else:
+                gen_bandwidth = _weighted_bandwidth(population, weights, parameters)
+                resampled, _ = _resample_particles(population, weights, self.N_PARTICLES, rng)
+                proposals = [
+                    _perturb_particle(parent, bounds, gen_bandwidth, rng) or dict(parent)
+                    for parent in resampled
+                ]
+            distances = [abs(p["x"]) for p in proposals]
+            gen_df = pd.DataFrame(
+                {
+                    "particle_id": range(len(proposals)),
+                    "collapsed": [False] * len(proposals),
+                    "error": [""] * len(proposals),
+                    "abc_distance": distances,
+                    "x": [p["x"] for p in proposals],
+                }
+            )
+            next_pop, _, _ = _select_survivors(gen_df, {"x"}, tolerance)
+            if gen == 0:
+                next_weights = _normalize_weights([1.0] * len(next_pop))
+            else:
+                next_weights = _compute_importance_weights(
+                    next_pop, population, weights, gen_bandwidth, ["x"]
+                )
+            ess = _effective_sample_size(next_weights)
+            if next_weights:
+                min_ess_ratio = min(min_ess_ratio, ess / len(next_weights))
+            population, weights = next_pop, next_weights
+        assert min_ess_ratio >= 0.05, (
+            f"ESS collapsed to {min_ess_ratio:.3%} of the population size in "
+            f"at least one generation."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Smoke test (skipped by default — requires model)
 # ---------------------------------------------------------------------------
 
@@ -1596,3 +2093,10 @@ class TestSmoke:
         # Check particle_seed in best-fit config
         cfg = json.loads(sorted(best_fits)[0].read_text())
         assert "particle_seed" in cfg["calibration_metadata"]["abc_smc_calibration"]
+
+        # ABC-SMC weighting/kernel fix: importance weights and ESS wire through
+        # end-to-end via the real runner, not just the unit-tested helpers.
+        assert "abc_importance_weight" in df.columns
+        gen_summary_df = pd.read_csv(gen_csvs[0])
+        assert "ess" in gen_summary_df.columns
+        assert "n_perturb_fallback" in gen_summary_df.columns

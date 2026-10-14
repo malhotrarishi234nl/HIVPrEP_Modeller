@@ -138,6 +138,8 @@ def _runtime_scenarios_to_legacy(runtime_config: Dict[str, Any]) -> List[Dict[st
             "comparison_type": "attribution",
             "primary_comparison": False,
             "arm_order": ["no_prep", "oral_prep"],
+            "comparator_arm": "no_prep",
+            "intervention_arm": "oral_prep",
             "arm_prep_reset": {"no_prep": True, "oral_prep": False},
             "arm_pathways": {
                 "oral_prep": _pathways_for_base_case(
@@ -197,6 +199,18 @@ def _expand_runtime_scenario(
             legacy["price_sensitivity"] = copy.deepcopy(scenario["price_sensitivity"])
         if "benchmark_references" in scenario:
             legacy["benchmark_references"] = copy.deepcopy(scenario["benchmark_references"])
+        # These are model-input controls rather than report metadata.  Preserve
+        # them on every expanded variant so a runtime scenario can make an
+        # assumption (for example annual lenacapavir discontinuation) explicit
+        # without modifying the calibrated model configuration.
+        for key in (
+            "oral_prep_overrides",
+            "lenacapavir_overrides",
+            "prep_schedule_overrides",
+            "analysis_metadata",
+        ):
+            if key in scenario:
+                legacy[key] = copy.deepcopy(scenario[key])
         expanded.append(legacy)
     return expanded
 

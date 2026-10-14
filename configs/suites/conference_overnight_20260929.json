@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "conference_overnight_20260929",
+  "purpose": "Conference-abstract evidence run: paired structural calibration, stochastic policy matrix, and conditional PSA.",
+  "calibration_suite": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6",
+  "policy_preparation": "outputs/suites/prep_policy_suite_20260929_prepared",
+  "psa_config": "configs/psa_conference_20260929.json",
+  "calibration": {
+    "cases": ["break_2008", "break_2010"],
+    "workers_per_case": "benchmark_selected_total_divided_by_two",
+    "fallback_workers_per_case": 8,
+    "parallel_cases": 2,
+    "maximum_trajectories": 20892,
+    "hpc_worker_counts_benchmarked": [32, 64, 96, 128, 160, 192],
+    "hpc_benchmark_tasks_per_point": 192,
+    "hpc_benchmark_trajectories": 1153
+  },
+  "policy": {
+    "seeds": "42-56",
+    "primary_workers": 15,
+    "bridge_workers": 15,
+    "expected_trajectories": 750
+  },
+  "psa": {
+    "draws": 1000,
+    "seed": 12345,
+    "primary_shards": 24,
+    "primary_workers_per_shard": 8,
+    "bridge_shards": 24,
+    "bridge_workers_per_shard": 8,
+    "primary_scenario_draw_tasks": 19000,
+    "bridge_scenario_draw_tasks": 5000,
+    "total_scenario_draw_tasks": 24000,
+    "maximum_trajectories": 72000,
+    "interpretation": "Conditional parameter PSA; calibration-fit and 2008-vs-2010 uncertainty remain separate layers."
+  },
+  "maximum_total_trajectories": 94795,
+  "launch_gates": [
+    "both calibration searches complete",
+    "both selected candidates pass fresh confirmation",
+    "binding hashes validate",
+    "policy and PSA plans prepare without simulation",
+    "user reviews the final VM command"
+  ],
+  "hardware": {
+    "architecture": "x86_64",
+    "machine_type": "h4d-standard-192",
+    "vcpu": 192,
+    "memory_gib_minimum": 720,
+    "disk_gib": 250,
+    "purchase_model": "on_demand"
+  }
+}

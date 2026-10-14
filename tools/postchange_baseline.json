@@ -1,0 +1,111 @@
+{
+  "generated_by": "tools/postchange_baseline.py",
+  "generated_utc": "2026-09-14T14:56:07+00:00",
+  "reason": "A-29 orientation-blocked deterministic transmission allocator (transmission_corrected.py:241, one largest-remainder pass per orientation instead of one global pass), plus the C-1 call-site move from step 6b into _step_diagnosis_and_exogenous so exogenous non-MSM diagnoses become ART-eligible in the same timestep as endogenous ones. Both verified 2026-09-14: A-29 decoupling checked at 0/1600 perturbations, conservation exact; C-1 move measured at on_art_stock_2024 +132, non-MSM infections 130->116. Stochastic path unchanged by both. NOTE: deterministic_allocate_events retains the same global-pass defect at 12 other call sites; see the 2026-09-14 session notes and A-13:534.",
+  "warning": "REGRESSION DETECTOR, NOT A CORRECTNESS CERTIFICATE. These values record what the model produced on the stamped date. They are not validated as correct and several are known provisional. Do not quote them as results.",
+  "supersedes": "Nothing. This is an ADDENDUM baseline. Pre-change references (A-15/A-16/A-9 artefacts, the 8d186b35... digest assertions in run_a21_*/run_a22_*) are deliberately left in place and failing.",
+  "python": "3.11.13",
+  "numpy": "2.4.6",
+  "baseline": {
+    "deterministic": {
+      "seed": 7001,
+      "digest": "181b53eaa3ec1039d42b2994b76fd762e43261f951df8abee30de7c32cf3b86b",
+      "scalars": {
+        "new_diagnoses_1975_1995": 2079.0,
+        "new_diagnoses_1996_2024": 26509.0,
+        "new_diagnoses_msm_1996_2024": 16726.0,
+        "new_diagnoses_non_msm_1996_2024": 9783.0,
+        "new_infections_1975_2025": 25309.0,
+        "aids_deaths_1975_2025": 7706.0,
+        "PLHIV_2024": 24578.0,
+        "on_art_stock_2024": 23618.0,
+        "plhiv_female_15plus_2024": 4627.0,
+        "new_infections_msm_total": 25193.0,
+        "new_infections_non_msm_total": 116.0
+      }
+    },
+    "code_fingerprints": {
+      "run_v3.py": "90373ad95d0b89bec802e5ac7139d93cad6da392f503ae038e57d997ee95fc7e",
+      "engine_v3.py": "0cd7e3143ce9a6b0ad61a886b638485827015b6ba310df369918fb8ee985d21b",
+      "transmission_corrected.py": "f0eeb78658b784f94cd9192974cb447f009f2a35f3210f6c3c08c6475d8275e4",
+      "demography.py": "f8eaee0a9074950fb9057a3691e2d8ef00692d761202cf1294b7bc5065152001",
+      "migration.py": "b1c6fa00967cc803c406dacd0d8b56e581a0dfdd9a67249d01790b795b4266f7",
+      "economics.py": "04c1c53993c3ba7e85a50b95e95bfe66b62cbc19495cc2d685a366e73ef0685d",
+      "counter_based_rng.py": "d27904491273cfc0aff553a0a7295e0443330363d7c31bcbe3b5e6146f7f65c9",
+      "stochastic_allocation.py": "2dc844affa94568ca51bb1db081c898025f7857905a8f3bc01cc91f3a9983366",
+      "schedule_utils.py": "a19dd1be8c595f7936784992cd4e8d4ed8c5c542fe1788aea3c4b4904b16b0cb",
+      "config_reader.py": "b1df46e3bbbd94b1280edc9265211bd29bb95a9633e6b96496b51e1d9304bdf0",
+      "config_utils.py": "22139e8ff37823d819602efa137a46af8e0e7b54fc837e4129fc03522f6f5d24",
+      "calib_extractor.py": "9e2c591b04198e142f68a94833365673d8f72c47cf6e9d8ee9b7df9e85a9c071",
+      "exogenous_diagnoses.py": "0af99a816bb7f050c73c2048ad66ec8e3b93e1f7d61b6c5813ef91c89baa06f4"
+    },
+    "config_sha256": "aed9efffcca65c8775ef996c88a1b1ae1f49203ae1b2353829aeb472bab59ef1",
+    "config": "configs/V13.22_20260604_nearfit_rank001_basecase.json",
+    "metrics": [
+      "PLHIV",
+      "new_diagnoses",
+      "new_diagnoses_msm",
+      "aids_deaths",
+      "on_art_stock",
+      "new_infections",
+      "new_aids_cases"
+    ],
+    "stochastic": {
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "per_seed": {
+        "42": {
+          "digest": "23b2263b9cb63f87fe9b397d44e711e815ed9834d80de4f770390508e6dd6a11",
+          "scalars": {
+            "new_diagnoses_1975_1995": 1724.0,
+            "new_diagnoses_1996_2024": 27432.0,
+            "new_diagnoses_msm_1996_2024": 17705.0,
+            "new_diagnoses_non_msm_1996_2024": 9727.0,
+            "new_infections_1975_2025": 24831.0,
+            "aids_deaths_1975_2025": 6978.0,
+            "PLHIV_2024": 24453.0,
+            "on_art_stock_2024": 23515.0,
+            "plhiv_female_15plus_2024": 4100.0,
+            "new_infections_msm_total": 24689.0,
+            "new_infections_non_msm_total": 142.0
+          }
+        },
+        "43": {
+          "digest": "16fa62385cc64f87049cff47be54f89daa9ca47622d534244503e1881321b5ea",
+          "scalars": {
+            "new_diagnoses_1975_1995": 1829.0,
+            "new_diagnoses_1996_2024": 27648.0,
+            "new_diagnoses_msm_1996_2024": 17937.0,
+            "new_diagnoses_non_msm_1996_2024": 9711.0,
+            "new_infections_1975_2025": 25451.0,
+            "aids_deaths_1975_2025": 7245.0,
+            "PLHIV_2024": 24680.0,
+            "on_art_stock_2024": 23721.0,
+            "plhiv_female_15plus_2024": 4149.0,
+            "new_infections_msm_total": 25314.0,
+            "new_infections_non_msm_total": 137.0
+          }
+        },
+        "44": {
+          "digest": "213d354ed64940a1c9e64ac38f9dc94707bc7546909492881c914f698c7c5297",
+          "scalars": {
+            "new_diagnoses_1975_1995": 1985.0,
+            "new_diagnoses_1996_2024": 28559.0,
+            "new_diagnoses_msm_1996_2024": 18830.0,
+            "new_diagnoses_non_msm_1996_2024": 9729.0,
+            "new_infections_1975_2025": 26978.0,
+            "aids_deaths_1975_2025": 7706.0,
+            "PLHIV_2024": 25378.0,
+            "on_art_stock_2024": 24374.0,
+            "plhiv_female_15plus_2024": 4198.0,
+            "new_infections_msm_total": 26819.0,
+            "new_infections_non_msm_total": 159.0
+          }
+        }
+      }
+    }
+  }
+}

@@ -209,18 +209,30 @@ def _run_snpe_particle_worker(payload: dict) -> dict:
 
 
 def _run_round_payloads(payloads: list[dict], workers: int) -> list[dict]:
-    """Dispatch particle payloads in parallel and collect result rows."""
+    """Dispatch particle payloads in parallel and collect result rows,
+    restored to the original payloads order before returning.
+
+    ProcessPoolExecutor's as_completed() yields results in whatever order
+    workers happen to finish, which varies run to run. Since row order
+    feeds directly into theta/x tensors and therefore minibatch
+    composition during training, an unstable order makes training
+    non-reproducible even with a fixed torch seed. Restoring submission
+    order (rather than sorting by particle_id) also avoids relying on
+    particle_id being numeric -- the final posterior-evaluation call site
+    uses string ids like "post_10", which would otherwise sort
+    lexicographically.
+    """
     if workers == 1:
         return [_run_snpe_particle_worker(p) for p in payloads]
-    rows: list[dict] = []
+    indexed_rows: list[tuple[int, dict]] = []
     with ProcessPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_run_snpe_particle_worker, p): p["particle_id"]
-            for p in payloads
+            executor.submit(_run_snpe_particle_worker, p): i
+            for i, p in enumerate(payloads)
         }
         for future in as_completed(futures):
-            rows.append(future.result())
-    return rows
+            indexed_rows.append((futures[future], future.result()))
+    return [row for _, row in sorted(indexed_rows, key=lambda pair: pair[0])]
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +364,10 @@ def _train_snpe(
     x: torch.Tensor,
     proposal,
     round_num: int,
+    *,
+    force_first_round_loss: bool = False,
+    show_train_summary: bool = True,
+    skip_append: bool = False,
 ) -> Any:
     """Append simulations and train SNPE; return the density estimator.
 
@@ -366,13 +382,96 @@ def _train_snpe(
         Pass ``None`` (prior) for round 0.
     round_num:
         Current round index (0-based).  Round 0 always uses the prior.
+    force_first_round_loss:
+        Forwarded to ``inference.train()``. Defaults to False, the
+        statistically correct setting for round_num > 0 with a non-prior
+        proposal: sbi's atomic/proposal-correction (APT) loss is what makes
+        multi-round SNPE-C valid when training data was NOT drawn from the
+        prior (see Greenberg et al. 2019). Passing True disables that
+        correction and trains as if every round's data came from the prior —
+        an explicit, auditable degraded mode, not a silent default.
+    show_train_summary:
+        Forwarded to ``inference.train()`` so per-epoch train/val loss is
+        logged, rather than swallowed silently.
+    skip_append:
+        Skip the append_simulations call. Set True only when re-training
+        (e.g. a force_first_round_loss retry) after this round's data was
+        already appended by an earlier, failed call -- prevents double
+        counting the same round's simulations in sbi's accumulated dataset.
     """
-    if round_num == 0 or proposal is None:
-        inference.append_simulations(theta, x)
-    else:
-        inference.append_simulations(theta, x, proposal=proposal)
-    density_estimator = inference.train()
+    if not skip_append:
+        if round_num == 0 or proposal is None:
+            inference.append_simulations(theta, x)
+        else:
+            inference.append_simulations(theta, x, proposal=proposal)
+    density_estimator = inference.train(
+        force_first_round_loss=force_first_round_loss,
+        show_train_summary=show_train_summary,
+    )
     return density_estimator
+
+
+def _train_round_with_fallback(
+    inference: SNPE,
+    theta: torch.Tensor,
+    x: torch.Tensor,
+    proposal,
+    round_num: int,
+    force_first_round_loss: bool,
+) -> tuple[Any, bool]:
+    """Train round >= 1 with proposal correction; retry once, uncorrected, on failure.
+
+    Returns (density_estimator_or_None, used_fallback_loss). The retry passes
+    skip_append=True because the primary attempt's append_simulations() call
+    already succeeded before its train() call threw -- re-appending would
+    silently double-count this round's simulations in sbi's accumulated
+    dataset (see _train_snpe's skip_append docstring).
+    """
+    try:
+        density_estimator = _train_snpe(
+            inference, theta, x, proposal=proposal,
+            round_num=round_num, force_first_round_loss=force_first_round_loss,
+        )
+        return density_estimator, False
+    except Exception as exc:
+        print(
+            f"  WARNING: proposal-corrected training failed in round "
+            f"{round_num} ({type(exc).__name__}: {exc}); retrying once "
+            f"with force_first_round_loss=True as a logged fallback."
+        )
+        try:
+            density_estimator = _train_snpe(
+                inference, theta, x, proposal=proposal,
+                round_num=round_num, force_first_round_loss=True,
+                skip_append=True,
+            )
+            return density_estimator, True
+        except Exception as exc2:
+            print(
+                f"  WARNING: fallback training also failed in round "
+                f"{round_num} ({type(exc2).__name__}: {exc2}); "
+                f"skipping training update for this round."
+            )
+            return None, False
+
+
+def _extract_training_losses(inference: SNPE) -> tuple[float, float]:
+    """Best-effort extraction of the most recent round's final train/val loss
+    from sbi's internal training summary, for diagnostics only.
+
+    sbi's exact summary attribute/key names have shifted across versions;
+    this never raises -- it returns (nan, nan) if the expected shape isn't
+    found, so a diagnostic-capture bug can never break a live run.
+    """
+    try:
+        summary = getattr(inference, "summary", {}) or {}
+        train_losses = summary.get("training_loss") or summary.get("train_log_probs") or []
+        val_losses = summary.get("validation_loss") or summary.get("validation_log_probs") or []
+        final_train = float(train_losses[-1]) if len(train_losses) else float("nan")
+        final_val = float(val_losses[-1]) if len(val_losses) else float("nan")
+        return final_train, final_val
+    except Exception:
+        return float("nan"), float("nan")
 
 
 def _build_posterior(inference: SNPE, density_estimator: Any) -> Any:
@@ -475,6 +574,9 @@ def _round_summary(
     snpe_round: int,
     training_duration_s: float,
     simulation_duration_s: float,
+    final_train_loss: float = float("nan"),
+    final_val_loss: float = float("nan"),
+    used_fallback_loss: bool = False,
 ) -> dict:
     round_rows = [r for r in rows if r.get("snpe_round") == snpe_round]
     n = len(round_rows)
@@ -496,6 +598,9 @@ def _round_summary(
         "abc_distance_p25": float(np.percentile(distances, 25)) if distances else math.inf,
         "training_duration_s": training_duration_s,
         "simulation_duration_s": simulation_duration_s,
+        "final_train_loss": final_train_loss,
+        "final_val_loss": final_val_loss,
+        "used_fallback_loss": used_fallback_loss,
     }
 
 
@@ -722,6 +827,12 @@ def run_snpe_calibration(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # Build sbi prior and inference object
     # ------------------------------------------------------------------
+    # torch's global RNG drives flow weight init, minibatch shuffling, and
+    # posterior sampling -- none of which --seed (numpy-only) controls.
+    # Without this, two runs with identical --seed/config/data can still
+    # train a different flow and get a different round-1+ outcome purely
+    # from torch RNG noise, which makes any before/after comparison invalid.
+    torch.manual_seed(args.seed)
     prior = _build_prior(calib_space)
     inference = SNPE(prior=prior, density_estimator=args.density_estimator)
     rng = np.random.default_rng(args.seed)
@@ -746,6 +857,8 @@ def run_snpe_calibration(args: argparse.Namespace) -> None:
         "config_path": args.config,
         "python": sys.version,
         "platform": platform.platform(),
+        "proposal_correction": not args.force_first_round_loss,
+        "force_first_round_loss": args.force_first_round_loss,
         **git_info,
     }
 
@@ -804,8 +917,13 @@ def run_snpe_calibration(args: argparse.Namespace) -> None:
         train_t0 = time.time()
         theta_r0 = _theta_from_rows(bootstrap_usable, param_names)
         x_r0 = _x_from_rows(bootstrap_usable, stat_labels)
-        inference.append_simulations(theta_r0, x_r0)  # prior proposals — no correction
-        density_estimator = inference.train()
+        density_estimator = _train_snpe(
+            inference, theta_r0, x_r0, proposal=None, round_num=0,
+            force_first_round_loss=args.force_first_round_loss,
+        )
+        round_summaries[-1]["final_train_loss"], round_summaries[-1]["final_val_loss"] = (
+            _extract_training_losses(inference)
+        )
         current_posterior = _build_posterior(inference, density_estimator)
         current_posterior.set_default_x(x_obs)
         current_proposal = current_posterior
@@ -863,29 +981,46 @@ def run_snpe_calibration(args: argparse.Namespace) -> None:
             if not r.get("collapsed", True) and math.isfinite(r.get("abc_distance", math.inf))
         ]
         n_cumulative = sum(1 for r in all_rows if not r.get("collapsed", True))
+        final_train_loss = float("nan")
+        final_val_loss = float("nan")
+        used_fallback_loss = False
         if len(round_usable) >= 10:
             print(f"  Training {args.density_estimator.upper()} on "
                   f"{len(round_usable)} new particles (cumulative non-collapsed: {n_cumulative})...")
             train_t0 = time.time()
             theta_new = _theta_from_rows(round_usable, param_names)
             x_new = _x_from_rows(round_usable, stat_labels)
-            # Intentionally omit the proposal correction and train as if each
-            # round came from the prior. This avoids SNPE-C atomic-loss
-            # instability when the trained posterior is degenerate. The focused
-            # sampling still concentrates later rounds; only the importance
-            # weighting is omitted.
-            inference.append_simulations(theta_new, x_new)
-            density_estimator = inference.train(force_first_round_loss=True)
-            current_posterior = _build_posterior(inference, density_estimator)
-            current_posterior.set_default_x(x_obs)
-            current_proposal = current_posterior
-            train_dur = time.time() - train_t0
-            print(f"  Training complete in {train_dur:.1f}s")
+            # Proposals for round >= 1 are drawn from the posterior/proposal
+            # trained in the previous round (see the sampling phase above),
+            # NOT the prior — so the APT/atomic proposal correction (Greenberg
+            # et al. 2019) is required for the resulting flow to remain a
+            # valid multi-round posterior estimator. Omitting it (as this
+            # code used to, via force_first_round_loss=True with no
+            # `proposal=`) silently biases the flow toward the region the
+            # proposal already sampled, which is consistent with the
+            # "zero posterior samples after round 0" failure mode logged in
+            # PHASE2_DEVELOPMENT_CHECKLIST.md.
+            density_estimator, used_fallback_loss = _train_round_with_fallback(
+                inference, theta_new, x_new, current_proposal, snpe_round,
+                args.force_first_round_loss,
+            )
+            if density_estimator is not None:
+                final_train_loss, final_val_loss = _extract_training_losses(inference)
+                current_posterior = _build_posterior(inference, density_estimator)
+                current_posterior.set_default_x(x_obs)
+                current_proposal = current_posterior
+                train_dur = time.time() - train_t0
+                print(f"  Training complete in {train_dur:.1f}s")
         else:
             print(f"  WARNING: only {len(round_usable)} non-collapsed particles "
                   "in this round — skipping training update.")
 
-        rs = _round_summary(round_rows, snpe_round, train_dur, sim_dur)
+        rs = _round_summary(
+            round_rows, snpe_round, train_dur, sim_dur,
+            final_train_loss=final_train_loss,
+            final_val_loss=final_val_loss,
+            used_fallback_loss=used_fallback_loss,
+        )
         round_summaries.append(rs)
         _print_round_summary(rs)
 
@@ -1105,6 +1240,14 @@ def _print_round_summary(rs: dict) -> None:
         f"accept={rs['n_accept']}  dist_min={rs['abc_distance_min']:.4f}  "
         f"sim_time={rs['simulation_duration_s']:.1f}s"
     )
+    final_train_loss = rs.get("final_train_loss", float("nan"))
+    final_val_loss = rs.get("final_val_loss", float("nan"))
+    if math.isfinite(final_train_loss) or math.isfinite(final_val_loss):
+        fallback_note = " [fallback loss]" if rs.get("used_fallback_loss") else ""
+        print(
+            f"    train_loss={final_train_loss:.4f}  val_loss={final_val_loss:.4f}"
+            f"{fallback_note}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1208,6 +1351,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Demote the AIDS-death acceptance gate to a warning (matches ABC-SMC V13.18 behaviour).",
+    )
+    parser.add_argument(
+        "--force-first-round-loss",
+        action="store_true",
+        default=False,
+        help=(
+            "Train every round with sbi's first-round (prior-assumed) loss, "
+            "disabling the APT/atomic proposal correction even for rounds >= 1 "
+            "whose proposals come from a trained posterior, not the prior. "
+            "This reproduces the pre-fix behaviour; use only to diff against "
+            "historical runs or as a manual fallback if proposal-corrected "
+            "training is unstable on a given config."
+        ),
     )
     parser.add_argument(
         "--simulation-start-year",

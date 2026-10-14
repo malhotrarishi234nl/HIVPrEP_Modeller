@@ -1,0 +1,134 @@
+{
+  "schema_version": "0.1",
+  "suite_id": "on_art_break_year_2008_vs_2010",
+  "status": "REVIEW_READY_NOT_AUTHORIZED",
+  "launch_ready": false,
+  "launch_blockers": [
+    "final human pre-launch review has not yet been recorded; keep execution blocked until the user explicitly approves the reviewed commands and 20,892-trajectory maximum"
+  ],
+  "description": "Matched structural sensitivity: move the recent on-ART Chronic-to-AIDS schedule knot from 2010 to 2008 and recalibrate both cases under the same coupled-search contract.",
+  "artifacts": [
+    {
+      "id": "model_config",
+      "source": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json",
+      "output_name": "model_config.json"
+    },
+    {
+      "id": "calib_space",
+      "source": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
+      "output_name": "calib_space.json"
+    },
+    {
+      "id": "plan",
+      "source": "configs/coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json",
+      "output_name": "coupled_search_plan.json"
+    }
+  ],
+  "cases": [
+    {
+      "id": "break_2010",
+      "label": "Current 2000-2010 linear transition",
+      "patches": [
+        {"artifact": "model_config", "op": "test", "path": "/transmission_model/disease/progression/chronic_to_aids_on_art/schedule/value/2010", "value": 0.003991668748143287},
+        {"artifact": "calib_space", "op": "test", "path": "/parameters/30/name", "value": "chronic_to_aids_on_art_recent"},
+        {"artifact": "plan", "op": "replace", "path": "/design/name", "value": "coupled_calibration_break_2010_20260928"},
+        {"artifact": "plan", "op": "replace", "path": "/design/question", "value": "How does the current 2010 two-era on-ART Chronic-to-AIDS transition endpoint perform under the matched break-year sensitivity calibration contract?"},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/base_config", "value": {"$artifact": "model_config"}},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/calib_space", "value": {"$artifact": "calib_space"}},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/expected_sha256/base_config", "value": {"$sha256": "model_config"}},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/expected_sha256/calib_space", "value": {"$sha256": "calib_space"}},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/discovery", "value": [210000, 210001, 210002, 210003, 210004]},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/confirmation", "value": [210100, 210101, 210102, 210103, 210104, 210105, 210106, 210107, 210108, 210109, 210110, 210111, 210112, 210113, 210114, 210115, 210116, 210117, 210118, 210119]},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/smoke", "value": [210200, 210201, 210202]},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/proposal_rng", "value": 210300},
+        {"artifact": "plan", "op": "add", "path": "/seeds/comparison_group", "value": "on_art_break_year_2008_vs_2010_crn_v1"},
+        {"artifact": "plan", "op": "add", "path": "/seeds/paired_designs", "value": ["coupled_calibration_break_2010_20260928", "coupled_calibration_break_2008_20260928"]},
+        {"artifact": "plan", "op": "add", "path": "/seeds/reuse_policy", "value": "common_random_numbers_across_declared_designs_only"}
+      ]
+    },
+    {
+      "id": "break_2008",
+      "label": "Alternative 2000-2008 linear transition",
+      "patches": [
+        {"artifact": "model_config", "op": "test", "path": "/transmission_model/disease/progression/chronic_to_aids_on_art/schedule/value/2010", "value": 0.003991668748143287},
+        {"artifact": "model_config", "op": "move", "path": "/transmission_model/disease/progression/chronic_to_aids_on_art/schedule/value/2010", "to": "/transmission_model/disease/progression/chronic_to_aids_on_art/schedule/value/2008"},
+        {"artifact": "model_config", "op": "replace", "path": "/transmission_model/disease/progression/chronic_to_aids_on_art/schedule/notes", "value": "Structural sensitivity: early value applies through 2000, interpolates linearly to the recent value in 2008, and the recent value applies from 2008 onward. The knot year is an experiment choice, not an empirical estimate."},
+        {"artifact": "calib_space", "op": "test", "path": "/parameters/30/name", "value": "chronic_to_aids_on_art_recent"},
+        {"artifact": "calib_space", "op": "test", "path": "/parameters/30/config_path", "value": "transmission_model.disease.progression.chronic_to_aids_on_art.schedule.value.2010"},
+        {"artifact": "calib_space", "op": "replace", "path": "/parameters/30/config_path", "value": "transmission_model.disease.progression.chronic_to_aids_on_art.schedule.value.2008"},
+        {"artifact": "calib_space", "op": "replace", "path": "/parameters/29/notes", "value": "Effective all-ART rate applies through 2000 and ramps linearly to the recent value by 2008 for this structural sensitivity. Bounds are unchanged from the 2010-knot case."},
+        {"artifact": "calib_space", "op": "replace", "path": "/parameters/30/notes", "value": "Effective all-ART rate applies from 2008 onward for this structural sensitivity. Bounds are unchanged from the 2010-knot case."},
+        {"artifact": "plan", "op": "replace", "path": "/design/name", "value": "coupled_calibration_break_2008_20260928"},
+        {"artifact": "plan", "op": "replace", "path": "/design/question", "value": "Does moving the two-era on-ART Chronic-to-AIDS transition endpoint from 2010 to 2008 improve or materially change the joint fit under an otherwise matched calibration contract?"},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/base_config", "value": {"$artifact": "model_config"}},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/calib_space", "value": {"$artifact": "calib_space"}},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/expected_sha256/base_config", "value": {"$sha256": "model_config"}},
+        {"artifact": "plan", "op": "replace", "path": "/inputs/expected_sha256/calib_space", "value": {"$sha256": "calib_space"}},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/discovery", "value": [210000, 210001, 210002, 210003, 210004]},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/confirmation", "value": [210100, 210101, 210102, 210103, 210104, 210105, 210106, 210107, 210108, 210109, 210110, 210111, 210112, 210113, 210114, 210115, 210116, 210117, 210118, 210119]},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/smoke", "value": [210200, 210201, 210202]},
+        {"artifact": "plan", "op": "replace", "path": "/seeds/proposal_rng", "value": 210300},
+        {"artifact": "plan", "op": "add", "path": "/seeds/comparison_group", "value": "on_art_break_year_2008_vs_2010_crn_v1"},
+        {"artifact": "plan", "op": "add", "path": "/seeds/paired_designs", "value": ["coupled_calibration_break_2010_20260928", "coupled_calibration_break_2008_20260928"]},
+        {"artifact": "plan", "op": "add", "path": "/seeds/reuse_policy", "value": "common_random_numbers_across_declared_designs_only"}
+      ]
+    }
+  ],
+  "comparison": {
+    "id": "break_2008_vs_2010",
+    "cases": ["break_2010", "break_2008"],
+    "seed_policy": "fresh common random numbers paired across the two declared case designs; equal replicate counts and equal search budgets",
+    "maximum_trajectories_per_case": 10446,
+    "maximum_trajectories_total": 20892,
+    "interpretation": "Paired structural sensitivity. Shared simulator seeds and proposal RNG reduce Monte Carlo noise in case differences; they do not create independent evidence or change the number of trajectories run."
+  },
+  "defaults": {"workers": 8},
+  "stages": [
+    {
+      "id": "validate",
+      "command": ".venv/bin/python run_coupled_calibration.py --validate-only --plan {artifact_plan}"
+    },
+    {
+      "id": "prepare",
+      "command": ".venv/bin/python run_coupled_calibration.py --prepare --plan {artifact_plan} --output-dir {case_root}/calibration/prepared"
+    },
+    {
+      "id": "smoke",
+      "seed_source": {"artifact": "plan", "path": "/seeds/smoke"},
+      "command": ".venv/bin/python run_coupled_calibration.py --smoke --prepared {case_root}/calibration/prepared --output-dir {case_root}/calibration/smoke --workers {workers}"
+    },
+    {
+      "id": "search",
+      "seed_source": {"artifact": "plan", "path": "/seeds/discovery"},
+      "command": ".venv/bin/python run_coupled_calibration.py --run-search --prepared {case_root}/calibration/prepared --smoke-source {case_root}/calibration/smoke --output-dir {case_root}/calibration/search --workers {workers}"
+    },
+    {
+      "id": "confirm",
+      "seed_source": {"artifact": "plan", "path": "/seeds/confirmation"},
+      "command": ".venv/bin/python run_coupled_calibration.py --confirm --source {case_root}/calibration/search --output-dir {case_root}/calibration/confirmation --workers {workers}"
+    }
+  ],
+  "postprocess": [
+    {
+      "id": "compare_cases",
+      "command": ".venv/bin/python compare_coupled_calibration_suite.py --suite-root {run_root} --output-dir {run_root}/comparison"
+    }
+  ],
+  "exports": {
+    "figures": "none",
+    "tables": ["case_summary", "candidate_summary", "target_comparison", "paired_seed_differences", "paired_seed_summary"],
+    "packages": ["coupled_calibration_case_comparison"],
+    "note": "The comparison adapter reads completed immutable artifacts and starts zero simulations. Figures remain independently selectable and are not yet part of this suite."
+  },
+  "provenance": {
+    "runtime_files": [
+      "experiment_suite.py",
+      "compare_coupled_calibration_suite.py",
+      "run_coupled_calibration.py",
+      "coupled_calibration_search.py",
+      "run_v3.py",
+      "engine_v3.py",
+      "schedule_utils.py"
+    ]
+  }
+}

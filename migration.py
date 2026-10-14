@@ -845,7 +845,18 @@ class MigrationModule:
             combined    = np.concatenate([pop_rem.ravel(), child_rem.ravel()])
 
             # argsort descending: largest remainder cells first.
-            top_indices = np.argsort(-combined)[:excess]
+            # kind="stable" (A-12 review, 2026-09-10): remainders here are heavily
+            # tied -- population * scale for integer populations takes only a small
+            # number of distinct fractional values, and every zero-population cell
+            # has remainder exactly 0.0 -- so an unstable sort picks WHICH tied cells
+            # receive the +1 by numpy's internal quicksort order. The total removed is
+            # identical either way, but the cells the add-back lands in are not, and a
+            # person placed in a different (age, sex, orientation, activity, stage)
+            # cell changes downstream dynamics. Stable sorting makes the tie-break
+            # ascending index order, which is reproducible across numpy versions and
+            # platforms. This matches the explicit kind="stable" in
+            # stochastic_allocation.deterministic_allocate_events.
+            top_indices = np.argsort(-combined, kind="stable")[:excess]
 
             for idx in top_indices:
                 if idx < n_pop_flat:

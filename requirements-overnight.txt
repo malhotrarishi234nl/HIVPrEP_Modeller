@@ -1,0 +1,10 @@
+# Frozen direct dependencies for the conference overnight simulation suite.
+# Deliberately excludes sbi/PyTorch and formulas: neither is imported by the
+# coupled calibration, stochastic policy matrix, or conditional PSA runners.
+numpy==2.4.6
+pandas==3.0.5
+scipy==1.17.1
+matplotlib==3.11.1
+openpyxl==3.1.5
+tabulate==0.10.0
+pytest==9.1.1

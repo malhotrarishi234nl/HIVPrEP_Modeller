@@ -3,6 +3,11 @@ Tests for SNPE calibration components:
   - calib_snpe_summary_stats: shape, log-transform, sentinel, x_obs
   - run_snpe_calibration: prior building, tensor helpers, bounds validation,
     worker schema (no model required), smoke integration (slow, marked)
+  - _train_snpe / _extract_training_losses: proposal-correction fix -- round
+    0 omits the proposal kwarg, round >= 1 with a real proposal includes it,
+    force_first_round_loss defaults False and is forwarded when requested
+  - _round_summary: additive loss/fallback diagnostic fields
+  - --force-first-round-loss CLI flag: default False, parses to True
 
 Run fast tests:   pytest tests/test_snpe_calibration.py
 Run all (slow):   pytest -m slow tests/test_snpe_calibration.py
@@ -44,6 +49,21 @@ def _fake_outputs(value: float = 1000.0) -> dict:
     for indicator, years in DEFAULT_SUMMARY_STAT_SPEC:
         outputs[indicator] = {year: value for year in years}
     return outputs
+
+
+def _identity_worker(payload: dict) -> dict:
+    """Picklable stand-in for _run_snpe_particle_worker (module-level so
+    ProcessPoolExecutor can pickle it across processes)."""
+    return {"particle_id": payload["particle_id"]}
+
+
+def _reversed_completion_worker(payload: dict) -> dict:
+    """Picklable stand-in that makes later-submitted payloads finish first,
+    to prove result ordering isn't accidentally correct just because
+    completion happens to match submission order."""
+    import time
+    time.sleep(0.05 * (6 - payload["particle_id"]))
+    return {"particle_id": payload["particle_id"]}
 
 
 def _fake_targets(value: float = 1000.0) -> list[dict]:
@@ -534,6 +554,213 @@ class TestSnpeHelpers:
 
 
 # ---------------------------------------------------------------------------
+# 6b. _train_snpe / _extract_training_losses (proposal-correction fix)
+# ---------------------------------------------------------------------------
+
+
+class _FakeInference:
+    """Minimal stand-in for sbi.inference.SNPE, recording call arguments.
+
+    Not a real sbi object — just enough surface (append_simulations, train,
+    summary) to verify _train_snpe's call shape without needing a real flow.
+    """
+
+    def __init__(self):
+        self.append_calls: list[dict] = []
+        self.train_calls: list[dict] = []
+        self.summary = {"training_loss": [0.5, 0.3], "validation_loss": [0.6, 0.4]}
+
+    def append_simulations(self, theta, x, **kwargs):
+        self.append_calls.append({"theta": theta, "x": x, "kwargs": kwargs})
+        return self
+
+    def train(self, **kwargs):
+        self.train_calls.append(kwargs)
+        return "fake_density_estimator"
+
+
+class TestTrainSnpe:
+    @pytest.fixture(autouse=True)
+    def _skip_if_no_sbi(self):
+        pytest.importorskip("sbi", reason="sbi not installed; skipping _train_snpe tests")
+        pytest.importorskip("torch", reason="torch not installed; skipping _train_snpe tests")
+
+    def test_round_zero_calls_append_without_proposal_kwarg(self):
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        _train_snpe(inf, torch.zeros((2, 1)), torch.zeros((2, 1)), proposal=None, round_num=0)
+        assert len(inf.append_calls) == 1
+        assert "proposal" not in inf.append_calls[0]["kwargs"]
+
+    def test_nonzero_round_with_proposal_calls_append_with_proposal_kwarg(self):
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        fake_proposal = object()
+        _train_snpe(
+            inf, torch.zeros((2, 1)), torch.zeros((2, 1)),
+            proposal=fake_proposal, round_num=1,
+        )
+        assert inf.append_calls[0]["kwargs"].get("proposal") is fake_proposal
+
+    def test_nonzero_round_with_none_proposal_omits_proposal_kwarg(self):
+        # round_num > 0 but no posterior trained yet (proposal=None) should
+        # still behave like a prior round -- no proposal kwarg.
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        _train_snpe(inf, torch.zeros((2, 1)), torch.zeros((2, 1)), proposal=None, round_num=2)
+        assert "proposal" not in inf.append_calls[0]["kwargs"]
+
+    def test_default_force_first_round_loss_is_false(self):
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        _train_snpe(inf, torch.zeros((2, 1)), torch.zeros((2, 1)), proposal=None, round_num=0)
+        assert inf.train_calls[0]["force_first_round_loss"] is False
+
+    def test_force_first_round_loss_true_when_requested(self):
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        _train_snpe(
+            inf, torch.zeros((2, 1)), torch.zeros((2, 1)),
+            proposal=None, round_num=1, force_first_round_loss=True,
+        )
+        assert inf.train_calls[0]["force_first_round_loss"] is True
+
+    def test_show_train_summary_defaults_true(self):
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        _train_snpe(inf, torch.zeros((2, 1)), torch.zeros((2, 1)), proposal=None, round_num=0)
+        assert inf.train_calls[0]["show_train_summary"] is True
+
+    def test_returns_trained_density_estimator(self):
+        from run_snpe_calibration import _train_snpe
+        import torch
+
+        inf = _FakeInference()
+        result = _train_snpe(
+            inf, torch.zeros((2, 1)), torch.zeros((2, 1)), proposal=None, round_num=0
+        )
+        assert result == "fake_density_estimator"
+
+
+class TestExtractTrainingLosses:
+    @pytest.fixture(autouse=True)
+    def _skip_if_no_sbi(self):
+        pytest.importorskip("sbi", reason="sbi not installed; skipping loss-extraction tests")
+
+    def test_extracts_final_losses_from_summary_dict(self):
+        from run_snpe_calibration import _extract_training_losses
+
+        train_loss, val_loss = _extract_training_losses(_FakeInference())
+        assert train_loss == pytest.approx(0.3)
+        assert val_loss == pytest.approx(0.4)
+
+    def test_missing_summary_returns_nan(self):
+        from run_snpe_calibration import _extract_training_losses
+
+        class _NoSummary:
+            pass
+
+        train_loss, val_loss = _extract_training_losses(_NoSummary())
+        assert math.isnan(train_loss)
+        assert math.isnan(val_loss)
+
+    def test_malformed_summary_never_raises(self):
+        from run_snpe_calibration import _extract_training_losses
+
+        class _BadSummary:
+            summary = "not a dict"
+
+        train_loss, val_loss = _extract_training_losses(_BadSummary())
+        assert math.isnan(train_loss)
+        assert math.isnan(val_loss)
+
+
+class TestRoundSummary:
+    @pytest.fixture(autouse=True)
+    def _skip_if_no_sbi(self):
+        pytest.importorskip("sbi", reason="sbi not installed; skipping _round_summary tests")
+
+    def test_loss_fields_default_to_nan_and_fallback_defaults_false(self):
+        from run_snpe_calibration import _round_summary
+
+        rows = [{"snpe_round": 0, "collapsed": False, "abc_distance": 1.0, "overall_accept": True}]
+        rs = _round_summary(rows, 0, training_duration_s=1.0, simulation_duration_s=2.0)
+        assert math.isnan(rs["final_train_loss"])
+        assert math.isnan(rs["final_val_loss"])
+        assert rs["used_fallback_loss"] is False
+
+    def test_supplied_diagnostic_values_pass_through(self):
+        from run_snpe_calibration import _round_summary
+
+        rows = [{"snpe_round": 1, "collapsed": False, "abc_distance": 1.0, "overall_accept": True}]
+        rs = _round_summary(
+            rows, 1, training_duration_s=1.0, simulation_duration_s=2.0,
+            final_train_loss=0.42, final_val_loss=0.55, used_fallback_loss=True,
+        )
+        assert rs["final_train_loss"] == pytest.approx(0.42)
+        assert rs["final_val_loss"] == pytest.approx(0.55)
+        assert rs["used_fallback_loss"] is True
+
+
+class TestRunRoundPayloadsOrdering:
+    """_run_round_payloads must restore submission order regardless of the
+    order ProcessPoolExecutor.as_completed() happens to yield results in --
+    row order feeds theta/x tensors directly, so an unstable order makes
+    training non-reproducible even with a fixed torch seed."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_if_no_sbi(self):
+        pytest.importorskip("sbi", reason="sbi not installed; skipping ordering tests")
+
+    def test_single_worker_preserves_order(self, monkeypatch):
+        import run_snpe_calibration as snpe_mod
+        from run_snpe_calibration import _run_round_payloads
+
+        payloads = [{"particle_id": i} for i in [3, 1, 2]]
+        monkeypatch.setattr(
+            snpe_mod, "_run_snpe_particle_worker",
+            lambda p: {"particle_id": p["particle_id"]},
+        )
+        rows = _run_round_payloads(payloads, workers=1)
+        assert [r["particle_id"] for r in rows] == [3, 1, 2]
+
+    def test_multi_worker_restores_submission_order_despite_reversed_completion(
+        self, monkeypatch
+    ):
+        import run_snpe_calibration as snpe_mod
+        from run_snpe_calibration import _run_round_payloads
+
+        payloads = [{"particle_id": i} for i in range(6)]
+        monkeypatch.setattr(snpe_mod, "_run_snpe_particle_worker", _reversed_completion_worker)
+        rows = _run_round_payloads(payloads, workers=3)
+        assert [r["particle_id"] for r in rows] == list(range(6))
+
+    def test_string_particle_ids_do_not_crash_and_preserve_order(self, monkeypatch):
+        """The final-posterior-evaluation call site uses string ids like
+        "post_10" -- these must not crash a particle_id-based sort key and
+        must still come back in submission order."""
+        import run_snpe_calibration as snpe_mod
+        from run_snpe_calibration import _run_round_payloads
+
+        payloads = [{"particle_id": f"post_{i}"} for i in [10, 2, 1]]
+        monkeypatch.setattr(snpe_mod, "_run_snpe_particle_worker", _identity_worker)
+        rows = _run_round_payloads(payloads, workers=2)
+        assert [r["particle_id"] for r in rows] == ["post_10", "post_2", "post_1"]
+
+
+# ---------------------------------------------------------------------------
 # 7. Worker schema test (no model — exercises error-path only)
 # ---------------------------------------------------------------------------
 
@@ -630,6 +857,22 @@ class TestParseArgs:
         assert args.soft_aids_gate is False
 
 
+class TestForceFirstRoundLossCli:
+    @pytest.fixture(autouse=True)
+    def _skip_if_no_sbi(self):
+        pytest.importorskip("sbi", reason="sbi not installed; skipping parse_args tests")
+
+    def test_default_is_false(self):
+        from run_snpe_calibration import parse_args
+        args = parse_args([])
+        assert args.force_first_round_loss is False
+
+    def test_flag_parses_to_true(self):
+        from run_snpe_calibration import parse_args
+        args = parse_args(["--force-first-round-loss"])
+        assert args.force_first_round_loss is True
+
+
 # ---------------------------------------------------------------------------
 # 9. LHS --store-timeseries patch
 # ---------------------------------------------------------------------------
@@ -655,7 +898,14 @@ class TestLhsStoreTimeseries:
 
 @pytest.mark.slow
 class TestSnpeSmokeRun:
-    """Full SNPE smoke test: 1 round, small bootstrap, verifies output files exist.
+    """Full SNPE smoke test: 2 rounds, small bootstrap, verifies output files exist.
+
+    Bootstrap/round-particle counts are chosen to exceed the `>= 10 usable
+    particles` training gate in run_snpe_calibration() so that round 1 (whose
+    proposals come from the round-0 posterior, not the prior) actually
+    exercises the proposal-corrected training path this fix targets --
+    at 1 round with only a handful of particles the training branch was
+    silently skipped and this test would pass without ever training.
 
     Requires:
       - sbi installed
@@ -674,7 +924,7 @@ class TestSnpeSmokeRun:
         from run_snpe_calibration import parse_args, run_snpe_calibration
 
         calib_space_path = ROOT / "configs" / "calib_space.json"
-        config_path = ROOT / "model_final.json"
+        config_path = ROOT / "configs" / "V13.22_20260604_nearfit_rank001_basecase.json"
         if not calib_space_path.exists() or not config_path.exists():
             pytest.skip("Production config files not present")
 
@@ -682,10 +932,10 @@ class TestSnpeSmokeRun:
             "--config", str(config_path),
             "--calib-space", str(calib_space_path),
             "--output-dir", str(tmp_path),
-            "--bootstrap", "8",
-            "--rounds", "1",
-            "--round-particles", "4",
-            "--posterior-samples", "8",
+            "--bootstrap", "12",
+            "--rounds", "2",
+            "--round-particles", "12",
+            "--posterior-samples", "16",
             "--final-samples", "6",
             "--workers", "1",
             "--top-n", "2",
@@ -722,5 +972,121 @@ class TestSnpeSmokeRun:
         with open(meta_files[0]) as f:
             meta = json.load(f)
         assert meta["density_estimator"] == "maf"
-        assert meta["bootstrap"] == 8
-        assert meta["rounds"] == 1
+        assert meta["bootstrap"] == 12
+        assert meta["rounds"] == 2
+        assert meta["proposal_correction"] is True
+
+        # Round summary should carry the new loss/fallback diagnostics.
+        round_summary_df = pd.read_csv(round_files[0])
+        for col in ("final_train_loss", "final_val_loss", "used_fallback_loss"):
+            assert col in round_summary_df.columns
+
+    def test_smoke_run_posterior_samples_non_empty(self, tmp_path):
+        """Directly falsifies the previously-logged "zero posterior samples
+        after round 0" symptom: with the proposal correction restored, a
+        2-round run over the >=10-particle training gate should still be
+        able to train and produce final posterior samples."""
+        from run_snpe_calibration import parse_args, run_snpe_calibration
+
+        calib_space_path = ROOT / "configs" / "calib_space.json"
+        config_path = ROOT / "configs" / "V13.22_20260604_nearfit_rank001_basecase.json"
+        if not calib_space_path.exists() or not config_path.exists():
+            pytest.skip("Production config files not present")
+
+        args = parse_args([
+            "--config", str(config_path),
+            "--calib-space", str(calib_space_path),
+            "--output-dir", str(tmp_path),
+            "--bootstrap", "12",
+            "--rounds", "2",
+            "--round-particles", "12",
+            "--posterior-samples", "16",
+            "--final-samples", "8",
+            "--workers", "1",
+            "--top-n", "2",
+        ])
+        run_snpe_calibration(args)
+
+        import pandas as pd
+
+        post_files = list(tmp_path.glob("snpe_posterior_samples_*.csv"))
+        assert post_files, (
+            "No posterior samples CSV written -- consistent with the "
+            "'zero posterior samples after round 0' regression this fix targets."
+        )
+        post_df = pd.read_csv(post_files[0])
+        assert len(post_df) > 0, "Posterior samples CSV is empty"
+
+
+class TestTrainRoundWithFallback:
+    """Regression tests for a fallback-retry bug found by adversarial review:
+    when the proposal-corrected _train_snpe() call fails after its
+    append_simulations() already succeeded, the retry must pass
+    skip_append=True or that round's simulations get silently appended
+    twice into sbi's accumulated dataset, double-weighting them in every
+    subsequent round's training with no error or log line to indicate it.
+
+    These exercise _train_round_with_fallback directly (extracted from the
+    main run loop specifically so this retry logic is unit-testable without
+    depending on a full simulation run reaching round >= 1 with >= 10 usable
+    particles -- a precondition that turned out to be too fragile to build a
+    reliable integration test on top of).
+    """
+
+    def test_success_on_first_attempt_no_retry(self, monkeypatch):
+        import run_snpe_calibration as snpe_mod
+
+        calls: list[bool] = []
+
+        def fake_train_snpe(inference, theta, x, proposal, round_num, **kwargs):
+            calls.append(kwargs.get("skip_append", False))
+            return "density_estimator_stub"
+
+        monkeypatch.setattr(snpe_mod, "_train_snpe", fake_train_snpe)
+
+        result, used_fallback = snpe_mod._train_round_with_fallback(
+            inference=object(), theta=None, x=None, proposal=None,
+            round_num=1, force_first_round_loss=False,
+        )
+        assert result == "density_estimator_stub"
+        assert used_fallback is False
+        assert calls == [False]
+
+    def test_retry_after_failure_passes_skip_append_true(self, monkeypatch):
+        import run_snpe_calibration as snpe_mod
+
+        calls: list[bool] = []
+
+        def fake_train_snpe(inference, theta, x, proposal, round_num, **kwargs):
+            calls.append(kwargs.get("skip_append", False))
+            if len(calls) == 1:
+                raise RuntimeError("forced failure for regression test")
+            return "density_estimator_stub"
+
+        monkeypatch.setattr(snpe_mod, "_train_snpe", fake_train_snpe)
+
+        result, used_fallback = snpe_mod._train_round_with_fallback(
+            inference=object(), theta=None, x=None, proposal=None,
+            round_num=1, force_first_round_loss=False,
+        )
+        assert result == "density_estimator_stub"
+        assert used_fallback is True
+        assert calls == [False, True], (
+            "Retry must pass skip_append=True to avoid double-appending "
+            "this round's simulations into sbi's accumulated dataset"
+        )
+
+    def test_both_attempts_fail_returns_none_no_crash(self, monkeypatch):
+        import run_snpe_calibration as snpe_mod
+
+        def fake_train_snpe(inference, theta, x, proposal, round_num, **kwargs):
+            raise RuntimeError("forced failure for regression test")
+
+        monkeypatch.setattr(snpe_mod, "_train_snpe", fake_train_snpe)
+
+        result, used_fallback = snpe_mod._train_round_with_fallback(
+            inference=object(), theta=None, x=None, proposal=None,
+            round_num=1, force_first_round_loss=False,
+        )
+        assert result is None
+        assert used_fallback is False

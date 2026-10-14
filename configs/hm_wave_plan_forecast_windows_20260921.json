@@ -1,0 +1,104 @@
+{
+  "version": "1.0",
+  "status": "READY_FOR_USER_LAUNCH",
+  "analysis_status": "forecast_relevant_joint_history_matching_not_final_calibration",
+  "expected_parameter_count": 33,
+  "question": "Can the unordered-orientation model jointly reproduce mature MSM HIV-diagnosis and AIDS-diagnosis anchors, emphasizing the 2000-2015 treatment era and the post-2015 forecasting state?",
+  "success_criterion": "At least one fresh-seed primary confirmation pass under the frozen 13-target rule. Sensitivity-only passes are reported but never promoted.",
+  "decisions_recorded": {
+    "orientation": "Heterosexual_Male remains fixed at 1.0; orient_female and orient_msm independently vary over 0.2-5.0 with no behavioral ordering constraint.",
+    "hiv_window": "Tier-1 SHM MSM HIV diagnoses are eligible for primary calibration from 1996 onward; 1996 is retained as an early anchor.",
+    "aids_window": "Mature Tier-1 RIVM/SHM MSM AIDS diagnoses are primary from 2000 onward. Pre-2000 AIDS observations remain visible as cross-validation/structural diagnostics because they come from the older voluntary Health Inspectorate registry and have an uncertain mapping to the model proxy.",
+    "forecast_windows": "The search objective gives equal group treatment to diagnoses 1996-2015, AIDS 2000-2015, diagnoses after 2015 and AIDS after 2015. The 2015 seam is counted once, in the earlier window.",
+    "model_discrepancy": "Primary target-relative discrepancy sigma is 10% of the observed target. A 20% sensitivity is reported only and never changes primary acceptance.",
+    "activity_interaction": "No orientation-by-activity interaction is added in this run. Existing activity-stratified outputs remain passive structural diagnostics."
+  },
+  "limitations": [
+    "The AIDS observation function is an assumption: aids_first_diagnosis_proxy_msm combines diagnosed chronic-to-AIDS progression and HIV diagnosis while already in AIDS.",
+    "V_obs is underivable for mature RIVM MSM AIDS counts; zero V_obs biases toward over-exclusion.",
+    "The 10% discrepancy is a declared assumption, not an empirically estimated mapping-error distribution.",
+    "The four equal objective groups are a search-ranking heuristic only; primary acceptance remains target-level maximum implausibility.",
+    "A bounded 2,048-vector search in 33 dimensions is not proof of global feasibility or impossibility.",
+    "No output may be called a posterior, credible interval or final calibration ensemble."
+  ],
+  "discrepancy": {
+    "method": "relative_to_target",
+    "multiplier": 0.1,
+    "rationale": "Preserves the predeclared primary allowance used before the target-window decision; not tuned to obtain survivors."
+  },
+  "sensitivity_discrepancies": [
+    {
+      "label": "target_relative_20pct",
+      "method": "relative_to_target",
+      "multiplier": 0.2,
+      "rationale": "Structural mapping sensitivity only; never promotes a candidate into the primary accepted set."
+    }
+  ],
+  "scored_years": {
+    "shm_new_diagnoses_msm": [
+      1996,
+      2000,
+      2004,
+      2010,
+      2015,
+      2019,
+      2024
+    ],
+    "rivm_aids_msm": [
+      2000,
+      2005,
+      2010,
+      2015,
+      2019,
+      2022
+    ]
+  },
+  "cross_validation_years": {
+    "rivm_aids_msm": [
+      1990,
+      1995
+    ]
+  },
+  "objective_groups": {
+    "diagnoses_1996_2015": [
+      "shm_new_diagnoses_msm@1996",
+      "shm_new_diagnoses_msm@2000",
+      "shm_new_diagnoses_msm@2004",
+      "shm_new_diagnoses_msm@2010",
+      "shm_new_diagnoses_msm@2015"
+    ],
+    "aids_2000_2015": [
+      "rivm_aids_msm@2000",
+      "rivm_aids_msm@2005",
+      "rivm_aids_msm@2010",
+      "rivm_aids_msm@2015"
+    ],
+    "diagnoses_after_2015": [
+      "shm_new_diagnoses_msm@2019",
+      "shm_new_diagnoses_msm@2024"
+    ],
+    "aids_after_2015": [
+      "rivm_aids_msm@2019",
+      "rivm_aids_msm@2022"
+    ]
+  },
+  "run_settings": {
+    "deterministic_calibration": false,
+    "replicates_per_design_point": 5,
+    "simulation_start_year": 1975,
+    "scoring_start_year": 1996,
+    "v_ensemble_mode": "predictive_local",
+    "discovery_vectors": 2048,
+    "discovery_trajectories": 10240,
+    "workers_recommended": 8,
+    "note": "Fresh common-random-number seeds 200000-200004 are shared across candidates. Confirmation uses separate seeds 200100-200119."
+  },
+  "post_run_report_required": [
+    "primary and 20% sensitivity pass counts",
+    "binding targets and signed conflicts by forecasting window",
+    "pre-2000 RIVM MSM AIDS cross-validation residuals",
+    "orientation boundary diagnostics",
+    "activity-stratified passive diagnostics",
+    "variance-contract stability on fresh confirmation seeds"
+  ]
+}

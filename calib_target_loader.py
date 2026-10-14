@@ -20,8 +20,14 @@ PRIMARY_USES = {"primary", "secondary"}
 
 
 def default_disease_workbook_path(root: str | Path | None = None) -> Path:
+    """Path to the disease targets workbook.
+
+    Post-reorganization location is data/raw/validation/, a sibling of the
+    model directory rather than a subdirectory of it (the old path was
+    root/"Validation "/DiseaseData.xlsx" under the pre-reorg tree).
+    """
     base = Path(root) if root is not None else Path(__file__).resolve().parent
-    return base / "Validation " / "DiseaseData.xlsx"
+    return base.parent / "data" / "raw" / "validation" / "DiseaseData.xlsx"
 
 
 def default_target_mapping_path(root: str | Path | None = None) -> Path:

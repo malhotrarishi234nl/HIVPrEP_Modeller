@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "design": "stage_structured_diagnosis_focused_calibration_20260922",
+  "status": "FROZEN",
+  "brief": "TASK_BRIEF_STAGE_STRUCTURED_DIAGNOSIS_FOCUSED_CALIBRATION_2026-09-22.md",
+  "scientific_status": "structural investigation; not production calibration and not an HTA baseline",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_confirmation": "outputs/calibration/coupled_forecast_windows_20260921_confirmation",
+  "source_confirmation_manifest_sha256": "d5195301feba73e2fb632fb76a603bd967f22b5d72ac13129db6668c6013c757",
+  "prior_audit": "outputs/calibration/stage_structured_diagnosis_audit_20260922",
+  "prior_audit_manifest_sha256": "2182ac315f0d63f8d4b797e4378d3694e1a97cb112a7f03e192bc0b4f95f336b",
+  "prior_audit_profile_summary_sha256": "8509aeb7621df51ff3aeeb48f7d66376cc46f243f7bf5ca41f0122e296bbfbfb",
+  "candidate_ids": [1326, 1788],
+  "symptom_start_year": 1985,
+  "stage_b_routine_hazard_scale": 1.0,
+  "focused_parameters": [
+    {"name": "msm_diag_mult_1996", "anchor_year": "1996", "lower": 0.0, "upper": 2.0,
+     "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.schedule.value.1996"},
+    {"name": "msm_diag_mult_2004", "anchor_year": "2004", "lower": 0.0, "upper": 2.0,
+     "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.schedule.value.2004"},
+    {"name": "msm_diag_mult_2019", "anchor_year": "2019", "lower": 0.0, "upper": 2.0,
+     "config_path": "transmission_model.disease.diagnosis.msm_relative_diagnosis.schedule.value.2019"},
+    {"name": "aids_symptom_annual_probability", "anchor_year": null, "lower": 0.0, "upper": 0.5,
+     "config_path": "transmission_model.disease.diagnosis.stage_structured_diagnosis.aids_symptom_annual_probability"}
+  ],
+  "stage_a": {
+    "rho": [0.70, 0.75, 0.80, 0.85, 0.90, 0.95],
+    "p_symptom_aids": [0.00, 0.10, 0.20, 0.30, 0.40],
+    "seeds": [201010, 201011, 201012, 201013, 201014],
+    "trajectory_budget": 300
+  },
+  "stage_b": {
+    "vectors_per_backbone": 128,
+    "warm_proposals": [
+      {"id": "identity", "rho": 1.0, "p_symptom_aids": 0.0,
+       "note": "identity structural point: candidate-injected multipliers, no symptom hazard"},
+      {"id": "prior_rho1p00_aids0p35", "rho": 1.0, "p_symptom_aids": 0.35,
+       "note": "candidate-injected multipliers with the prior audit's AIDS=0.35 symptom probability"},
+      {"id": "prior_rho0p80_aids0p35", "rho": 0.8, "p_symptom_aids": 0.35,
+       "note": "prior audit rho=0.80/AIDS=0.35 effective MSM routine path, represented at the three multiplier anchors with rho=1"}
+    ],
+    "lhs_rng_seed": 201060,
+    "lhs_maximin_candidates": 2000,
+    "seeds": [201020, 201021, 201022, 201023, 201024],
+    "trajectory_budget": 1280
+  },
+  "stage_c": {
+    "max_tuples": 10,
+    "backbone_comparators_within_max": true,
+    "seeds": [201030, 201031, 201032, 201033, 201034, 201035, 201036, 201037, 201038, 201039,
+              201040, 201041, 201042, 201043, 201044, 201045, 201046, 201047, 201048, 201049],
+    "max_trajectory_budget": 200,
+    "trade_off_symptom_bins": [0.0, 0.1, 0.25, 0.5]
+  },
+  "smoke": {
+    "seeds": [201000],
+    "trajectories": 6,
+    "counts_toward_budget": false
+  },
+  "total_trajectory_budget_max": 1780,
+  "time": {
+    "hard_cap_seconds": 4500,
+    "stop_dispatch_seconds": 4320,
+    "cap_deviation_from_brief": "User decision 2026-09-22: the brief's 45/42-minute cap assumed ~8 s per trajectory; an interrupted pre-run measured 16.1-16.5 s per trajectory at 8 workers (~60 min for 1,780). Cap raised to 75 min hard / 72 min stop (same 3-minute margin) before any retained result. Budgets, seeds, targets and design are unchanged.",
+    "clock": "cumulative active simulation-dispatch time from the first Stage-A dispatch, summed across invocations; review pauses between stages do not count",
+    "prior_seconds_per_trajectory": 16.3,
+    "workers_max": 8
+  },
+  "annual_start_year": 1975,
+  "annual_end_year": 2025,
+  "full_output_start_year": 1996,
+  "boundary_check_years": [1975, 1987],
+  "ledger_first_year": 2015,
+  "ledger_last_year": 2024,
+  "target_years": [1996, 2000, 2004, 2010, 2015, 2019, 2024],
+  "primary_discrepancy": 0.10,
+  "sensitivity_discrepancy": 0.20,
+  "implausibility_cutoff": 3.0,
+  "duplicate_effective_path_tolerance": 1e-12,
+  "decision_thresholds": {
+    "material_2024_error_reduction_fraction": 0.25,
+    "min_improved_paired_seeds_2024": 15,
+    "material_aids_worsening_fraction_of_target": 0.10,
+    "earlier_diagnosis_group_rms_tolerance": 1.10,
+    "material_epidemic_change_fraction": 0.10,
+    "boundary_occupancy_fraction": 0.025,
+    "neighbourhood_radius_normalized": 0.35,
+    "neighbourhood_min_neighbours": 2,
+    "neighbourhood_min_share_same_behaviour": 0.5,
+    "stage_a_smoothness_se_multiple": 3.0,
+    "late_stage_context_upper_bound": 0.321,
+    "late_stage_context_numerator": 238,
+    "late_stage_context_denominator": 742,
+    "pooled_clinical_aids_context_numerator": 208,
+    "pooled_clinical_aids_context_denominator": 1301
+  }
+}

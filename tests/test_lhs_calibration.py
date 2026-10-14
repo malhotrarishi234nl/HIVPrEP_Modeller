@@ -376,8 +376,8 @@ def test_generate_lhs_draws_neighboring_seeds_do_not_reuse_retry_batches():
     assert {signature(draw) for draw in draws_a}.isdisjoint({signature(draw) for draw in draws_b})
 
 
-def test_inject_params_rejects_invalid_orientation_ordering():
-    base_config = load_json(ROOT / "1980_test.json")
+def test_inject_params_allows_orientation_multipliers_on_either_side_of_reference():
+    base_config = load_json(ROOT / "configs" / "1980_test.json")
     calib_space = load_json(ROOT / "configs" / "calib_space.json")
     vector = {
         "orient_female": 1.2,
@@ -393,8 +393,14 @@ def test_inject_params_rejects_invalid_orientation_ordering():
         "contact_high": 50.0,
     }
 
-    with pytest.raises(ValueError, match="orient_female must be <="):
-        inject_params(base_config, vector, calib_space)
+    injected = inject_params(base_config, vector, calib_space)
+
+    multipliers = injected["transmission_model"]["groups"]["advanced"][
+        "orientation_contact_multipliers"
+    ]["value"]
+    assert multipliers["Female"] == pytest.approx(1.2)
+    assert multipliers["Heterosexual_Male"] == pytest.approx(1.0)
+    assert multipliers["MSM"] == pytest.approx(0.9)
 
 
 def test_stage_filter_selects_diagnosis_parameters_only():

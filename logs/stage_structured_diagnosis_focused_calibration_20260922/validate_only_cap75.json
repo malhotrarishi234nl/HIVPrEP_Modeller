@@ -1,0 +1,334 @@
+{
+  "ok": true,
+  "design": "stage_structured_diagnosis_focused_calibration_20260922",
+  "candidate_ids": [
+    1326,
+    1788
+  ],
+  "stage_a_tuples": 60,
+  "stage_b_tuples": 256,
+  "budget": [
+    {
+      "stage": "stage_a",
+      "trajectories": 300,
+      "approx_minutes_at_8_workers": 10.2
+    },
+    {
+      "stage": "stage_b",
+      "trajectories": 1280,
+      "approx_minutes_at_8_workers": 43.5
+    },
+    {
+      "stage": "stage_c",
+      "trajectories": 200,
+      "approx_minutes_at_8_workers": 6.8
+    },
+    {
+      "stage": "total",
+      "trajectories": 1780,
+      "approx_minutes_at_8_workers": 60.4
+    }
+  ],
+  "seed_preflight": {
+    "reserved": {
+      "stage_a": [
+        201010,
+        201011,
+        201012,
+        201013,
+        201014
+      ],
+      "stage_b": [
+        201020,
+        201021,
+        201022,
+        201023,
+        201024
+      ],
+      "stage_c": [
+        201030,
+        201031,
+        201032,
+        201033,
+        201034,
+        201035,
+        201036,
+        201037,
+        201038,
+        201039,
+        201040,
+        201041,
+        201042,
+        201043,
+        201044,
+        201045,
+        201046,
+        201047,
+        201048,
+        201049
+      ],
+      "smoke": [
+        201000
+      ],
+      "lhs_rng": [
+        201060
+      ]
+    },
+    "overlap": [],
+    "n_recorded_seeds": 2062,
+    "n_manifests": 317,
+    "n_configs": 61,
+    "n_own_skipped": 0,
+    "limitation": "Only seeds recorded in outputs/**/manifest.json, configs/*.json and the declared foreign ranges are visible to the scan."
+  },
+  "warm_proposals": [
+    {
+      "id": "identity",
+      "rho": 1.0,
+      "p_symptom_aids": 0.0,
+      "vector": {
+        "msm_diag_mult_1996": 0.7394605762615105,
+        "msm_diag_mult_2004": 0.48367556760008035,
+        "msm_diag_mult_2019": 0.695712920282959,
+        "aids_symptom_annual_probability": 0.0
+      },
+      "valid": true,
+      "rejection_reasons": [],
+      "max_abs_path_deviation_1996_2025": 0.0,
+      "max_abs_path_deviation_before_1996": 0.0,
+      "anchor_path_deviation": {
+        "1996": 0.0,
+        "2004": 0.0,
+        "2019": 0.0
+      },
+      "backbone": 1326
+    },
+    {
+      "id": "prior_rho1p00_aids0p35",
+      "rho": 1.0,
+      "p_symptom_aids": 0.35,
+      "vector": {
+        "msm_diag_mult_1996": 0.7394605762615105,
+        "msm_diag_mult_2004": 0.48367556760008035,
+        "msm_diag_mult_2019": 0.695712920282959,
+        "aids_symptom_annual_probability": 0.35
+      },
+      "valid": true,
+      "rejection_reasons": [],
+      "max_abs_path_deviation_1996_2025": 0.0,
+      "max_abs_path_deviation_before_1996": 0.0,
+      "anchor_path_deviation": {
+        "1996": 0.0,
+        "2004": 0.0,
+        "2019": 0.0
+      },
+      "backbone": 1326
+    },
+    {
+      "id": "prior_rho0p80_aids0p35",
+      "rho": 0.8,
+      "p_symptom_aids": 0.35,
+      "vector": {
+        "msm_diag_mult_1996": 0.6088068819676292,
+        "msm_diag_mult_2004": 0.39530231731064025,
+        "msm_diag_mult_2019": 0.5794243968182001,
+        "aids_symptom_annual_probability": 0.35
+      },
+      "valid": true,
+      "rejection_reasons": [],
+      "max_abs_path_deviation_1996_2025": 0.0005998457945192159,
+      "max_abs_path_deviation_before_1996": 0.0581436210888841,
+      "anchor_path_deviation": {
+        "1996": 0.0,
+        "2004": 0.0,
+        "2019": 0.0
+      },
+      "backbone": 1326
+    },
+    {
+      "id": "identity",
+      "rho": 1.0,
+      "p_symptom_aids": 0.0,
+      "vector": {
+        "msm_diag_mult_1996": 0.7394605762615105,
+        "msm_diag_mult_2004": 0.48367556760008035,
+        "msm_diag_mult_2019": 0.695712920282959,
+        "aids_symptom_annual_probability": 0.0
+      },
+      "valid": true,
+      "rejection_reasons": [],
+      "max_abs_path_deviation_1996_2025": 0.0,
+      "max_abs_path_deviation_before_1996": 0.0,
+      "anchor_path_deviation": {
+        "1996": 0.0,
+        "2004": 0.0,
+        "2019": 0.0
+      },
+      "backbone": 1788
+    },
+    {
+      "id": "prior_rho1p00_aids0p35",
+      "rho": 1.0,
+      "p_symptom_aids": 0.35,
+      "vector": {
+        "msm_diag_mult_1996": 0.7394605762615105,
+        "msm_diag_mult_2004": 0.48367556760008035,
+        "msm_diag_mult_2019": 0.695712920282959,
+        "aids_symptom_annual_probability": 0.35
+      },
+      "valid": true,
+      "rejection_reasons": [],
+      "max_abs_path_deviation_1996_2025": 0.0,
+      "max_abs_path_deviation_before_1996": 0.0,
+      "anchor_path_deviation": {
+        "1996": 0.0,
+        "2004": 0.0,
+        "2019": 0.0
+      },
+      "backbone": 1788
+    },
+    {
+      "id": "prior_rho0p80_aids0p35",
+      "rho": 0.8,
+      "p_symptom_aids": 0.35,
+      "vector": {
+        "msm_diag_mult_1996": 0.6088068819676292,
+        "msm_diag_mult_2004": 0.39530231731064025,
+        "msm_diag_mult_2019": 0.5794243968182001,
+        "aids_symptom_annual_probability": 0.35
+      },
+      "valid": true,
+      "rejection_reasons": [],
+      "max_abs_path_deviation_1996_2025": 0.0005998457945192159,
+      "max_abs_path_deviation_before_1996": 0.0581436210888841,
+      "anchor_path_deviation": {
+        "1996": 0.0,
+        "2004": 0.0,
+        "2019": 0.0
+      },
+      "backbone": 1788
+    }
+  ],
+  "checks": {
+    "base_schedule_unchanged_byte_for_byte": true,
+    "only_focused_paths_differ": true,
+    "stage_b_rho_fixed_at_one": true,
+    "symptom_boundary_declared_everywhere": true,
+    "tuple_ids_and_configs_distinct": true,
+    "stage_b_matches_production_injection": true,
+    "duplicate_routine_paths": {
+      "stage_a": [
+        [
+          "A_1326_rho0.70_aids0.00",
+          "A_1326_rho0.70_aids0.10",
+          "A_1326_rho0.70_aids0.20",
+          "A_1326_rho0.70_aids0.30",
+          "A_1326_rho0.70_aids0.40"
+        ],
+        [
+          "A_1326_rho0.75_aids0.00",
+          "A_1326_rho0.75_aids0.10",
+          "A_1326_rho0.75_aids0.20",
+          "A_1326_rho0.75_aids0.30",
+          "A_1326_rho0.75_aids0.40"
+        ],
+        [
+          "A_1326_rho0.80_aids0.00",
+          "A_1326_rho0.80_aids0.10",
+          "A_1326_rho0.80_aids0.20",
+          "A_1326_rho0.80_aids0.30",
+          "A_1326_rho0.80_aids0.40"
+        ],
+        [
+          "A_1326_rho0.85_aids0.00",
+          "A_1326_rho0.85_aids0.10",
+          "A_1326_rho0.85_aids0.20",
+          "A_1326_rho0.85_aids0.30",
+          "A_1326_rho0.85_aids0.40"
+        ],
+        [
+          "A_1326_rho0.90_aids0.00",
+          "A_1326_rho0.90_aids0.10",
+          "A_1326_rho0.90_aids0.20",
+          "A_1326_rho0.90_aids0.30",
+          "A_1326_rho0.90_aids0.40"
+        ],
+        [
+          "A_1326_rho0.95_aids0.00",
+          "A_1326_rho0.95_aids0.10",
+          "A_1326_rho0.95_aids0.20",
+          "A_1326_rho0.95_aids0.30",
+          "A_1326_rho0.95_aids0.40"
+        ],
+        [
+          "A_1788_rho0.70_aids0.00",
+          "A_1788_rho0.70_aids0.10",
+          "A_1788_rho0.70_aids0.20",
+          "A_1788_rho0.70_aids0.30",
+          "A_1788_rho0.70_aids0.40"
+        ],
+        [
+          "A_1788_rho0.75_aids0.00",
+          "A_1788_rho0.75_aids0.10",
+          "A_1788_rho0.75_aids0.20",
+          "A_1788_rho0.75_aids0.30",
+          "A_1788_rho0.75_aids0.40"
+        ],
+        [
+          "A_1788_rho0.80_aids0.00",
+          "A_1788_rho0.80_aids0.10",
+          "A_1788_rho0.80_aids0.20",
+          "A_1788_rho0.80_aids0.30",
+          "A_1788_rho0.80_aids0.40"
+        ],
+        [
+          "A_1788_rho0.85_aids0.00",
+          "A_1788_rho0.85_aids0.10",
+          "A_1788_rho0.85_aids0.20",
+          "A_1788_rho0.85_aids0.30",
+          "A_1788_rho0.85_aids0.40"
+        ],
+        [
+          "A_1788_rho0.90_aids0.00",
+          "A_1788_rho0.90_aids0.10",
+          "A_1788_rho0.90_aids0.20",
+          "A_1788_rho0.90_aids0.30",
+          "A_1788_rho0.90_aids0.40"
+        ],
+        [
+          "A_1788_rho0.95_aids0.00",
+          "A_1788_rho0.95_aids0.10",
+          "A_1788_rho0.95_aids0.20",
+          "A_1788_rho0.95_aids0.30",
+          "A_1788_rho0.95_aids0.40"
+        ]
+      ],
+      "stage_b": [
+        [
+          "B_1326_v000",
+          "B_1326_v001"
+        ],
+        [
+          "B_1788_v000",
+          "B_1788_v001"
+        ]
+      ]
+    },
+    "stage_b_design_reproducible": true
+  },
+  "stage_b_origins": {
+    "maximin_lhs": 250,
+    "warm:identity": 2,
+    "warm:prior_rho0p80_aids0p35": 2,
+    "warm:prior_rho1p00_aids0p35": 2
+  },
+  "intentional_code_differences_since_source_search": [
+    "aids_observation.py",
+    "calib_extractor.py",
+    "run_v3.py"
+  ],
+  "design_sha256": "8e660ac01162bbe28826fa4944bff3fc96c97da899914ea6ea2912da77d60e35",
+  "simulations_started": 0,
+  "engines_constructed": 0,
+  "artifacts_written": 0
+}

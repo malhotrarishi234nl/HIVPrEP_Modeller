@@ -552,7 +552,7 @@ class TestMassBalance:
         """
         cfg = make_prep_enabled_config(
             eligible_orientations=["MSM"],
-            eligible_age_range={"min": "20-24", "max": "49-54"},
+            eligible_age_range={"min": "20-24", "max": "50-54"},
             uptake_rate=0.20,
             dropout_rate=0.10,
             uptake_modifier_by_activity={"Low": 0.5, "Medium": 1.0, "High": 1.5},
@@ -580,7 +580,7 @@ class TestCombinedRealisticScenario:
         """
         cfg = make_prep_enabled_config(
             eligible_orientations=["MSM"],
-            eligible_age_range={"min": "15-19", "max": "64-69"},
+            eligible_age_range={"min": "15-19", "max": "65-69"},
             uptake_rate=0.08,
             dropout_rate=0.20,
             uptake_modifier_by_activity={"Low": 0.5, "Medium": 1.0, "High": 1.5},

@@ -301,18 +301,6 @@ def _with_derived_parameters(draws: pd.DataFrame) -> pd.DataFrame:
 
 def _valid_draw_mask(draws: pd.DataFrame) -> pd.Series:
     mask = pd.Series(True, index=draws.index)
-    if "orient_female" in draws.columns:
-        mask &= draws["orient_female"] <= 1.0
-    if "orient_het_male" in draws.columns:
-        mask &= draws["orient_het_male"] >= 1.0
-    if "orient_msm" in draws.columns:
-        mask &= draws["orient_msm"] >= 1.0
-    if {"orient_female", "orient_het_male"}.issubset(draws.columns):
-        mask &= draws["orient_het_male"] >= draws["orient_female"]
-    if {"orient_het_male", "orient_msm"}.issubset(draws.columns):
-        mask &= draws["orient_msm"] >= draws["orient_het_male"]
-    if {"orient_female", "orient_msm"}.issubset(draws.columns):
-        mask &= draws["orient_msm"] >= draws["orient_female"]
     if {"contact_low", "contact_med", "contact_high"}.issubset(draws.columns):
         mask &= draws["contact_low"] < draws["contact_med"]
         mask &= draws["contact_med"] < draws["contact_high"]
@@ -376,37 +364,6 @@ def inject_params(
     """Deep-copy base config and inject one calibration parameter vector."""
     config = copy.deepcopy(base_config)
     params = parameter_by_name(calib_space)
-
-    if "orient_female" in param_vector and float(param_vector["orient_female"]) > 1.0:
-        raise ValueError(
-            "Invalid orientation multipliers: orient_female must be <= fixed heterosexual male reference 1.0"
-        )
-    if "orient_msm" in param_vector and float(param_vector["orient_msm"]) < 1.0:
-        raise ValueError(
-            "Invalid orientation multipliers: orient_msm must be >= fixed heterosexual male reference 1.0"
-        )
-    if "orient_het_male" in param_vector and float(param_vector["orient_het_male"]) < 1.0:
-        raise ValueError(
-            "Invalid orientation multipliers: orient_het_male must be >= female side-run reference 1.0"
-        )
-    if {"orient_female", "orient_msm"}.issubset(param_vector):
-        if float(param_vector["orient_msm"]) < float(param_vector["orient_female"]):
-            raise ValueError(
-                "Invalid orientation multipliers: orient_msm must be greater than or equal "
-                "to orient_female under the heterosexual-male reference calibration"
-            )
-    if {"orient_female", "orient_het_male"}.issubset(param_vector):
-        if float(param_vector["orient_het_male"]) < float(param_vector["orient_female"]):
-            raise ValueError(
-                "Invalid orientation multipliers: orient_het_male must be greater than or equal "
-                "to orient_female under the ordered-orientation diagnostic"
-            )
-    if {"orient_het_male", "orient_msm"}.issubset(param_vector):
-        if float(param_vector["orient_msm"]) < float(param_vector["orient_het_male"]):
-            raise ValueError(
-                "Invalid orientation multipliers: orient_msm must be greater than or equal "
-                "to orient_het_male under the ordered-orientation diagnostic"
-            )
 
     for name, value in param_vector.items():
         if name in {

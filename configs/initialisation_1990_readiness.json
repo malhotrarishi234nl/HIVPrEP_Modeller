@@ -1,0 +1,17 @@
+{
+  "year": 1990,
+  "timing": "start_of_year",
+  "status": "PREPARATION_ONLY_NO_OBSERVED_INITIAL_STATE",
+  "adult_population_by_age_orientation_activity": null,
+  "hiv_stock_by_stage_diagnosis_art": null,
+  "childhood_population": null,
+  "residence_phase_distribution": null,
+  "calendar_and_seed_policy": null,
+  "uncertainty_and_source_provenance": null,
+  "entry_schema": {
+    "source": "Name the actual evidence or explicitly labelled assumption",
+    "definition": "Population, date, axes, units and allocation rule",
+    "quantity_type": "stock_or_initialisation_rule"
+  },
+  "warning": "The 318 MSM AIDS diagnoses in 1990 are annual events, not an initial stock. Probe tensors are model-derived sensitivity inputs, not observed populations or complete restart checkpoints."
+}

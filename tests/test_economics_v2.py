@@ -35,7 +35,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from economics import EconomicsAccumulator
+from economics import EconomicsAccumulator, QALY_COMPONENT_KEYS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2335,3 +2335,136 @@ class TestFrictionCostAgeStratified:
                 new_chronic_by_age=_by_age_zeros(),
                 new_aids_by_age=_by_age_zeros(),
             )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A-1. QALY component diagnostics
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _FixedAdverseEventAdjustment:
+    """Minimal AE double returning a known positive QALY decrement."""
+
+    def __init__(self, utility_decrement: float):
+        self.utility_decrement = utility_decrement
+
+    def compute_adjustments(self, population, step, year,
+                            prep_initiations_by_arm=None):
+        return {
+            "utility_decrement": self.utility_decrement,
+            "cost_addition": 0.0,
+        }
+
+
+class TestQalyComponentDiagnostics:
+
+    def test_all_components_reconcile_to_existing_step_and_summary_totals(self):
+        """Every health-state and event contribution is present exactly once."""
+        cfg = copy.deepcopy(_make_v2_config())
+        cfg["utility_decrements"] = {
+            "late_presenter": {
+                "value": 0.25,
+                "frequency": "once",
+                "billing_moment": "art_initiation",
+                "applies_to_stages": ["AIDS"],
+            }
+        }
+        acc = _make_accumulator(arm_name="oral_prep", hta_config=cfg)
+        acc.set_ae_module(_FixedAdverseEventAdjustment(utility_decrement=0.75))
+
+        pop = _empty_pop()
+        pop[0, 0, 0, 0, 0, 0, 0] = 100  # susceptible, no PrEP
+        pop[0, 0, 0, 0, 0, 0, 1] = 10   # susceptible, oral PrEP
+        pop[0, 0, 0, 0, 0, 0, 2] = 20   # susceptible, lenacapavir
+        pop[0, 0, 0, 0, 0, 0, 3] = 5    # susceptible, waning lenacapavir
+        pop[0, 0, 0, 1, 0, 0, 0] = 7    # acute
+        pop[0, 0, 0, 2, 1, 1, 0] = 8    # chronic, on ART
+        pop[0, 0, 0, 2, 1, 0, 0] = 9    # chronic, off ART
+        pop[0, 0, 0, 3, 1, 1, 0] = 4    # AIDS, on ART
+        pop[0, 0, 0, 3, 1, 0, 0] = 3    # AIDS, off ART
+
+        _accumulate(
+            acc,
+            step=0,
+            year=2025.0,
+            population=pop,
+            new_infections=0,
+            art_initiations_by_stage={"AIDS": 2},
+        )
+
+        expected = {
+            "susceptible_no_prep": 100 * 1.000 * STEP_FRACTION,
+            "susceptible_oral_prep": 10 * 0.990 * STEP_FRACTION,
+            "susceptible_lenacapavir": 20 * 0.995 * STEP_FRACTION,
+            "susceptible_lenacapavir_waning": 5 * 0.995 * STEP_FRACTION,
+            "hiv_acute": 7 * 0.700 * STEP_FRACTION,
+            "hiv_chronic_on_art": 8 * 0.850 * STEP_FRACTION,
+            "hiv_chronic_off_art": 9 * 0.780 * STEP_FRACTION,
+            "hiv_aids_on_art": 4 * 0.600 * STEP_FRACTION,
+            "hiv_aids_off_art": 3 * 0.400 * STEP_FRACTION,
+            "utility_decrement_art_initiation": -(2 * 0.25),
+            "utility_decrement_adverse_events": -0.75,
+        }
+
+        record = acc.get_timestep_records()[0]
+        summary = acc.get_summary()
+        assert set(expected) == set(QALY_COMPONENT_KEYS)
+        for component, value in expected.items():
+            assert record[f"step_qaly_{component}_undisc"] == pytest.approx(value)
+            assert record[f"step_qaly_{component}_disc"] == pytest.approx(value)
+            assert summary["qaly_component_breakdown_undisc"][component] == pytest.approx(value)
+            assert summary["qaly_component_breakdown_disc"][component] == pytest.approx(value)
+
+        expected_total = sum(expected.values())
+        assert record["step_qalys_undisc"] == pytest.approx(expected_total)
+        assert record["step_qalys_disc"] == pytest.approx(expected_total)
+        assert summary["total_qalys_undisc"] == pytest.approx(expected_total)
+        assert summary["total_qalys_disc"] == pytest.approx(expected_total)
+        assert sum(summary["qaly_component_breakdown_undisc"].values()) == pytest.approx(
+            summary["total_qalys_undisc"]
+        )
+        assert sum(summary["qaly_component_breakdown_disc"].values()) == pytest.approx(
+            summary["total_qalys_disc"]
+        )
+
+    def test_components_reconcile_across_steps_with_discounting(self):
+        """Discounted component totals use the same per-step factors as legacy QALYs."""
+        acc = _make_accumulator(arm_name="no_prep", freeze_year=2025.0)
+        pop = _empty_pop()
+        pop[0, 0, 0, 0, 0, 0, 0] = 100
+
+        _accumulate(acc, step=0, year=2025.0, population=pop, new_infections=0)
+        _accumulate(acc, step=1, year=2026.0, population=pop, new_infections=0)
+
+        summary = acc.get_summary()
+        expected_undisc = 2 * 100 * STEP_FRACTION
+        expected_disc = 100 * STEP_FRACTION * (1.0 + 1.0 / 1.015)
+        assert summary["qaly_component_breakdown_undisc"][
+            "susceptible_no_prep"
+        ] == pytest.approx(expected_undisc)
+        assert summary["qaly_component_breakdown_disc"][
+            "susceptible_no_prep"
+        ] == pytest.approx(expected_disc)
+        assert sum(summary["qaly_component_breakdown_undisc"].values()) == pytest.approx(
+            summary["total_qalys_undisc"]
+        )
+        assert sum(summary["qaly_component_breakdown_disc"].values()) == pytest.approx(
+            summary["total_qalys_disc"]
+        )
+
+    def test_zero_population_still_emits_complete_zero_partition(self):
+        """Stable keys prevent missing components from biasing cross-arm analysis."""
+        acc = _make_accumulator(arm_name="no_prep")
+        _accumulate(
+            acc,
+            step=0,
+            year=2025.0,
+            population=_empty_pop(),
+            new_infections=0,
+        )
+        summary = acc.get_summary()
+        assert summary["qaly_component_breakdown_disc"] == {
+            key: 0.0 for key in QALY_COMPONENT_KEYS
+        }
+        assert summary["qaly_component_breakdown_undisc"] == {
+            key: 0.0 for key in QALY_COMPONENT_KEYS
+        }

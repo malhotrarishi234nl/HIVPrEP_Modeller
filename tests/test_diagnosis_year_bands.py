@@ -52,7 +52,7 @@ _CONFIG_PATH = os.path.join(
 
 # Engine integration tests use the main run config — epidemic seeding enabled
 _MAIN_CONFIG_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "1980_test.json"
+    os.path.dirname(os.path.abspath(__file__)), "..", "configs", "1980_test.json"
 )
 
 
@@ -133,7 +133,7 @@ class TestStepwiseSchedule:
     _SCHEDULE = {"1985": 0.10, "1995": 0.25, "2010": 0.35}
 
     def setup_method(self):
-        self.ts = TimeSchedule(self._SCHEDULE, interpolation="stepwise")
+        self.ts = TimeSchedule(self._SCHEDULE, interpolation="stepwise", default_before=0.0)
 
     def test_exact_anchor_years(self):
         """T3: Rate at an anchor year equals that anchor value exactly."""
@@ -161,18 +161,18 @@ class TestLinearInterpolation:
 
     def test_midpoint_interpolates(self):
         """T6: Midpoint between two anchors returns mean of anchor values."""
-        ts = TimeSchedule({"2000": 0.10, "2010": 0.30}, interpolation="linear")
+        ts = TimeSchedule({"2000": 0.10, "2010": 0.30}, interpolation="linear", default_before=0.0)
         assert ts.get_value(2005) == pytest.approx(0.20, abs=1e-9)
 
     def test_quarter_point_interpolates(self):
         """T7: Quarter-point returns linearly interpolated value."""
-        ts = TimeSchedule({"2000": 0.00, "2020": 0.40}, interpolation="linear")
+        ts = TimeSchedule({"2000": 0.00, "2020": 0.40}, interpolation="linear", default_before=0.0)
         # 5 years into a 20-year interval → 25% of the way → 0.10
         assert ts.get_value(2005) == pytest.approx(0.10, abs=1e-9)
 
     def test_after_last_anchor_flat(self):
         """T8: After the last anchor, value is flat (no extrapolation growth)."""
-        ts = TimeSchedule({"2000": 0.10, "2010": 0.30}, interpolation="linear")
+        ts = TimeSchedule({"2000": 0.10, "2010": 0.30}, interpolation="linear", default_before=0.0)
         assert ts.get_value(2025) == pytest.approx(0.30)
 
 
@@ -185,7 +185,7 @@ class TestBeforeFirstAnchor:
 
     def test_rate_zero_before_first_anchor(self):
         """T9: TimeSchedule returns 0 for years strictly before first anchor."""
-        ts = TimeSchedule({"2000": 0.30, "2010": 0.40}, interpolation="stepwise")
+        ts = TimeSchedule({"2000": 0.30, "2010": 0.40}, interpolation="stepwise", default_before=0.0)
         assert ts.get_value(1985) == pytest.approx(0.0)
         assert ts.get_value(1999) == pytest.approx(0.0)
 
@@ -260,4 +260,4 @@ class TestInvalidInterpolation:
     def test_invalid_interpolation_raises(self):
         """T13: Unknown interpolation string raises ValueError."""
         with pytest.raises(ValueError, match="interpolation must be"):
-            TimeSchedule({"2000": 0.30}, interpolation="cubic")
+            TimeSchedule({"2000": 0.30}, interpolation="cubic", default_before=0.0)

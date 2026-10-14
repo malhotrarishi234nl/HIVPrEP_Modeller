@@ -43,7 +43,7 @@ Architecture:
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple
-from config_utils import extract_value, validate_hta_config
+from config_utils import extract_value, require_idx, validate_hta_config
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +61,30 @@ _PREP_STATE_TO_UTILITY_KEY: Dict[str, str] = {
     # V12.2: Waning users retain lena QALY weight — same pharmacological protection,
     # same perceived health state (still covered by subcutaneous depot).
     "Lenacapavir_Waning": "susceptible_lenacapavir",
+}
+
+# A-1 diagnostic contract.  These keys partition every QALY contribution made
+# by ``EconomicsAccumulator``.  Positive entries are health-state person-time;
+# utility decrements are stored as negative contributions so the component sum
+# reconciles directly to ``step_qalys_*`` and ``total_qalys_*``.
+QALY_COMPONENT_KEYS: Tuple[str, ...] = (
+    "susceptible_no_prep",
+    "susceptible_oral_prep",
+    "susceptible_lenacapavir",
+    "susceptible_lenacapavir_waning",
+    "hiv_acute",
+    "hiv_chronic_on_art",
+    "hiv_chronic_off_art",
+    "hiv_aids_on_art",
+    "hiv_aids_off_art",
+    "utility_decrement_art_initiation",
+    "utility_decrement_adverse_events",
+)
+
+_PREP_STATE_TO_QALY_COMPONENT: Dict[str, str] = {
+    "Oral_PrEP": "susceptible_oral_prep",
+    "Lenacapavir": "susceptible_lenacapavir",
+    "Lenacapavir_Waning": "susceptible_lenacapavir_waning",
 }
 
 _ART_STATUS_TO_IDX: Dict[str, int] = {
@@ -98,6 +122,9 @@ class EconomicsAccumulator:
     _cumul_costs_disc:    float            = 0.0
     _cumul_costs_undisc:  float            = 0.0
     _cost_breakdown_disc: Dict[str, float] = field(default_factory=dict)
+    _qaly_component_breakdown_disc: Dict[str, float] = field(default_factory=dict)
+    _qaly_component_breakdown_undisc: Dict[str, float] = field(default_factory=dict)
+    _last_step_qaly_components: Dict[str, float] = field(default_factory=dict)
     _prev_prep_users:     Dict[str, int]   = field(default_factory=dict)
     _ae_module:           Optional[Any]    = None
     _v2_config:           Optional[dict]   = None  # always set to hta_config after __post_init__
@@ -270,6 +297,9 @@ class EconomicsAccumulator:
             ae_cost = ae_adj.get("cost_addition", 0.0)
             # utility_decrement is a positive quantity representing QALY loss
             step_qalys -= ae_util
+            self._last_step_qaly_components[
+                "utility_decrement_adverse_events"
+            ] = -ae_util
             step_costs += ae_cost
             step_breakdown["adverse_events"] = (
                 step_breakdown.get("adverse_events", 0.0) + ae_cost
@@ -284,6 +314,16 @@ class EconomicsAccumulator:
         self._cumul_qalys_disc   += step_qalys_disc
         self._cumul_costs_undisc += step_costs
         self._cumul_costs_disc   += step_costs_disc
+
+        for component in QALY_COMPONENT_KEYS:
+            value = self._last_step_qaly_components[component]
+            self._qaly_component_breakdown_undisc[component] = (
+                self._qaly_component_breakdown_undisc.get(component, 0.0) + value
+            )
+            self._qaly_component_breakdown_disc[component] = (
+                self._qaly_component_breakdown_disc.get(component, 0.0)
+                + value * discount_health
+            )
 
         for cat, val in step_breakdown.items():
             if cat not in self._cost_breakdown_disc:
@@ -321,7 +361,7 @@ class EconomicsAccumulator:
                 self._societal_breakdown_disc[cat] += val * discount_cost
 
         # ── Record timestep ────────────────────────────────────────────────
-        self._timesteps.append({
+        timestep_record = {
             "step":                   step,
             "year":                   year,
             "step_qalys_undisc":      step_qalys,
@@ -340,7 +380,12 @@ class EconomicsAccumulator:
             "discount_factor_cost":   discount_cost,
             "total_population":       float(np.sum(population)),  # V11.7.1: denominator for per-person metrics
             "step_fraction":          step_fraction,              # V11.7.2: stored for ScenarioComparator cross-check
-        })
+        }
+        for component in QALY_COMPONENT_KEYS:
+            value = self._last_step_qaly_components[component]
+            timestep_record[f"step_qaly_{component}_undisc"] = value
+            timestep_record[f"step_qaly_{component}_disc"] = value * discount_health
+        self._timesteps.append(timestep_record)
 
     def get_summary(self) -> Dict[str, Any]:
         """
@@ -357,6 +402,9 @@ class EconomicsAccumulator:
                                                        (keys present only when costs > 0; callers
                                                         should use .get(key, 0) for optional keys)
               cost_per_qaly_disc                     — average cost per QALY (if QALYs > 0)
+              qaly_component_breakdown_disc           — discounted QALYs by A-1 component;
+                                                       components sum to total_qalys_disc
+              qaly_component_breakdown_undisc         — undiscounted equivalent
               ── Societal perspective keys (BACKLOG-20) ──────────────────────────────
               total_societal_additions_disc          — discounted productivity losses +
                                                        patient time costs (EUR). 0.0 when
@@ -382,6 +430,12 @@ class EconomicsAccumulator:
             "cumul_new_infections":  cumul_infections,
             "cumul_new_diagnoses":   cumul_diagnoses,
             "cost_breakdown_disc":   breakdown,
+            "qaly_component_breakdown_disc": (
+                dict(self._qaly_component_breakdown_disc)
+            ),
+            "qaly_component_breakdown_undisc": (
+                dict(self._qaly_component_breakdown_undisc)
+            ),
             # Societal perspective additions (BACKLOG-20)
             "total_societal_additions_disc":   self._cumul_societal_additions_disc,
             "total_societal_additions_undisc": self._cumul_societal_additions_undisc,
@@ -434,6 +488,7 @@ class EconomicsAccumulator:
         qalys     = 0.0
         costs     = 0.0
         breakdown: Dict[str, float] = {}
+        qaly_components = {key: 0.0 for key in QALY_COMPONENT_KEYS}
 
         def add_cost(category: str, amount: float) -> None:
             if amount:  # skip zero contributions — keeps breakdown sparse and correct
@@ -441,13 +496,15 @@ class EconomicsAccumulator:
 
         cfg        = self._v2_config
         utilities  = cfg["utilities"]
-        susc_idx   = self.groups.hiv_to_idx.get("Susceptible", 0)
-        no_prep_idx = self.groups.prep_to_idx.get("None", 0)
+        susc_idx   = require_idx(self.groups.hiv_to_idx, "Susceptible", "HIV state")
+        no_prep_idx = require_idx(self.groups.prep_to_idx, "None", "PrEP state")
 
         # ── 1. UTILITY: SUSCEPTIBLE (no PrEP) ─────────────────────────────
         susc_no_prep = float(np.sum(population[:, :, :, susc_idx, :, :, no_prep_idx]))
         u_susc       = extract_value(utilities.get("susceptible", {"value": 1.0}))
-        qalys += susc_no_prep * u_susc * step_fraction
+        contribution = susc_no_prep * u_susc * step_fraction
+        qaly_components["susceptible_no_prep"] = contribution
+        qalys += contribution
 
         # ── 2. UTILITY: SUSCEPTIBLE (on PrEP, by type) ────────────────────
         for prep_state, util_key in _PREP_STATE_TO_UTILITY_KEY.items():
@@ -456,19 +513,21 @@ class EconomicsAccumulator:
             prep_idx = self.groups.prep_to_idx[prep_state]
             count    = float(np.sum(population[:, :, :, susc_idx, :, :, prep_idx]))
             u_prep   = extract_value(utilities.get(util_key, {"value": 0.99}))
-            qalys   += count * u_prep * step_fraction
+            contribution = count * u_prep * step_fraction
+            qaly_components[_PREP_STATE_TO_QALY_COMPONENT[prep_state]] = contribution
+            qalys += contribution
 
         # ── 3. UTILITY: HIV+ STATES ────────────────────────────────────────
         # (stage, art_dim, utility_key)
         # art_dim=None → sum over both ART states (used for Acute where no split needed)
         hiv_util_map = [
-            ("Acute",   None, "hiv_acute"),
-            ("Chronic", 1,    "hiv_chronic_on_art"),
-            ("Chronic", 0,    "hiv_chronic_off_art"),
-            ("AIDS",    1,    "aids_on_art"),
-            ("AIDS",    0,    "aids_off_art"),
+            ("Acute",   None, "hiv_acute",              "hiv_acute"),
+            ("Chronic", 1,    "hiv_chronic_on_art",     "hiv_chronic_on_art"),
+            ("Chronic", 0,    "hiv_chronic_off_art",    "hiv_chronic_off_art"),
+            ("AIDS",    1,    "aids_on_art",             "hiv_aids_on_art"),
+            ("AIDS",    0,    "aids_off_art",            "hiv_aids_off_art"),
         ]
-        for stage, art_dim, util_key in hiv_util_map:
+        for stage, art_dim, util_key, component_key in hiv_util_map:
             if stage not in self.groups.hiv_to_idx:
                 continue
             stage_idx = self.groups.hiv_to_idx[stage]
@@ -477,7 +536,9 @@ class EconomicsAccumulator:
             else:
                 count = float(np.sum(population[:, :, :, stage_idx, :, art_dim, :]))
             u_hiv  = extract_value(utilities.get(util_key, {"value": 0.7}))
-            qalys += count * u_hiv * step_fraction
+            contribution = count * u_hiv * step_fraction
+            qaly_components[component_key] = contribution
+            qalys += contribution
 
         # ── 4. PREVENTION COSTS (arm-specific, only if not no_prep) ────────
         if self.arm_name != "no_prep":
@@ -506,6 +567,8 @@ class EconomicsAccumulator:
         )
         self._last_step_utility_decrement = utility_loss
         qalys -= utility_loss
+        qaly_components["utility_decrement_art_initiation"] = -utility_loss
+        self._last_step_qaly_components = qaly_components
 
         return qalys, costs, breakdown
 
@@ -1141,7 +1204,7 @@ class EconomicsAccumulator:
         """
         if not self._working_age_indices or population is None:
             return 1.0
-        susc_idx = self.groups.hiv_to_idx.get("Susceptible", 0)
+        susc_idx = require_idx(self.groups.hiv_to_idx, "Susceptible", "HIV state")
         hiv_plus_total = float(population[:, :, :, susc_idx + 1:, :, :, :].sum())
         if hiv_plus_total <= 0:
             return 1.0
@@ -1201,7 +1264,7 @@ class EconomicsAccumulator:
         # ── Component 1: PrEP monitoring visits ───────────────────────────────
         # oral_prep and lenacapavir arms only — no_prep has no PrEP clinic visits.
         # Change B (V12.9): independent if-blocks so oral_prep_plus_lena gets both.
-        susc_idx = self.groups.hiv_to_idx.get("Susceptible", 0)
+        susc_idx = require_idx(self.groups.hiv_to_idx, "Susceptible", "HIV state")
         if self.arm_name in ("oral_prep", "oral_prep_plus_lena"):
             visits_per_year = extract_value(
                 pt_cfg.get("oral_prep_visits_per_year", {"value": 4})

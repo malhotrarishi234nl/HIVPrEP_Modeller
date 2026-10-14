@@ -379,7 +379,16 @@ class ConfigReader:
         if "disease" not in self._cache:
             dis = self.raw.get("transmission_model", {}).get("disease", {})
             result = {}
-            for key in ("transmission", "progression", "mortality", "diagnosis"):
+            # C-1: exogenous_non_msm must be in this list. It is an allowlist, so a
+            # block that is present, well-formed and validated in the raw config is
+            # silently DISCARDED if its key is missing here -- the engine then sees
+            # no block and disables the mechanism with no error. That is the same
+            # silent-default failure mode as A-25 and C-4: a plausible default
+            # (here, "absent") standing in for a missing key. Adding a disease-level
+            # block without adding it here is a no-op that looks like a working
+            # feature. See tests/test_c1_exogenous_non_msm.py.
+            for key in ("transmission", "progression", "mortality", "diagnosis",
+                        "exogenous_non_msm"):
                 if key in dis:
                     result[key] = dis[key]
 

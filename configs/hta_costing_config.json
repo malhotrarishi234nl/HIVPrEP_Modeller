@@ -333,7 +333,7 @@
   "_costing_update_note": "Main HTA config now uses V12.17/V12.18 Popping stage-based HIV care costing: year-1 non-ART care costs charged to gross ART initiators, years-2-to-5 averages charged to continuing on-ART stock, and Dovato first-line ART. See documentation/patches/PATCH_PLAN_V12_17_POPPING_STAGE_COST_RECONCILIATION.md and documentation/patches/PATCH_PLAN_V12_18_ART_INITIATION_DISEASE_COST_ROUTING.md.",
   "adverse_events": {
     "mode": "prevalence",
-    "notes": "Base case uses prevalence mode. Oral PrEP GI/renal AE cost and disutility items were removed from the base case on 2026-05-22 because iPrEx/PROUD/IPERGAY show low severity, minimal serious drug-related toxicity, and no defensible incremental utility/cost burden beyond routine monitoring. Oral renal monitoring remains included under prevention_costs.shared.prep_renal_monitoring_oral. Lenacapavir ISR/nodule utility burden remains included.",
+    "notes": "Base case uses prevalence mode. Oral PrEP GI/renal AE cost and disutility items were removed from the base case on 2026-05-22. iPrEx reported more nausea during the first four weeks but similar serious-adverse-event rates; PROUD reported no serious adverse drug reactions, although 28 adverse-event episodes interrupted PrEP and 20/21 affected participants restarted; IPERGAY reported similar serious-adverse-event rates but higher GI (14% vs 5%) and renal (18% vs 10%) adverse-event rates with TDF/FTC. These trials support a generally manageable safety profile but do not directly establish zero incremental QALY or cost. The zero oral-PrEP AE decrement/cost is therefore a weakly supported base-case structural assumption, not an empirical finding. Oral renal monitoring remains included under prevention_costs.shared.prep_renal_monitoring_oral. Lenacapavir ISR/nodule utility burden remains included.",
     "items": [
       {
         "id": "lenacapavir_isr_ae",
@@ -455,7 +455,7 @@
         }
       }
     ],
-    "_oral_prep_ae_exclusion_note": "Removed oral_prep_initiation_renal_screen, oral_prep_gi_ae, and oral_prep_renal_ae from base-case AE items. Renal screening/monitoring is costed in prevention_costs rather than adverse_events; minor oral PrEP GI/renal toxicity is not assigned separate base-case cost or disutility."
+    "_oral_prep_ae_exclusion_note": "Removed oral_prep_initiation_renal_screen, oral_prep_gi_ae, and oral_prep_renal_ae from base-case AE items on 2026-05-22. Renal screening/monitoring is costed in prevention_costs rather than adverse_events; oral PrEP GI/renal toxicity is not assigned a separate base-case cost or disutility. Evidence: iPrEx — Grant RM et al. N Engl J Med. 2010;363:2587-2599. doi:10.1056/NEJMoa1011205, https://pubmed.ncbi.nlm.nih.gov/21091279/ (more nausea during first 4 weeks; similar serious-adverse-event rates); PROUD — McCormack S et al. Lancet. 2016;387:53-60. doi:10.1016/S0140-6736(15)00056-2, https://pubmed.ncbi.nlm.nih.gov/26364263/ (no serious adverse drug reactions; 28 interruption-causing adverse-event episodes, 20/21 restarted); IPERGAY — Molina JM et al. N Engl J Med. 2015;373:2237-2246. doi:10.1056/NEJMoa1506273, https://pubmed.ncbi.nlm.nih.gov/26624850/ (similar serious-adverse-event rates but GI 14% vs 5% and renal 18% vs 10%). Evidence status: weakly supported for assigning exactly zero incremental QALY/cost because none of these trials directly estimated that economic quantity; the zero is a base-case structural assumption."
   },
   "discounting": {
     "health_effects_rate": {

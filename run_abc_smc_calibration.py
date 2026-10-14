@@ -34,6 +34,7 @@ from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
+from scipy.special import logsumexp
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -114,11 +115,143 @@ def _parameter_bounds(parameters: Sequence[dict]) -> dict[str, tuple[float, floa
 
 
 def _bandwidth(parameters: Sequence[dict], fraction: float = 0.10) -> dict[str, float]:
-    """Gaussian perturbation kernel bandwidth as a fraction of each parameter's range."""
+    """Gaussian perturbation kernel bandwidth as a fraction of each parameter's range.
+
+    Retained as the generation-0 / fallback bandwidth scheme. Generations >= 1
+    use the adaptive, population-driven bandwidth from _weighted_bandwidth.
+    """
     return {
         p["name"]: max((float(p["max"]) - float(p["min"])) * fraction, 1e-9)
         for p in parameters
     }
+
+
+def _normalize_weights(weights: Sequence[float]) -> list[float]:
+    """Normalize weights to sum to 1.0.
+
+    Falls back to a uniform vector if the input is degenerate (empty sum,
+    negative, or non-finite) so callers never have to special-case a
+    collapsed weight set.
+    """
+    n = len(weights)
+    if n == 0:
+        return []
+    arr = np.asarray(weights, dtype=float)
+    total = arr.sum()
+    if not np.all(np.isfinite(arr)) or not np.isfinite(total) or total <= 0.0:
+        return [1.0 / n] * n
+    return list(arr / total)
+
+
+def _weighted_bandwidth(
+    population: Sequence[dict],
+    weights: Sequence[float],
+    parameters: Sequence[dict],
+    min_bandwidth_fraction: float = 1e-3,
+) -> dict[str, float]:
+    """Adaptive per-generation Gaussian kernel bandwidth (Beaumont et al. 2009 PMC).
+
+    bandwidth_d = max(sqrt(2 * weighted_variance(theta_d)), floor_d), computed
+    component-wise from the current survivor population's weighted spread.
+    floor_d guards single-particle or fully-converged populations that would
+    otherwise collapse the kernel to zero.
+    """
+    norm_weights = np.asarray(_normalize_weights(weights), dtype=float)
+    bandwidth: dict[str, float] = {}
+    for p in parameters:
+        name = p["name"]
+        floor = max((float(p["max"]) - float(p["min"])) * min_bandwidth_fraction, 1e-9)
+        if (
+            len(population) < 2
+            or norm_weights.size != len(population)
+            or name not in population[0]
+        ):
+            bandwidth[name] = floor
+            continue
+        values = np.array([float(particle[name]) for particle in population], dtype=float)
+        mean = float(np.sum(norm_weights * values))
+        variance = float(np.sum(norm_weights * (values - mean) ** 2))
+        bandwidth[name] = max(math.sqrt(2.0 * variance), floor)
+    return bandwidth
+
+
+def _log_mixture_proposal_density(
+    candidates: Sequence[dict],
+    prev_population: Sequence[dict],
+    prev_weights: Sequence[float],
+    bandwidth: dict[str, float],
+    free_names: Sequence[str],
+) -> np.ndarray:
+    """log sum_j prev_weights[j] * K_t(candidate_i | prev_population[j]) per candidate.
+
+    K_t is a product of independent Normal(0, bandwidth[d]^2) densities over
+    free_names (a diagonal Gaussian perturbation kernel).
+    """
+    if not prev_population or not candidates:
+        return np.array([], dtype=float)
+    cand_arr = np.array(
+        [[float(c[name]) for name in free_names] for c in candidates], dtype=float
+    )
+    prev_arr = np.array(
+        [[float(p[name]) for name in free_names] for p in prev_population], dtype=float
+    )
+    bw = np.array(
+        [max(float(bandwidth.get(name, 1e-9)), 1e-9) for name in free_names], dtype=float
+    )
+
+    # (n_cand, 1, D) - (1, n_prev, D) -> (n_cand, n_prev, D)
+    diff = cand_arr[:, None, :] - prev_arr[None, :, :]
+    standardized_sq = (diff / bw[None, None, :]) ** 2
+    log_kernel = -0.5 * standardized_sq.sum(axis=2)
+    log_norm_const = -0.5 * np.sum(np.log(2.0 * np.pi * bw**2))
+    log_kernel = log_kernel + log_norm_const  # (n_cand, n_prev)
+
+    log_prev_weights = np.log(np.clip(np.asarray(prev_weights, dtype=float), 1e-300, None))
+    log_terms = log_kernel + log_prev_weights[None, :]
+    return logsumexp(log_terms, axis=1)
+
+
+def _compute_importance_weights(
+    next_population: Sequence[dict],
+    prev_population: Sequence[dict],
+    prev_weights: Sequence[float],
+    bandwidth: dict[str, float],
+    free_names: Sequence[str],
+) -> list[float]:
+    """Toni et al. (2009) / Beaumont et al. (2009) SMC-ABC importance weight update.
+
+    w_i ~ pi(theta_i) / sum_j prev_weights[j] * K_t(theta_i | theta_j). The
+    prior term pi(theta_i) is a constant on the feasible (locally uniform)
+    support shared by every particle reaching this function, so it cancels
+    exactly under normalization and is omitted here.
+    """
+    if not next_population:
+        return []
+    if not prev_population or not prev_weights:
+        return _normalize_weights([1.0] * len(next_population))
+    log_mix = _log_mixture_proposal_density(
+        next_population, prev_population, prev_weights, bandwidth, free_names
+    )
+    log_weights = -log_mix
+    log_weights = log_weights - logsumexp(log_weights)
+    return list(np.exp(log_weights))
+
+
+def _effective_sample_size(weights: Sequence[float]) -> float:
+    """Kish's effective sample size: 1 / sum(w_i^2) for normalized weights.
+
+    A standard importance-sampling degeneracy diagnostic; low ESS relative to
+    the population size signals the weights are concentrated on very few
+    particles.
+    """
+    arr = np.asarray(weights, dtype=float)
+    if arr.size == 0:
+        return float("nan")
+    total = arr.sum()
+    if not np.isfinite(total) or total <= 0.0:
+        return float("nan")
+    norm = arr / total
+    return float(1.0 / np.sum(norm**2))
 
 
 def _parameter_by_name(parameters: Sequence[dict]) -> dict[str, dict]:
@@ -406,28 +539,31 @@ def _perturb_particle(
 
 def _resample_particles(
     population: list[dict],
-    distances: list[float],
+    weights: list[float],
     n: int,
     rng: np.random.Generator,
 ) -> tuple[list[dict], list[int]]:
-    """Resample n particles with probability proportional to inverse ABC distance.
+    """Resample n particles with probability proportional to the supplied
+    importance weights (the normalized weights carried from the previous
+    generation's re-weighting step; see _compute_importance_weights).
 
     Returns (resampled_particles, resample_indices) where resample_indices[i]
     is the index into population of the i-th returned particle.
 
-    Smaller distance → higher weight. Infinite-distance particles are assigned
-    a weight corresponding to 10× the largest finite distance.
+    Falls back to a uniform draw if the weights are degenerate (all zero,
+    negative, or non-finite).
     """
-    dist_arr = np.array(distances, dtype=float)
-    finite = np.isfinite(dist_arr)
-    if not finite.any():
+    if len(weights) != len(population):
+        raise ValueError(
+            f"weights length ({len(weights)}) must match population length "
+            f"({len(population)})"
+        )
+    weight_arr = np.asarray(weights, dtype=float)
+    if not np.all(np.isfinite(weight_arr)) or weight_arr.sum() <= 0.0:
         indices = rng.integers(0, len(population), size=n)
         return [copy.deepcopy(population[i]) for i in indices], list(map(int, indices))
-    max_finite = dist_arr[finite].max()
-    dist_arr = np.where(finite, dist_arr, max_finite * 10.0 + 1.0)
-    weights = 1.0 / (dist_arr + 1e-9)
-    weights /= weights.sum()
-    indices = rng.choice(len(population), size=n, replace=True, p=weights)
+    weight_arr = weight_arr / weight_arr.sum()
+    indices = rng.choice(len(population), size=n, replace=True, p=weight_arr)
     return [copy.deepcopy(population[i]) for i in indices], list(map(int, indices))
 
 
@@ -462,6 +598,7 @@ def _run_particle_worker(payload: dict) -> dict:
     non_msm_weight: float = float(payload.get("non_msm_diagnosis_weight", 1.0))
     simulation_start_year = payload.get("simulation_start_year")
     scoring_start_year = payload.get("scoring_start_year")
+    store_timeseries = bool(payload.get("store_timeseries", False))
 
     try:
         config = inject_params(
@@ -574,6 +711,14 @@ def _run_particle_worker(payload: dict) -> dict:
                 row["abc_distance"] = float(current_dist) + float(
                     non_msm_dist.get("distance", 0.0)
                 ) * non_msm_weight
+
+        if store_timeseries:
+            for _indicator, _series in outputs.items():
+                for _year, _val in sorted(_series.items()):
+                    try:
+                        row[f"{_indicator}_{_year}"] = float(_val)
+                    except (TypeError, ValueError):
+                        row[f"{_indicator}_{_year}"] = None
 
         return row
 
@@ -727,7 +872,13 @@ def _select_survivors(
 # ---------------------------------------------------------------------------
 
 
-def _generation_summary(df: pd.DataFrame, generation: int, tolerance: float) -> dict:
+def _generation_summary(
+    df: pd.DataFrame,
+    generation: int,
+    tolerance: float,
+    ess: float = float("nan"),
+    n_perturb_fallback: int = 0,
+) -> dict:
     n_total = len(df)
     n_collapsed = int(df["collapsed"].fillna(True).sum()) if "collapsed" in df.columns else 0
     dist_s = pd.to_numeric(
@@ -763,6 +914,8 @@ def _generation_summary(df: pd.DataFrame, generation: int, tolerance: float) -> 
         "gate_pass_rate": gate_pass_rate,
         "median_failures": median_failures,
         "tolerance_quantile": tolerance,
+        "ess": ess,
+        "n_perturb_fallback": n_perturb_fallback,
         "abc_distance_min": float(finite_d.min()) if not finite_d.empty else float("nan"),
         "abc_distance_median": float(finite_d.median()) if not finite_d.empty else float("nan"),
         "abc_distance_p25": float(finite_d.quantile(0.25)) if not finite_d.empty else float("nan"),
@@ -898,6 +1051,30 @@ def _load_anchor_particle(
             f"{anchor_config_path.name}; skipping anchor."
         )
         return None
+
+    # Anchors come from external config files (often a previous run's
+    # best-fit output under a different, possibly wider calib_space), so
+    # extracted values are not guaranteed to lie within *this* run's
+    # parameter bounds the way prior/perturbed draws are by construction.
+    # _valid_draw_mask only checks cross-parameter ordering/derived
+    # constraints, not individual [min, max] bounds -- check those here so
+    # an out-of-bounds anchor is rejected up front instead of silently
+    # simulated and, if it scores well, perturbed-and-clipped into
+    # artificial boundary duplicates in later generations.
+    for param in parameters:
+        name = param["name"]
+        if name not in particle:
+            continue
+        value = particle[name]
+        lower = float(param["min"])
+        upper = float(param["max"])
+        if not math.isfinite(value) or value < lower or value > upper:
+            print(
+                f"  WARNING: Anchor {anchor_config_path.name} has "
+                f"{name}={value} outside calib_space bounds "
+                f"[{lower}, {upper}]; skipping anchor."
+            )
+            return None
 
     # Recompute derived parameters and validate constraints.
     df = _with_derived_parameters(pd.DataFrame([particle]))
@@ -1050,11 +1227,21 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
 
     parameters = calib_space.get("parameters", [])
     bounds = _parameter_bounds(parameters)
-    bw = _bandwidth(parameters, fraction=float(getattr(args, "perturbation_bandwidth", 0.10)))
+    free_param_names = [p["name"] for p in parameters]
+    min_bandwidth_fraction = float(getattr(args, "min_bandwidth_fraction", 1e-3))
+    _perturbation_bandwidth_arg = float(getattr(args, "perturbation_bandwidth", 0.10))
+    if abs(_perturbation_bandwidth_arg - 0.10) > 1e-12:
+        print(
+            "  NOTE: --perturbation-bandwidth is deprecated and ignored; "
+            "ABC-SMC now computes an adaptive per-generation kernel bandwidth "
+            "from the survivor population's weighted variance "
+            "(see --min-bandwidth-fraction)."
+        )
     workers = os.cpu_count() if args.workers == -1 else max(1, args.workers)
     balance_target_families = bool(getattr(args, "family_balanced_score", False))
     sim_start_override = getattr(args, "simulation_start_year", None)
     score_start_override = getattr(args, "scoring_start_year", None)
+    store_timeseries = bool(getattr(args, "store_timeseries", False))
 
     # When historical shape gates are requested, acceptance gate audit is forced
     # on so that overall_accept reflects both gate sets.
@@ -1176,6 +1363,7 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
     current_population: list[dict] = []
     current_distances: list[float] = []
     current_particle_ids: list[int] = []
+    current_weights: list[float] = []
     particle_counter = 0
     n_generations = args.generations
 
@@ -1192,8 +1380,10 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
         proposal_sources: list[str] = []
         anchor_config_paths_for_proposals: list[str] = []
         parent_particle_ids: list[Any] = []
+        n_perturb_fallback = 0
+        resumed_from_prior = gen == 0 or not current_population
 
-        if gen == 0 or not current_population:
+        if resumed_from_prior:
             proposals: list[dict] = []
 
             # In generation 0, inject valid anchors first.
@@ -1213,8 +1403,17 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
                     anchor_config_paths_for_proposals.append("")
                     parent_particle_ids.append("")
         else:
+            # Adaptive kernel: recomputed each generation from the weighted
+            # spread of the current survivor population (Beaumont et al. 2009),
+            # rather than a fixed fraction of the prior range.
+            gen_bandwidth = _weighted_bandwidth(
+                current_population,
+                current_weights,
+                parameters,
+                min_bandwidth_fraction=min_bandwidth_fraction,
+            )
             resampled, resample_indices = _resample_particles(
-                current_population, current_distances, n_particles, rng
+                current_population, current_weights, n_particles, rng
             )
             proposals = []
             for parent, res_idx in zip(resampled, resample_indices):
@@ -1223,7 +1422,9 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
                     if res_idx < len(current_particle_ids)
                     else ""
                 )
-                perturbed = _perturb_particle(parent, bounds, bw, rng)
+                perturbed = _perturb_particle(parent, bounds, gen_bandwidth, rng)
+                if perturbed is None:
+                    n_perturb_fallback += 1
                 proposals.append(perturbed if perturbed is not None else dict(parent))
                 proposal_sources.append("perturbed")
                 anchor_config_paths_for_proposals.append("")
@@ -1253,6 +1454,7 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
                     "parent_particle_id": parent_particle_ids[i],
                     "simulation_start_year": sim_start_override,
                     "scoring_start_year": score_start_override,
+                    "store_timeseries": store_timeseries,
                 }
             )
 
@@ -1260,16 +1462,6 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
         all_rows.extend(rows)
 
         gen_df = pd.DataFrame(rows)
-        gen_summary = _generation_summary(gen_df, gen, tolerance)
-        generation_summaries.append(gen_summary)
-
-        print(
-            f"    n={gen_summary['n_particles']}  "
-            f"eligible={gen_summary['n_eligible_survivors']}  "
-            f"dist_min={gen_summary['abc_distance_min']:.4f}  "
-            f"gate_pass={gen_summary['gate_pass_rate']:.3f}  "
-            f"collapse={gen_summary['collapse_rate']:.3f}"
-        )
 
         # Select survivors for the next generation.
         # Collapsed, errored, and non-finite-distance rows are excluded before
@@ -1282,9 +1474,45 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
                 f"(collapsed, errored, or non-finite distance). "
                 f"Next generation will sample fresh from the prior."
             )
+            next_weights: list[float] = []
+        elif resumed_from_prior:
+            # Prior/anchor draws restricted to the feasible region are exact
+            # rejection samples from the (locally uniform) prior, so uniform
+            # weights here are exact, not an approximation.
+            next_weights = _normalize_weights([1.0] * len(next_pop))
+        else:
+            next_weights = _compute_importance_weights(
+                next_pop, current_population, current_weights, gen_bandwidth, free_param_names
+            )
+        ess = _effective_sample_size(next_weights) if next_weights else float("nan")
+
+        id_to_weight = dict(zip(next_ids, next_weights))
+        for row in rows:
+            row["abc_importance_weight"] = id_to_weight.get(row.get("particle_id"), float("nan"))
+
+        gen_summary = _generation_summary(
+            gen_df, gen, tolerance, ess=ess, n_perturb_fallback=n_perturb_fallback
+        )
+        generation_summaries.append(gen_summary)
+
+        print(
+            f"    n={gen_summary['n_particles']}  "
+            f"eligible={gen_summary['n_eligible_survivors']}  "
+            f"dist_min={gen_summary['abc_distance_min']:.4f}  "
+            f"gate_pass={gen_summary['gate_pass_rate']:.3f}  "
+            f"collapse={gen_summary['collapse_rate']:.3f}  "
+            f"ess={gen_summary['ess']:.1f}"
+        )
+        if n_perturb_fallback > 0:
+            print(
+                f"    NOTE: {n_perturb_fallback} particle(s) fell back to an "
+                f"unperturbed parent after exhausting perturbation retries."
+            )
+
         current_population = next_pop
         current_distances = next_dist
         current_particle_ids = next_ids
+        current_weights = next_weights
 
     # Rank all evaluated particles.
     all_df = pd.DataFrame(all_rows)
@@ -1335,6 +1563,11 @@ def run_abc_smc_calibration(args: argparse.Namespace) -> dict:
             else {}
         ),
         "perturbation_bandwidth": float(getattr(args, "perturbation_bandwidth", 0.10)),
+        "min_bandwidth_fraction": min_bandwidth_fraction,
+        "adaptive_kernel": True,
+        "importance_weighting": True,
+        "weighting_scheme": "toni2009_smc_beaumont2009_pmc_diagonal_gaussian_kernel",
+        "store_timeseries": store_timeseries,
         "component_weights": component_weights,
         "fixed_parameters": calib_space.get("fixed_parameters", []),
         "non_msm_diagnosis_gate": _non_msm_gate_enabled,
@@ -1493,7 +1726,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--perturbation-bandwidth",
         type=float,
         default=0.10,
-        help="Gaussian kernel bandwidth as fraction of each parameter's prior range.",
+        help=(
+            "Deprecated and ignored. ABC-SMC now computes an adaptive "
+            "per-generation kernel bandwidth from the survivor population's "
+            "weighted variance; see --min-bandwidth-fraction. Kept only so "
+            "existing scripts that pass this flag do not fail to parse."
+        ),
+    )
+    parser.add_argument(
+        "--min-bandwidth-fraction",
+        type=float,
+        default=1e-3,
+        help=(
+            "Floor on the adaptive perturbation kernel bandwidth, as a "
+            "fraction of each parameter's prior range. Guards against the "
+            "kernel collapsing to zero for a single-particle or fully "
+            "converged survivor population."
+        ),
     )
     parser.add_argument(
         "--weight-diagnosis", type=float, default=1.0,
@@ -1681,6 +1930,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Override scoring/extraction start year (e.g. 1990). Default: use CALIB_START_YEAR.",
     )
+    parser.add_argument(
+        "--store-timeseries",
+        action="store_true",
+        default=False,
+        help=(
+            "Write full output timeseries columns (indicator_year) into the particles CSV. "
+            "Required when using ABC-SMC particles as SNPE --bootstrap-csv input. "
+            "When not set, output is identical to prior behaviour — no regression."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.particles <= 0:
         parser.error("--particles must be positive")
@@ -1690,6 +1949,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--top-n must be positive")
     if not 0.0 < args.perturbation_bandwidth <= 1.0:
         parser.error("--perturbation-bandwidth must be in (0, 1]")
+    if not 0.0 < args.min_bandwidth_fraction <= 1.0:
+        parser.error("--min-bandwidth-fraction must be in (0, 1]")
     for flag, val in [
         ("--weight-diagnosis",   args.weight_diagnosis),
         ("--weight-plhiv",       args.weight_plhiv),

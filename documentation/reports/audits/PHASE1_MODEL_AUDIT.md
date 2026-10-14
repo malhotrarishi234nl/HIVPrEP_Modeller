@@ -1,5 +1,7 @@
 # Phase 1 — Model Bug & Correctness Audit
 
+> Archived under `documentation/reports/audits/`; original filename retained.
+
 **Model:** HIV transmission + cost-effectiveness model, `Modeller/v11`
 **Reviewer role:** critical academic collaborator (peer-review conditions)
 **Scope reviewed:** core transmission engine, health economics, calibration (ABC-SMC / gates / distance), PSA/HTA machinery

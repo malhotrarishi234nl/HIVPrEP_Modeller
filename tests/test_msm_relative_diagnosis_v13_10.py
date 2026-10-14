@@ -49,7 +49,7 @@ from schedule_utils import TimeSchedule
 # Config helpers
 # ---------------------------------------------------------------------------
 
-_MAIN_CONFIG_PATH = ROOT / "1980_test.json"
+_MAIN_CONFIG_PATH = ROOT / "configs" / "1980_test.json"
 
 
 def _load_main_config() -> dict:
@@ -187,6 +187,10 @@ class TestStepDiagnosisBehavior:
             f"baseline={ref_msm}, with_multiplier={low_msm}"
         )
 
+    # KNOWN FAILURE, deliberately NOT xfail/skip (2026-09-17). Deterministic mode only: the split
+    # MSM/non-MSM allocation is not bit-identical to the single all-orientation allocation.
+    # Assertion preserved. The only tolerance is a documented launch-gate exception for the stochastic
+    # run_joint_fit_comparison_20260917.py experiment; see tests/KNOWN_TEST_EXCEPTIONS.md.
     def test_enabled_with_multiplier_one_matches_baseline(self):
         """T6: MSM multiplier = 1.0 produces same MSM diagnoses as baseline."""
         base = _short_deterministic_run(_load_main_config(), 1980, 2000)
@@ -222,7 +226,7 @@ class TestScheduleYearLookup:
     _SCHEDULE = {"1996": 0.35, "2004": 0.65, "2015": 0.70}
 
     def setup_method(self):
-        self.ts = TimeSchedule(self._SCHEDULE, interpolation="stepwise")
+        self.ts = TimeSchedule(self._SCHEDULE, interpolation="stepwise", default_before=0.0)
 
     def test_1996_uses_early(self):
         assert self.ts.get_value(1996) == pytest.approx(0.35)

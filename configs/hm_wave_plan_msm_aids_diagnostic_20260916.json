@@ -1,0 +1,68 @@
+{
+  "version": "1.0",
+  "status": "READY_FOR_USER_LAUNCH",
+  "analysis_status": "diagnostic_wave_msm_aids_observation_and_predictive_variance_not_calibration",
+  "expected_parameter_count": 32,
+  "purpose": "Test, on fresh post-C-4/post-A-28 simulations, (1) whether the assumed MSM observed-AIDS proxy can be reproduced jointly with MSM and early ECDC HIV diagnoses, and (2) how the user-approved predictive variance contract s(x)+s(x)/K behaves: heterogeneity of s(x) across the design and how many NROY decisions depend on the sampling error of s(x).",
+  "decisions_recorded": {
+    "variance_contract": "User decision 2026-09-16: predictive V_ensemble(x) = s(x) + s(x)/K; s(x) re-estimated at each design point from its K replicates; A-5 file not used.",
+    "aids_compartment": "Checked 2026-09-16: chronic_to_aids sourced to CASCADE (2000, 2003); both define AIDS by the clinical part of the 1993 CDC definition, excluding CD4<200 without an AIDS-defining illness. No clinical-recognition fraction.",
+    "scope": "User decision 2026-09-16: score RIVM MSM AIDS only; non-MSM AIDS reserved for validation; no presentation layer built."
+  },
+  "limitations": [
+    "New sequence, wave 1 over the full prior box. Not a continuation: the register, variance contract and extractor changed, and earlier NROY regions were defined under the construct-mismatched ECDC AIDS target.",
+    "The observed-AIDS proxy is an ASSUMPTION (aids_observation.OBSERVED_AIDS_PROXY): no reporting delay, notification completeness or clinical-recognition lag is modelled.",
+    "RIVM MSM route is mapped to the model MSM group, which includes trans people; RIVM's route classification of trans people is unverified.",
+    "V_obs is zero (underivable) for every scored target; this biases towards over-exclusion.",
+    "The primary discrepancy rule (10% of target, one sigma) follows the 2026-09-15 construct/variance audit recommendation; it is a declared assumption, not an estimate, and was not chosen from results.",
+    "s(x) from K=10 replicates carries chi-square sampling error (9 df); its effect on NROY membership is reported, not corrected.",
+    "400 points in 32 dimensions is a sparse space-filling design; an empty NROY set is a result about this design and budget, not proof that no parameter vector fits.",
+    "No output may be called a posterior, credible interval or final calibration ensemble."
+  ],
+  "stopping_rule": {
+    "max_waves": 1,
+    "min_volume_shrinkage": 0.1,
+    "min_nroy_members": 10,
+    "rationale": {
+      "max_waves": "Single diagnostic wave.",
+      "min_volume_shrinkage": "Loop compatibility only.",
+      "min_nroy_members": "Fewer than 10 survivors requires review before any continuation."
+    }
+  },
+  "discrepancy": {
+    "method": "relative_to_target",
+    "multiplier": 0.1,
+    "rationale": "Prespecified target-scale discrepancy recommended by the 2026-09-15 audit, because the output-variance rule makes tolerance depend on the sampled design."
+  },
+  "sensitivity_discrepancies": [
+    {"label": "target_relative_20pct", "method": "relative_to_target", "multiplier": 0.2, "rationale": "Prespecified wider target-relative allowance; diagnostic only."},
+    {"label": "output_variance_10pct", "method": "fraction_of_output_variance", "multiplier": 0.1, "rationale": "Legacy Andrianakis rule for comparability with the 2026-09-15 waves; diagnostic only."}
+  ],
+  "scored_years": {
+    "ecdc_hiv_confirmed_cases": [1990, 1991, 1992, 1993, 1994, 1995],
+    "shm_new_diagnoses_msm": [1996, 2000, 2004, 2010, 2015, 2019, 2024],
+    "rivm_aids_msm": [1990, 1995, 2000, 2005, 2010, 2015, 2019, 2022]
+  },
+  "scored_years_rationale": "Keeps the 13 non-AIDS anchors of the 2026-09-15 waves. RIVM MSM AIDS anchors are five-yearly from 1990, plus 2019 (shared with SHM) and 2022 (last complete year); 2016 is held by the source policy.",
+  "cross_validation_years": null,
+  "waves": [
+    {
+      "index": 1,
+      "n_design": 400,
+      "seed": 20260917,
+      "target_series": ["ecdc_hiv_confirmed_cases", "shm_new_diagnoses_msm", "rivm_aids_msm"],
+      "comment": "Full prior box. Cross-validation: RIVM non-MSM and total AIDS, ECDC AIDS, UNAIDS and SHM total series."
+    }
+  ],
+  "run_settings": {
+    "deterministic_calibration": false,
+    "replicates_per_design_point": 10,
+    "simulation_seed": 92000,
+    "replicate_seed_stride": 1,
+    "progress_every": 25,
+    "simulation_start_year": 1975,
+    "scoring_start_year": 1990,
+    "v_ensemble_mode": "predictive_local",
+    "note": "Fresh CRN seeds 92000-92009 shared by every point. V_ensemble(x) = s(x)(1 + 1/10) per point and target."
+  }
+}

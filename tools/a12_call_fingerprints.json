@@ -1,0 +1,1508 @@
+{
+  "generated_by": "tools/run_a12_deterministic_allocation_audit.py (A-12 review addition)",
+  "purpose": "Frozen call-site fingerprint. A new rounding call inside an already-triaged function would otherwise inherit that function's disposition silently. Regenerate ONLY after classifying the new call in INVENTORY or NON_ALLOCATION_FUNCTIONS.",
+  "n_call_sites": 266,
+  "n_distinct": 250,
+  "fingerprints": [
+    {
+      "module": "adverse_events.py",
+      "function": "_compute_v2",
+      "source": "int(count)",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(current_ae*resolution_rate_q)",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(non_ae*onset_rate_q)",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(remaining*frac/denom)",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(resolved*frac)",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(self.rng.binomial(current_ae,resolution_rate_q))",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(self.rng.binomial(non_ae,onset_rate_q))",
+      "count": 1
+    },
+    {
+      "module": "adverse_events.py",
+      "function": "_item_state_machine_ongoing",
+      "source": "int(users)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_allocate_int_by_weights",
+      "source": "int(base.sum())",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_allocate_int_by_weights",
+      "source": "int(total)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_allocate_int_by_weights",
+      "source": "np.floor(raw)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_allocate_int_by_weights",
+      "source": "np.floor(raw).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_distribute_to_activities",
+      "source": "int(remainder)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_distribute_to_activities",
+      "source": "np.floor(raw)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_distribute_to_activities",
+      "source": "np.floor(raw).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_ensure_residence_phases",
+      "source": "int(round(5.0/time_system.years_per_step))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_ensure_residence_phases",
+      "source": "round(5.0/time_system.years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_reconcile_residence_phases",
+      "source": "int(self.population[bin_idx,sex_idx])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "_reconcile_residence_phases",
+      "source": "int(self.residence_phases[bin_idx,:,sex_idx].sum())",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "add_births_to_childhood",
+      "source": "int(n_births*self.fraction_male)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging",
+      "source": "int(aging_out[self.FEMALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging",
+      "source": "int(aging_out[self.MALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging",
+      "source": "self.residence_phases.sum(axis=1).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "int(aging_out[self.FEMALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "int(aging_out[self.MALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "np.round(self.population[-1,:]*(1.0-aging_fraction))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "np.round(self.population[-1,:]*(1.0-aging_fraction)).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "np.round(self.population[bin_idx,:]*(1.0-aging_fraction))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "np.round(self.population[bin_idx,:]*(1.0-aging_fraction)).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "self.population[-1,:].astype(int)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_fractional_aging_legacy",
+      "source": "self.population[bin_idx,:].astype(int)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_mortality",
+      "source": "round(pop*mort_rate)",
+      "count": 2
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_population_adjustments",
+      "source": "(adjusted[:,:,susc_idx,:,no_prep_idx]*effective_multiplier).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "apply_population_adjustments",
+      "source": "(population*effective_multiplier).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "calculate_births",
+      "source": "int(np.round(births_expected))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "calculate_births",
+      "source": "np.round(births_expected)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "calculate_fixed_births",
+      "source": "int(annual_entrants*self.time.years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "flush_remaining_debut_eligible",
+      "source": "int(self.population[oldest_bin_idx,self.FEMALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "flush_remaining_debut_eligible",
+      "source": "int(self.population[oldest_bin_idx,self.MALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "get_by_sex",
+      "source": "int(np.sum(self.population[:,self.FEMALE]))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "get_by_sex",
+      "source": "int(np.sum(self.population[:,self.MALE]))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "get_total",
+      "source": "int(np.sum(self.population))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "initialize",
+      "source": "int(avg_per_bin*(1-frac_male))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "initialize",
+      "source": "int(avg_per_bin*frac_male)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "initialize_residence_phases",
+      "source": "int(round(5.0/years_per_step))",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "initialize_residence_phases",
+      "source": "int(self.population[bin_idx,sex_idx])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "initialize_residence_phases",
+      "source": "round(5.0/years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "process_continuous_debut",
+      "source": "int(n_females*p_debut)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "process_continuous_debut",
+      "source": "int(n_males*p_debut)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "process_continuous_debut",
+      "source": "int(self.population[oldest_bin_idx,self.FEMALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "process_continuous_debut",
+      "source": "int(self.population[oldest_bin_idx,self.MALE])",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "process_sexual_debut",
+      "source": "int(debuting_males*self.p_msm)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "register_positive_residence_delta",
+      "source": "before_population.astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "demography.py",
+      "function": "register_positive_residence_delta",
+      "source": "self.population.astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "__init__",
+      "source": "int(total_units/self.step_size)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "_seed_initial_hiv",
+      "source": "int(susceptible*initial_prev)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "_validate_post_seed",
+      "source": "int(0.005*expected_hiv)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "_validate_post_seed",
+      "source": "int(np.sum(self.population))",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "_validate_post_seed",
+      "source": "int(np.sum(self.population[:,:,:,susc_idx+1:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "_validate_post_seed",
+      "source": "round(total_eligible*initial_prev)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "initialize_from_relative_weights",
+      "source": "int(age_group)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "initialize_from_relative_weights",
+      "source": "int(age_group.replace('+',''))",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "initialize_from_relative_weights",
+      "source": "int(age_group.split('-')[0])",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "initialize_from_relative_weights",
+      "source": "int(male_count*p_msm)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "initialize_from_relative_weights",
+      "source": "int(sex_weights['female']*total_size)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "initialize_from_relative_weights",
+      "source": "int(sex_weights['male']*total_size)",
+      "count": 1
+    },
+    {
+      "module": "engine_v3.py",
+      "function": "split_activities",
+      "source": "int(count*proportion)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "__init__",
+      "source": "int(_ev(wa.get(\"max_age\",40)))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "__init__",
+      "source": "int(_ev(wa.get(\"min_age\",20)))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "__init__",
+      "source": "int(hi)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "__init__",
+      "source": "int(k)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "__init__",
+      "source": "int(label[:-1])",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "__init__",
+      "source": "int(lo)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_allocate_by_weights",
+      "source": "int(cnt)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "int(round((current_year-year_start)/years_per_step))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "int(round(annual_count))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "int(round(annual_count*years_per_step))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "int(round(steps_float))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "np.floor(current_year)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "round((current_year-year_start)/years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "round(annual_count)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "round(annual_count*years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_annual_count_to_step_count",
+      "source": "round(steps_float)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "childhood.population.astype(np.float64)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "int(0.90*total_pop)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "int(np.sum(new_child))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "int(np.sum(new_pop))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "int(np.sum(population))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "np.floor(child_float)",
+      "count": 2
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "np.floor(child_float).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "np.floor(pop_float)",
+      "count": 2
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "np.floor(pop_float).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_negative",
+      "source": "population.astype(np.float64)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_positive",
+      "source": "int(migrant_hiv_count)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_positive",
+      "source": "int(sex_counts[\"female\"])",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_apply_positive",
+      "source": "int(sex_counts[\"male\"])",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_distribute_int",
+      "source": "int(floors.sum())",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_distribute_int",
+      "source": "np.floor(floats)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_distribute_int",
+      "source": "np.floor(floats).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_distribute_int",
+      "source": "rng.multinomial(n,weights).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_annual_net",
+      "source": "int(np.floor(current_year))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_annual_net",
+      "source": "int(np.sum(population))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_annual_net",
+      "source": "np.floor(current_year)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_step_migrant_hiv_requested",
+      "source": "int(np.floor(current_year))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_step_migrant_hiv_requested",
+      "source": "int(round(positive_migrants*self._migrant_hiv_rate))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_step_migrant_hiv_requested",
+      "source": "np.floor(current_year)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_get_step_migrant_hiv_requested",
+      "source": "round(positive_migrants*self._migrant_hiv_rate)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_init_migrant_hiv_config",
+      "source": "int(k)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_migrant_hiv_state_weights",
+      "source": "int(art_idx)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_migrant_hiv_state_weights",
+      "source": "int(diag_idx)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_migrant_hiv_state_weights",
+      "source": "int(hiv_idx)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_parse_migrant_hiv_fallback_years",
+      "source": "int(_ev(fallback_years.get(\"end\",fallback_years.get(\"end_year\",end))))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_parse_migrant_hiv_fallback_years",
+      "source": "int(_ev(fallback_years.get(\"start\",fallback_years.get(\"start_year\",start))))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_parse_migrant_hiv_fallback_years",
+      "source": "int(_ev(fallback_years[0]))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_parse_migrant_hiv_fallback_years",
+      "source": "int(_ev(fallback_years[1]))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_parse_migrant_hiv_fallback_years",
+      "source": "int(_ev(mh.get(\"fallback_end_year\",end)))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_parse_migrant_hiv_fallback_years",
+      "source": "int(_ev(mh.get(\"fallback_start_year\",start)))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_adult_entrants",
+      "source": "int(round(n_male*self._p_msm))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_adult_entrants",
+      "source": "round(n_male*self._p_msm)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(act_count)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(age_count)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(art_idx)",
+      "count": 2
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(diag_idx)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(hiv_idx)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(orient_count)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(orient_idx)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "_place_migrant_hiv_entrants",
+      "source": "int(state_count)",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "apply",
+      "source": "int(0.001*abs(step_net))",
+      "count": 1
+    },
+    {
+      "module": "migration.py",
+      "function": "apply",
+      "source": "int(np.sum(population))",
+      "count": 3
+    },
+    {
+      "module": "migration.py",
+      "function": "apply",
+      "source": "int(round(abs(step_net)))",
+      "count": 2
+    },
+    {
+      "module": "migration.py",
+      "function": "apply",
+      "source": "int(round(step_net))",
+      "count": 2
+    },
+    {
+      "module": "migration.py",
+      "function": "apply",
+      "source": "round(abs(step_net))",
+      "count": 2
+    },
+    {
+      "module": "migration.py",
+      "function": "apply",
+      "source": "round(step_net)",
+      "count": 2
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_aids_state_counts",
+      "source": "int(np.sum(aids))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_aids_state_counts",
+      "source": "int(np.sum(aids[:,:,:,0,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_aids_state_counts",
+      "source": "int(np.sum(aids[:,:,:,1,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_aids_state_counts",
+      "source": "int(np.sum(aids[:,:,:,:,0,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_aids_state_counts",
+      "source": "int(np.sum(aids[:,:,:,:,1,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "capacity_arr.astype(float)",
+      "count": 2
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "capacity_arr.astype(np.int64,copy=True)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "int(base.sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "int(capacity_arr.sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "int(round(target))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "np.asarray(capacity).astype(np.int64,copy=False)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "np.floor(expected)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "np.floor(expected).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_fixed_events",
+      "source": "round(target)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_int_by_weights",
+      "source": "int(base.sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_int_by_weights",
+      "source": "int(total)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_int_by_weights",
+      "source": "np.floor(raw)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_allocate_int_by_weights",
+      "source": "np.floor(raw).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_epidemic_seed",
+      "source": "int(n_het_susc*self._epidemic_seed_prev*het_frac)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_epidemic_seed",
+      "source": "int(n_msm_susc*self._epidemic_seed_prev*msm_frac)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_epidemic_seed",
+      "source": "int(n_seed_het*(n_fem_susc/max(n_het_susc,1)))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_fractional_aging_adults",
+      "source": "self._adult_residence_population.sum(axis=1).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_fractional_aging_adults_legacy",
+      "source": "np.round(self.state.population[age_idx,...]*(1.0-aging_fraction))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_fractional_aging_adults_legacy",
+      "source": "np.round(self.state.population[age_idx,...]*(1.0-aging_fraction)).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_fractional_aging_adults_legacy",
+      "source": "self.state.population[age_idx,...].astype(int)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_forward_target_stock",
+      "source": "int(np.sum(additions))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_forward_target_stock",
+      "source": "int(np.sum(prep_users))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_stock_corridor",
+      "source": "int(np.sum(additions))",
+      "count": 3
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_stock_corridor",
+      "source": "int(np.sum(prep_users))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_stock_corridor",
+      "source": "int(np.sum(reductions))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_stock_corridor",
+      "source": "int(np.sum(self.state.population[:,:,:,susc_idx,:,:,prep_idx]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_switch_share",
+      "source": "int(np.sum(source_users[age_min_idx:age_max_idx,orient_idx,act_idx,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_switch_share",
+      "source": "int(np.sum(switches))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_switch_share",
+      "source": "int(np.sum(target_users[age_min_idx:age_max_idx,orient_idx,act_idx,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_switch_share",
+      "source": "int(round(switch_share*eligible_total))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_apply_prep_switch_share",
+      "source": "round(switch_share*eligible_total)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_ensure_adult_residence_phases",
+      "source": "int(round(5.0/self.time.years_per_step))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_ensure_adult_residence_phases",
+      "source": "round(5.0/self.time.years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_epidemic_seed_stage_counts",
+      "source": "int(value)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_initialize_adult_residence_phases",
+      "source": "int(count)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_initialize_adult_residence_phases",
+      "source": "int(round(5.0/self.time.years_per_step))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_initialize_adult_residence_phases",
+      "source": "round(5.0/self.time.years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_prep_forward_target_stock",
+      "source": "int(round(value))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_prep_forward_target_stock",
+      "source": "round(value)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_preserved_total_switch_stock_offset",
+      "source": "int(np.sum(target_users))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_reconcile_adult_residence_phases",
+      "source": "int(flat_phases[age_idx,:,cell_idx].sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_reconcile_adult_residence_phases",
+      "source": "int(target)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_register_adult_phase_entries",
+      "source": "delta.astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_aging_discrete",
+      "source": "int(5.0/self.time.years_per_step)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_art_transitions",
+      "source": "int(np.sum(dropped))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_art_transitions",
+      "source": "int(np.sum(initiated))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_art_transitions",
+      "source": "int(np.sum(initiated[:,:,:,rel_idx,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_diagnosis",
+      "source": "int(np.sum(diagnosed))",
+      "count": 2
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_diagnosis",
+      "source": "int(np.sum(diagnosed[:,msm_idx,:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_diagnosis",
+      "source": "int(np.sum(diagnosed_msm[:,msm_idx,:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_disease_progression",
+      "source": "int(prog_off_art.sum()+prog_on_art.sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_disease_progression",
+      "source": "int(progressions.sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_exogenous_non_msm",
+      "source": "int(moved)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_exogenous_non_msm",
+      "source": "int(requested)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_exogenous_non_msm",
+      "source": "int(susceptible.sum())",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_hiv_mortality",
+      "source": "int(np.sum(deaths_not_art)+np.sum(deaths_art))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_prep_transitions",
+      "source": "int(np.sum(dropouts))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "_step_prep_transitions",
+      "source": "int(np.sum(new_users))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "apply_proportional_seed",
+      "source": "(weights*stage_n).astype(int)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "apply_proportional_seed",
+      "source": "int(allocs[age_idx,act_idx])",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "apply_proportional_seed",
+      "source": "int(np.sum(allocs))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "apply_proportional_seed",
+      "source": "int(np.sum(susc_slice))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "count_susceptibles",
+      "source": "int(np.sum(self.state.population[:,orient_idx,:,susc_idx,undiag_idx,no_art_idx,no_prep_idx]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(art_stage_counts.get(\"AIDS\",0))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(hiv_pos)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(min(new_aids_cases,aids_art_inits))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(arr[:,msm_idx,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(arr[:,msm_idx,:,pi]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,:,:,1:,0,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,:,:,1:,:,1,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,female_idx,:,1:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,:,1:,0,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,:,:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,:,susc_idx,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,:,susc_idx,:,:,lena_prep]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,:,susc_idx,:,:,oral_prep]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,high_idx,:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,high_idx,susc_idx,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,msm_idx,high_idx,susc_idx,:,:,pi]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[:,orient_idx,:,1:,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "record_outputs",
+      "source": "int(np.sum(pop[elig_age_min:elig_age_max,msm_idx,:,susc_idx,:,:,:]))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "scheduled_bound",
+      "source": "int(round(value))",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "scheduled_bound",
+      "source": "round(value)",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "validate_art_mass_balance",
+      "source": "int(art_counts[0])",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "validate_art_mass_balance",
+      "source": "int(art_counts[1])",
+      "count": 1
+    },
+    {
+      "module": "run_v3.py",
+      "function": "validate_prep_mass_balance",
+      "source": "int(prep_counts[idx])",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "int(base.sum())",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "int(n_arr.sum())",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "int(np.round(expected.sum()))",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "n_arr.astype(float)",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "n_arr.astype(np.int64,copy=False)",
+      "count": 2
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "n_arr.astype(np.int64,copy=True)",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "np.floor(expected)",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "np.floor(expected).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_events",
+      "source": "np.round(expected.sum())",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_total",
+      "source": "int(base.sum())",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_total",
+      "source": "int(total)",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_total",
+      "source": "np.floor(raw)",
+      "count": 1
+    },
+    {
+      "module": "stochastic_allocation.py",
+      "function": "deterministic_allocate_total",
+      "source": "np.floor(raw).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_calc_msm_infections",
+      "source": "int(n_c*p_trans)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_calc_msm_infections",
+      "source": "int(n_pos_contacts*self.msm_versatility)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "block_capacity.astype(float)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "int(axis)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "int(block.sum())",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "int(block_capacity.sum())",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "int(np.round(capped_expected.sum()))",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "np.asarray(capacity).astype(np.int64,copy=False)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "np.floor(capped_expected)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "np.floor(capped_expected).astype(np.int64)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "_deterministic_allocate_expected_infections",
+      "source": "np.round(capped_expected.sum())",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "calculate_transmission",
+      "source": "int(contacts_float)",
+      "count": 1
+    },
+    {
+      "module": "transmission_corrected.py",
+      "function": "calculate_transmission",
+      "source": "int(np.sum(infections))",
+      "count": 2
+    }
+  ]
+}

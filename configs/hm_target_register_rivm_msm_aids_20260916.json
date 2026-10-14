@@ -1,0 +1,474 @@
+{
+  "version": "1.1-rivm-msm-aids-diagnostic",
+  "created": "2026-09-16",
+  "spec": "HISTORY_MATCHING_BUILD_SPEC.md section 4 (HM-1); handoff task B-4; decision D-07",
+  "source_workbook": "../data/raw/validation/DiseaseData.xlsx",
+  "provenance_notes": {
+    "shm_reference_report_year": 2025,
+    "shm_reference_report_year_status": "assumption",
+    "shm_reference_report_year_rationale": "The workbook's diagnosis sheet runs through year of diagnosis 2024 and carries delay-adjusted columns from 2017, which is the shape of a Stichting HIV Monitoring annual Monitoring Report published in the year after the last diagnosis year. The workbook itself does not record the report edition. The value is used ONLY to convert a diagnosis year into a notification lag for reporting the delay-correction pattern; no z_i or V_obs depends on it.",
+    "shm_adjustment_meaning": "SHM publishes both reported and delay-adjusted counts. The adjustment corrects for delay in notification to Stichting HIV Monitoring (stated verbatim in the H-TEAM cohort paper: 'Numbers were adjusted for the delay in notification to Stichting HIV Monitoring'). It is NOT an under-ascertainment (never-tested, never-linked-to-care) correction.",
+    "shm_calc_column_convention": "The workbook's *(CALC) columns use the delay-adjusted figure where one is published (2017 onward) and the reported figure otherwise. Verified arithmetically: 2024 MSM+Trans (CALC) 318 = MSM adjusted 301 + Trans adjusted 17; 2015 MSM+Trans (CALC) 582 = MSM reported 567 + Trans reported 15. The same holds for 'Total Adjusted (No <15)'. Consequence: the target series is a SPLICE of adjusted (2017-2024) and reported (<=2016) figures, and V_obs must reflect that.",
+    "unaids_bounds_meaning": "UNAIDS 'Methods for deriving UNAIDS HIV estimates', Annex 1 (JC3153_GAU25, 2025): the published low/high bounds 'define the range within which the true value lies in 95% of cases (if it could be measured)'. sigma = (high - low) / 3.92 is therefore justified. Verified against the annex before use, as required by spec section 3.1.",
+    "unaids_csavr": "The same annex states that most western/central European countries estimate prevalence and incidence from AIDS mortality in vital registration plus HIV case reports and the infection-to-diagnosis delay, i.e. the Spectrum CSAVR (or ECDC) model. UNAIDS PLHIV, new infections and AIDS deaths for the Netherlands are therefore MODEL OUTPUTS fitted to the same case-surveillance and vital-registration data used in tier 1, not independent observations. Method reference: Mahiane SG et al. (2021), J Int AIDS Soc, PMC8454676.",
+    "ecdc_provenance": "ECDC/WHO European Surveillance System (TESSy) reported confirmed case counts for the Netherlands, 1990-2017. No uncertainty measure is published alongside the counts in this workbook.",
+    "unaids_art_provenance": "The UNAIDS-ART sheet carries a single 'TOTAL ADULTS' column with NO low/high bounds, unlike the PLHIV, infections and AIDS-death sheets. There is therefore no published interval from which to derive V_obs.",
+    "coverage_note_2024": "UNAIDS series carry the literal string '(NULL)' for 2024 in this workbook, so the UNAIDS year coverage ends at 2023."
+  },
+  "tiering_rule": {
+    "tier_1": "Directly observed counts from a surveillance or programme register. Role: calibration target. V_obs derived from a published or empirically observable measurement-error handle.",
+    "tier_2": "Quantities that are themselves the output of another statistical model fitted to the tier-1 data. Role: cross-validation comparator, NOT a calibration target, because weighting them as independent targets double-counts the underlying case surveillance and vital registration. V_obs from the published interval PLUS an explicit model-to-model discrepancy increment.",
+    "excluded": "Series that leave the calibration entirely for a structural reason recorded per target.",
+    "applied_uniformly": true,
+    "post_hoc_disclosure": "This rule was written on 2026-09-10, AFTER the submitted base case was known to fail four acceptance gates. That ordering is disclosed deliberately. The rule is applied by source epistemics alone and is not conditioned on which gates were failing: of the four gate families it demotes from calibration to cross-validation (PLHIV, ART stock, incidence, AIDS deaths), TWO -- plhiv_gate and art_stock_gate -- were PASSING in the submitted base case, one -- incidence_gate -- was failing, and one -- aids_death_gate -- was passing with warnings. A rule that only loosened the constraints that were failing would be gate-shopping; this one removes two constraints the model was already satisfying. See section 4.2 of the build spec and the uniformity demonstration in the HM-1 report."
+  },
+  "defaults": {
+    "v_disc": {
+      "method": "fraction_of_output_variance",
+      "multiplier": 0.1,
+      "source": "Andrianakis et al. 2015, PLoS Comput Biol 11(1):e1003968 -- '10% of the variance of the simulator output training data obtained at each wave', declared by those authors as an illustrative choice"
+    },
+    "v_ensemble": {
+      "method": "predictive_local",
+      "status": "user_approved_2026-09-16",
+      "reason": "Observed count treated as one stochastic realisation (Andrianakis et al. 2017, sections 3.2-3.3): per-run process variance s(x) plus Monte Carlo error of the K-replicate mean, s(x)/K. s(x) is the within-point sample variance of the K CRN replicates at each design point. The A-5 file is not used."
+    },
+    "v_code": {
+      "method": "structural_zero",
+      "reason": "No emulator is built; the simulator is evaluated directly (spec section 3.2)."
+    },
+    "shm_delay_uncertainty_fraction": 1.0,
+    "shm_delay_extrapolation_rule": "For diagnosis years with no published delay-adjusted column (<=2016, all at notification lag >= 9 years), the delay correction is taken as ZERO. Derived from the observed pattern: the correction is exactly 0 at the two longest observed lags (2017 and 2018, lag 8 and 7) and decays monotonically with lag (2024 lag 1: +12.7% on MSM; 2019 lag 6: +0.6%). This is a DERIVED ESTIMATE from the eight published reported/adjusted pairs, not an assumed value.",
+    "tier2_disc_increment_multiplier": 1.0,
+    "tier2_disc_increment_rationale": "Set equal to the base V_disc, i.e. the model-to-model comparison is treated as carrying as much discrepancy again as the model-to-data comparison does. This is a DECLARED choice, not a derived one. It affects only cross-validation reporting under the primary rule, because tier-2 targets do not enter I_max (role = cross_validation), so it cannot enlarge the NROY set."
+  },
+  "targets": [
+    {
+      "series_name": "shm_new_diagnoses_total",
+      "model_output": "new_diagnoses",
+      "source_sheet": "Stiching 1.1 (Diagnoses)",
+      "source_organisation": "Stichting HIV Monitoring (ATHENA national observational cohort), Netherlands",
+      "year_column": "Year of diagnosis",
+      "estimate_column": "Total Adjusted \n(No <15)",
+      "year_coverage": [
+        1996,
+        2024
+      ],
+      "epistemic_tier": 1,
+      "role": "cross_validation",
+      "z_derivation": "Delay-adjusted total HIV diagnoses excluding children <15, read directly from the workbook column. Spliced: adjusted 2017-2024, reported 2017-earlier (see provenance_notes.shm_calc_column_convention).",
+      "v_obs": {
+        "method": "delay_correction",
+        "reported_column": "Total reported",
+        "reported_subtract_column": "<15 years of age reported",
+        "adjusted_column": "Total adjusted",
+        "adjusted_subtract_column": "<15 years of age adjusted",
+        "fraction_key": "shm_delay_uncertainty_fraction",
+        "extrapolation_rule_key": "shm_delay_extrapolation_rule",
+        "missing_component": {
+          "name": "ascertainment",
+          "status": "underivable",
+          "reason": "The reported/adjusted pair measures notification delay only. Under-ascertainment -- people with HIV who were never tested, or never entered ATHENA-reporting care -- appears in NEITHER column, so this workbook contains no handle on it. No Dutch source giving an ascertainment-error variance for the diagnosis count has been identified. Contributes 0.0 and biases towards OVER-exclusion. ESCALATION per spec section 10."
+        }
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "notes": "Held out from I_max on 2026-09-15. After C-1, total diagnoses equal endogenous MSM diagnoses plus the exogenously injected non-MSM input, so this series partly scores an input and its residual is exactly collinear with shm_new_diagnoses_msm. Retained as a Tier-1 cross-validation/accounting comparator, not a second calibration constraint."
+    },
+    {
+      "series_name": "shm_new_diagnoses_msm",
+      "model_output": "new_diagnoses_msm",
+      "source_sheet": "Stiching 1.1 (Diagnoses)",
+      "source_organisation": "Stichting HIV Monitoring (ATHENA national observational cohort), Netherlands",
+      "year_column": "Year of diagnosis",
+      "estimate_column": "MSM+Trans (CALC)",
+      "year_coverage": [
+        1996,
+        2024
+      ],
+      "epistemic_tier": 1,
+      "role": "calibration",
+      "z_derivation": "MSM plus trans men and women, delay-adjusted where published. Verified arithmetically against the component columns.",
+      "v_obs": {
+        "method": "delay_correction",
+        "reported_column": "MSM reported",
+        "reported_add_column": "Trans men and women reported",
+        "adjusted_column": "MSM adjusted",
+        "adjusted_add_column": "Trans men and women adjusted",
+        "fraction_key": "shm_delay_uncertainty_fraction",
+        "extrapolation_rule_key": "shm_delay_extrapolation_rule",
+        "missing_component": {
+          "name": "ascertainment",
+          "status": "underivable",
+          "reason": "As shm_new_diagnoses_total. ESCALATION per spec section 10.",
+          "shared_with": "shm_new_diagnoses_total"
+        }
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "notes": "CORRECTED 2026-09-14 (C-1 landed). The previous note said these two series 'diverge once the exogenous non-MSM stream enters new_diagnoses'. That is BACKWARDS. Post-C-1 they are EXACTLY COLLINEAR: verified against SHM Table 1.1, Total Adjusted (No <15) = MSM+Trans + Men + Women with residual 0.0 in all 29 years 1996-2024. Since new_diagnoses now carries the injected series and new_diagnoses_msm does not, the two carry the same residual under different denominators - ONE CONSTRAINT COUNTED TWICE under the non-compensatory max rule. Worse, shm_new_diagnoses_total (role: calibration) now scores a quantity that is partly the model's own INPUT. ACTION REQUIRED before the next wave: demote one to cross_validation, or treat the pair as a single target. Not done here because it changes the scored target set."
+    },
+    {
+      "series_name": "ecdc_aids_confirmed_cases",
+      "model_output": "new_aids_cases",
+      "source_sheet": "EDC- AIDS",
+      "source_organisation": "ECDC / WHO European Surveillance System (TESSy), Netherlands",
+      "year_column": "Time",
+      "estimate_column": "NumValue",
+      "filters": {
+        "Population": "AIDS|Confirmed cases",
+        "Indicator": "Reported cases",
+        "Unit": "N"
+      },
+      "year_coverage": [
+        1990,
+        2017
+      ],
+      "epistemic_tier": 1,
+      "role": "cross_validation",
+      "z_derivation": "Confirmed AIDS case reports, read directly.",
+      "v_obs": {
+        "method": "underivable",
+        "reason": "ECDC publishes no uncertainty measure alongside these counts in this workbook, and the SHM reported/adjusted proxy is unusable here: the SHM-derived delay correction is zero at every lag ECDC covers (all ECDC years are at lag >= 9), so the proxy would return exactly 0.0 and add nothing. There is no source for the ascertainment component either. Contributes 0.0 and biases towards OVER-exclusion. ESCALATION per spec section 10."
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "notes": "Reachable per the 2026-09-06 audit but currently inactive in both live objectives (only reachable via the disabled historical_shape_gates). This is the only target series covering the 1990s AIDS peak the model does not reproduce. 2026-09-16: demoted to cross-validation. Construct mismatch (maps biological new_aids_cases) and unresolved ECDC/RIVM historical coverage conflict (HM_PRESENTATION_EVIDENCE_AND_COMPOUND_DESIGN_2026-09-16.md)."
+    },
+    {
+      "series_name": "ecdc_hiv_confirmed_cases",
+      "model_output": "new_diagnoses",
+      "source_sheet": "EDC-HIV (Secondary)",
+      "source_organisation": "ECDC / WHO European Surveillance System (TESSy), Netherlands",
+      "year_column": "Time",
+      "estimate_column": "NumValue",
+      "filters": {
+        "Population": "HIV infection|Confirmed cases",
+        "Indicator": "Reported cases",
+        "Unit": "N"
+      },
+      "year_coverage": [
+        1990,
+        2017
+      ],
+      "epistemic_tier": 1,
+      "role": "calibration_restricted",
+      "restricted_years": [
+        1990,
+        1995
+      ],
+      "z_derivation": "Confirmed HIV case reports, read directly.",
+      "v_obs": {
+        "method": "underivable",
+        "reason": "As ecdc_aids_confirmed_cases. ESCALATION per spec section 10."
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "notes": "DECISION REQUIRED. This series measures the same quantity as shm_new_diagnoses_total for 1996-2017. Under a maximum rule, two targets for one quantity double the exclusion pressure on that quantity relative to every other, which is a weighting decision smuggled in through target selection. Default here restricts it to 1990-1995, the window where SHM publishes only a '<=1995' lump and so provides no annual constraint. CORRECTION 2026-09-14: this note previously said that lump was 1,280. It is not -- 1,280 is the NON-MSM lump (Other men 719 + Women 561) that C-1 uses. SHM Table 1.1 '<=1995' reads MSM 2,095 / Other men 719 / Women 561 / Trans 15 / <15y 53 / TOTAL 3,443. ECDC 1990-95 verified from source: 2,602 total, 1,542 'Sex between men'. The two sources are consistent, not conflicting (implied MSM <=1989 = 553). Set role to 'calibration' to score the full overlap, or 'cross_validation' to drop it from I_max; both are one-line changes and both must be declared before the wave runs."
+    },
+    {
+      "series_name": "unaids_plhiv_all_ages",
+      "model_output": "PLHIV",
+      "source_sheet": "UNAIDS-PLHIV)",
+      "source_organisation": "UNAIDS / Spectrum CSAVR",
+      "year_column": "Time Period",
+      "estimate_column": "(All Age Mid)",
+      "lower_column": "(All Age Low)",
+      "upper_column": "(All Age High)",
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      },
+      "year_coverage": [
+        1990,
+        2023
+      ],
+      "epistemic_tier": 2,
+      "role": "cross_validation",
+      "z_derivation": "Spectrum CSAVR mid estimate.",
+      "v_obs": {
+        "method": "published_interval",
+        "divisor": 3.92
+      },
+      "v_disc": {
+        "method": "default",
+        "tier2_increment": true
+      },
+      "notes": "Currently the plhiv_gate, which PASSES in the submitted base case. The tiering rule demotes it anyway -- this is half of the uniformity demonstration."
+    },
+    {
+      "series_name": "unaids_plhiv_female_15plus",
+      "model_output": "plhiv_female_15plus",
+      "source_sheet": "UNAIDS-PLHIV)",
+      "source_organisation": "UNAIDS / Spectrum CSAVR",
+      "year_column": "Time Period",
+      "estimate_column": "(Female Age Mid)",
+      "lower_column": "(Female Age Low)",
+      "upper_column": "(Female Age High)",
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      },
+      "year_coverage": [
+        1990,
+        2023
+      ],
+      "epistemic_tier": 2,
+      "role": "cross_validation",
+      "z_derivation": "Spectrum CSAVR mid estimate, females aged 15+.",
+      "v_obs": {
+        "method": "published_interval",
+        "divisor": 3.92
+      },
+      "v_disc": {
+        "method": "default",
+        "tier2_increment": true
+      },
+      "notes": "Audit flagged this as box-capped: no particle in the 4,000-particle sweep got within 23% of the 2023 target (max 3,649 vs 4,727) under a seed_msm_fraction floor of 0.8. Expected to be structurally unreachable until C-1 lands, since the female PLHIV stock is almost entirely non-MSM. | UPDATE 2026-09-14: C-1 landed; plhiv_female_15plus moved 838 -> 4,531 against a 2023 target of 4,727, so the target is now reachable. BUT it is no longer diagnostic of the transmission model: post-C-1 this quantity is essentially the running sum of the fed-in female diagnosis series net of mortality. Improvement here is evidence about mortality and ART retention, NOT fit quality."
+    },
+    {
+      "series_name": "unaids_plhiv_male_15plus",
+      "model_output": "plhiv_male_15plus",
+      "source_sheet": "UNAIDS-PLHIV)",
+      "source_organisation": "UNAIDS / Spectrum CSAVR",
+      "year_column": "Time Period",
+      "estimate_column": "(Male Age Mid)",
+      "lower_column": "(Male Age Low)",
+      "upper_column": "(Male Age High)",
+      "filters": {
+        "Indicator_GId": "PLWH",
+        "Subgroup": "All ages estimate"
+      },
+      "year_coverage": [
+        1990,
+        2023
+      ],
+      "epistemic_tier": 2,
+      "role": "cross_validation",
+      "z_derivation": "Spectrum CSAVR mid estimate, males aged 15+.",
+      "v_obs": {
+        "method": "published_interval",
+        "divisor": 3.92
+      },
+      "v_disc": {
+        "method": "default",
+        "tier2_increment": true
+      },
+      "notes": ""
+    },
+    {
+      "series_name": "unaids_new_infections_15plus",
+      "model_output": "new_infections",
+      "source_sheet": "UNAIDS-HIV Infections",
+      "source_organisation": "UNAIDS / Spectrum CSAVR",
+      "year_column": "Time Period",
+      "estimate_column": "(All Age Mid)",
+      "estimate_subtract_column": "CHILD (0-14) MID",
+      "lower_column": "(All Age Low)",
+      "lower_subtract_column": "CHILD (0-14) Low",
+      "upper_column": "(All Age High)",
+      "upper_subtract_column": "CHILD (0-14) High",
+      "filters": {
+        "Indicator_GId": "NEW_INFECTIONS"
+      },
+      "year_coverage": [
+        1990,
+        2023
+      ],
+      "epistemic_tier": 2,
+      "role": "cross_validation",
+      "z_derivation": "All-age mid estimate minus the child (0-14) mid estimate, to match the model's adult-only compartments.",
+      "v_obs": {
+        "method": "published_interval",
+        "divisor": 3.92,
+        "caveat": "APPROXIMATION. Subtracting the child low from the all-age low and the child high from the all-age high treats the two as perfectly correlated. That is not stated by UNAIDS. The resulting interval is narrower than an independence assumption would give and therefore biases towards OVER-exclusion. Child estimates are ~0.7% of the all-age total in recent years, so the effect is small, but it is an approximation and is labelled as one."
+      },
+      "v_disc": {
+        "method": "default",
+        "tier2_increment": true
+      },
+      "notes": "Currently the incidence_gate, which FAILS in the submitted base case (recent_median_ratio 2.696 > 1.750 ceiling). The tiering rule demotes it -- disclosed explicitly, and offset by the two passing gates it also demotes. The published interval is very wide in recent years (2022: 104 / 290 / 452), so this target constrains far less than the retired 1.75 ratio ceiling did."
+    },
+    {
+      "series_name": "unaids_aids_deaths_15plus",
+      "model_output": "aids_deaths",
+      "source_sheet": "UNAIDS-AIDSDeath",
+      "source_organisation": "UNAIDS / Spectrum CSAVR",
+      "year_column": "Time Period",
+      "estimate_column": "(All Age Mid)",
+      "estimate_subtract_column": "CHILD (0-14) MID",
+      "lower_column": "(All Age Low)",
+      "lower_subtract_column": "CHILD (0-14) Low",
+      "upper_column": "(All Age High)",
+      "upper_subtract_column": "CHILD (0-14) High",
+      "filters": {
+        "Indicator_GId": "AIDS_DEATHS"
+      },
+      "year_coverage": [
+        1990,
+        2023
+      ],
+      "epistemic_tier": 2,
+      "role": "cross_validation",
+      "z_derivation": "All-age mid estimate minus the child (0-14) mid estimate.",
+      "v_obs": {
+        "method": "published_interval",
+        "divisor": 3.92,
+        "caveat": "Same correlated-subtraction approximation as unaids_new_infections_15plus."
+      },
+      "v_disc": {
+        "method": "default",
+        "tier2_increment": true
+      },
+      "notes": "PROVENANCE CHECK REQUIRED, flagged by spec section 4.1. Vital-registration HIV deaths are an INPUT to CSAVR, so a vital-registration death series would be tier 1. This workbook holds the UNAIDS MODELLED AIDS-death series (it carries Spectrum low/mid/high bounds and 'Model Low/Mid/High' columns), not the raw CBS vital-registration series, so it is tier 2. If the raw CBS series is obtained it should be added as a separate tier-1 target rather than replacing this one."
+    },
+    {
+      "series_name": "unaids_art_stock_15plus",
+      "model_output": "on_art_stock",
+      "source_sheet": "UNAIDS-ART",
+      "source_organisation": "UNAIDS",
+      "year_column": "Time Period",
+      "estimate_column": "TOTAL ADULTS",
+      "filters": {
+        "Indicator_GId": "PEOPLE_RECEIVING_ART",
+        "Subgroup": "Adults (15+)"
+      },
+      "year_coverage": [
+        1996,
+        2023
+      ],
+      "epistemic_tier": 2,
+      "role": "cross_validation",
+      "z_derivation": "Adults (15+) on antiretroviral therapy.",
+      "v_obs": {
+        "method": "underivable",
+        "reason": "The UNAIDS-ART sheet publishes a point value only -- no low/high columns, unlike every other UNAIDS sheet in this workbook. There is no interval to convert. Contributes 0.0 and biases towards OVER-exclusion. ESCALATION per spec section 10."
+      },
+      "v_disc": {
+        "method": "default",
+        "tier2_increment": true
+      },
+      "notes": "Currently the art_stock_gate, which PASSES in the submitted base case. The tiering rule demotes it -- the other half of the uniformity demonstration."
+    },
+    {
+      "series_name": "shm_new_diagnoses_non_msm",
+      "model_output": "new_diagnoses_non_msm",
+      "source_sheet": "Stiching 1.1 (Diagnoses)",
+      "source_organisation": "Stichting HIV Monitoring (ATHENA national observational cohort), Netherlands",
+      "year_column": "Year of diagnosis",
+      "estimate_column": "Men (CALC)",
+      "estimate_add_column": "Women (CALC)",
+      "year_coverage": [
+        1996,
+        2024
+      ],
+      "epistemic_tier": 1,
+      "role": "excluded",
+      "z_derivation": "Other men plus women, delay-adjusted where published.",
+      "v_obs": {
+        "method": "delay_correction",
+        "reported_column": "Other men reported",
+        "reported_add_column": "Women reported",
+        "adjusted_column": "Other men adjusted",
+        "adjusted_add_column": "Women adjusted",
+        "fraction_key": "shm_delay_uncertainty_fraction",
+        "extrapolation_rule_key": "shm_delay_extrapolation_rule",
+        "missing_component": {
+          "name": "ascertainment",
+          "status": "underivable",
+          "reason": "As shm_new_diagnoses_total.",
+          "shared_with": "shm_new_diagnoses_total"
+        }
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "notes": "REMOVED FROM CALIBRATION 2026-09-15 after C-1 landed. The observed non-MSM diagnosis series is now an exogenous forcing input, not evidence of fitted transmission. It is retained in the register with role 'excluded' so the removal is explicit rather than a silent deletion. The model reproduces approximately 101.1%, not exactly 100%, because rare endogenous non-MSM transmissions still occur stochastically; that residual is a C-1 limitation, not a reason to fit the injected series."
+    },
+    {
+      "source_type": "rivm_aids_candidate_json",
+      "candidate_path": "outputs/calibration/rivm_aids_vintage_audit_20260916/candidate_newest_vetted_20260916.json",
+      "candidate_sha256": "16be90cb791f02e5e69f4d7836ee1f0c0ffa8dff9d57c28d8b494a6923e12f03",
+      "source_organisation": "RIVM, STI and HIV in the Netherlands (Inspectorate/SHM AIDS registration), newest vetted edition per year",
+      "year_column": "period",
+      "year_coverage": [
+        1988,
+        2022
+      ],
+      "epistemic_tier": 1,
+      "v_obs": {
+        "method": "underivable",
+        "reason": "RIVM publishes no uncertainty. Differences between report editions show revision uncertainty but are not a sampling variance and are not converted into one (source policy 2026-09-16). Contributes 0.0; biases towards OVER-exclusion."
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "series_name": "rivm_aids_msm",
+      "group": "msm",
+      "model_output": "aids_first_diagnosis_proxy_msm",
+      "role": "calibration",
+      "z_derivation": "RIVM annual AIDS diagnoses by year of AIDS diagnosis, route group msm; 2016 held (D79 count/percentage conflict), incomplete terminal years excluded.",
+      "notes": "Observation function is an ASSUMPTION (aids_observation.OBSERVED_AIDS_PROXY). Group mapping: RIVM MSM route -> model MSM group; model MSM group includes trans people counted with MSM in the SHM calibration grouping, whereas the RIVM route classification of trans people is unverified."
+    },
+    {
+      "source_type": "rivm_aids_candidate_json",
+      "candidate_path": "outputs/calibration/rivm_aids_vintage_audit_20260916/candidate_newest_vetted_20260916.json",
+      "candidate_sha256": "16be90cb791f02e5e69f4d7836ee1f0c0ffa8dff9d57c28d8b494a6923e12f03",
+      "source_organisation": "RIVM, STI and HIV in the Netherlands (Inspectorate/SHM AIDS registration), newest vetted edition per year",
+      "year_column": "period",
+      "year_coverage": [
+        1988,
+        2022
+      ],
+      "epistemic_tier": 1,
+      "v_obs": {
+        "method": "underivable",
+        "reason": "RIVM publishes no uncertainty. Differences between report editions show revision uncertainty but are not a sampling variance and are not converted into one (source policy 2026-09-16). Contributes 0.0; biases towards OVER-exclusion."
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "series_name": "rivm_aids_non_msm",
+      "group": "non_msm",
+      "model_output": "aids_first_diagnosis_proxy_non_msm",
+      "role": "cross_validation",
+      "z_derivation": "RIVM annual AIDS diagnoses by year of AIDS diagnosis, route group non_msm; 2016 held (D79 count/percentage conflict), incomplete terminal years excluded.",
+      "notes": "Structurally one-sided: C-1 non-MSM entrants all enter Chronic, so AIDS at presentation is absent from the model. Includes IDU, blood contacts, mother-to-child and other/unknown routes whose model eligibility is not established. Validation only."
+    },
+    {
+      "source_type": "rivm_aids_candidate_json",
+      "candidate_path": "outputs/calibration/rivm_aids_vintage_audit_20260916/candidate_newest_vetted_20260916.json",
+      "candidate_sha256": "16be90cb791f02e5e69f4d7836ee1f0c0ffa8dff9d57c28d8b494a6923e12f03",
+      "source_organisation": "RIVM, STI and HIV in the Netherlands (Inspectorate/SHM AIDS registration), newest vetted edition per year",
+      "year_column": "period",
+      "year_coverage": [
+        1988,
+        2022
+      ],
+      "epistemic_tier": 1,
+      "v_obs": {
+        "method": "underivable",
+        "reason": "RIVM publishes no uncertainty. Differences between report editions show revision uncertainty but are not a sampling variance and are not converted into one (source policy 2026-09-16). Contributes 0.0; biases towards OVER-exclusion."
+      },
+      "v_disc": {
+        "method": "default"
+      },
+      "series_name": "rivm_aids_total",
+      "group": "total",
+      "model_output": "aids_first_diagnosis_proxy",
+      "role": "cross_validation",
+      "z_derivation": "RIVM annual AIDS diagnoses by year of AIDS diagnosis, route group total; 2016 held (D79 count/percentage conflict), incomplete terminal years excluded.",
+      "notes": "Accounting check only; not independent of the two group series."
+    }
+  ],
+  "prep_programme_targets_note": "The four RIVM PrEP-programme targets in configs/disease_target_mapping.json (csg_stock_end, csg_stock_mean, csg_persons_in_care, csg_new_persons) are NOT included above. They constrain SEVEN of the 27 parameters in calib_space.json (prep_oral_init_2019/2021/2023/2024/2025 + prep_oral_dropout_2019/2025 -- corrected 2026-09-14, this note previously said six), so omitting them leaves those seven unconstrained by the wave loop. They are excluded here for a reason that must be resolved before HM-5: the PrEP-Historical sheet is an analyst-built mapping layer (column 'target_status' reads 'mapped_base') over the RIVM PrEP evaluatierapport rather than a source-facing register (NOTE 2026-09-14: no 2025 evaluatierapport exists in literature/; the only RIVM report present is RIVM(2023) 'Cijfermatige eindevaluatie PrEP-pilot', 27 July 2023, covering Aug 2019 - Dec 2022, so five of the six mapped years rest on a document not in the corpus), it publishes no uncertainty, and its 2025 row is explicitly an H1 partial-year check rather than a full-year target. Deciding their tier requires reading the RIVM evaluation report itself. BLOCKER for HM-5, not for HM-1/2/3/4. ASSESSED 2026-09-14 -- see outputs/hta_results/rivm_prep_targets_20260914_134653/RIVM_PrEP_target_admissibility.md. Finding: the CSG series is a capacity-capped subsidy enrolment count, not a measure of PrEP uptake. The pilot was regulation-capped (6500 -> 8500) and full by June 2022, so the stock series measures the cap. RIVM labels the one traceable value (csg_stock_end 2022 = 8558, p6) 'naar schatting' and states it OVERSTATES active users because lost-to-follow-up registration lags. Coverage is partial: the workbook's own csg_plus_non_csg_sensitivity block records 4802 non-CSG unique persons in 2022 against 9763 CSG, i.e. CSG captures roughly 67% of national use, while the mapped csg_base scenario sets non_csg_annual_unique = 0 for every year. This is a CENSORING defect, not a noise defect, so it is not curable by widening sigma_fallback_cv. Recommendation: not admissible as tier-1 or tier-2; fix the seven prep_oral_* parameters outside the wave loop and carry the uncertainty in PSA over a prior spanning CSG-only to CSG-plus-non-CSG.",
+  "derived_from": {
+    "path": "configs/hm_target_register.json",
+    "sha256": "73841cdfe959c2b918885b15310529d4a648a998999b5b2c2b5b9b81ef8a1a17"
+  },
+  "change_record": "2026-09-16, user decisions: (1) predictive variance contract V_ens(x)=s(x)+s(x)/K with s(x) re-estimated locally, A-5 file not used; (2) model AIDS compartment confirmed as clinical AIDS (CASCADE 2000/2003 clinical 1993 CDC definition), no recognition fraction; (3) diagnostic wave scores RIVM MSM AIDS only; non-MSM and total RIVM AIDS and ECDC AIDS are cross-validation. The original register is unchanged."
+}

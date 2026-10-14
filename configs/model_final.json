@@ -1461,7 +1461,7 @@
       "eligible_age_range": {
         "value": {
           "min": "15-19",
-          "max": "64-69"
+          "max": "65-69"
         },
         "notes": "V11.5: Age groups eligible for PrEP initiation. Initiation only — existing users who age past max are NOT forced off PrEP. If absent, defaults to full age range (backward compat)."
       },
@@ -1529,7 +1529,7 @@
       "eligible_age_range": {
         "value": {
           "min": "15-19",
-          "max": "64-69"
+          "max": "65-69"
         },
         "notes": "V11.5: Age groups eligible for Lenacapavir initiation. Initiation only — existing users who age past max are NOT forced off. If absent, defaults to full age range (backward compat)."
       },

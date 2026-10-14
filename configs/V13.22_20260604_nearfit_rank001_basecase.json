@@ -1420,6 +1420,128 @@
           },
           "source": "Antiretroviral Therapy Cohort Collaboration (ART-CC) (2010) Life expectancy of individuals on combination antiretroviral therapy in high-income countries: a collaborative analysis of 14 cohort studies. Lancet 372(9635):293-299."
         }
+      },
+      "exogenous_non_msm": {
+        "enabled": {
+          "value": true,
+          "notes": "C-1 (D-03). Observed SHM non-MSM diagnoses are injected as exogenous forcing: these people enter the PLHIV stock and consume care costs but are not produced by the transmission model. NOT migrant seeding; no migrant/domestic decomposition and no import-volume parameter. Distinct from demography.migration.migrant_hiv, which re-labels a subset of net migration and is not used here."
+        },
+        "annual_counts": {
+          "value": {
+            "1996": 259,
+            "1997": 326,
+            "1998": 281,
+            "1999": 309,
+            "2000": 406,
+            "2001": 469,
+            "2002": 515,
+            "2003": 535,
+            "2004": 532,
+            "2005": 521,
+            "2006": 427,
+            "2007": 421,
+            "2008": 398,
+            "2009": 396,
+            "2010": 378,
+            "2011": 350,
+            "2012": 339,
+            "2013": 288,
+            "2014": 284,
+            "2015": 298,
+            "2016": 250,
+            "2017": 239,
+            "2018": 214,
+            "2019": 251,
+            "2020": 168,
+            "2021": 171,
+            "2022": 198,
+            "2023": 212,
+            "2024": 199
+          },
+          "notes": "SHM HIV Monitoring Report 2025, Table 1.1 ('Stiching 1.1 (Diagnoses)' sheet of data/raw/validation/DiseaseData.xlsx), column 'Men (CALC)' + 'Women (CALC)', i.e. other men + women, excluding MSM, trans and <15y. Read directly from the sheet 2026-09-14. Spot values: 1996=259, 2003=535 (peak), 2012=339, 2020=168, 2024=199. Observed, not estimated: zero free parameters."
+        },
+        "annual_male_share": {
+          "value": {
+            "1996": 0.6139,
+            "1997": 0.5767,
+            "1998": 0.5516,
+            "1999": 0.5146,
+            "2000": 0.5049,
+            "2001": 0.4904,
+            "2002": 0.4854,
+            "2003": 0.4804,
+            "2004": 0.4944,
+            "2005": 0.5029,
+            "2006": 0.5222,
+            "2007": 0.5059,
+            "2008": 0.5603,
+            "2009": 0.553,
+            "2010": 0.5661,
+            "2011": 0.5743,
+            "2012": 0.5487,
+            "2013": 0.5694,
+            "2014": 0.5493,
+            "2015": 0.5772,
+            "2016": 0.584,
+            "2017": 0.6025,
+            "2018": 0.6168,
+            "2019": 0.5737,
+            "2020": 0.5417,
+            "2021": 0.5965,
+            "2022": 0.5657,
+            "2023": 0.6132,
+            "2024": 0.5578
+          },
+          "notes": "Male ('Men (CALC)') share of the non-MSM total for the same year and same table. Used to split the annual count between Heterosexual_Male and Female. Observed per year, so the orientation allocation is read off the data rather than estimated."
+        },
+        "pre_start_rule": {
+          "value": "burn_in",
+          "notes": "The SHM '<=1995' bucket is a single cohort-reconstructed lump of 1,280 (719 other men + 561 women) with no published annual shape, and it under-ascertains people who died pre-ART or never entered care. Default 'burn_in' does NOT distribute or inject it and leaves the pre-1996 window unscored: inventing an annual shape would manufacture the kind of unobservable the design forbids. 'uniform' exists for sensitivity analysis only. Do not fit to this lump."
+        },
+        "pre_start_lump": {
+          "value": 1280,
+          "notes": "719 + 561 from the '<=1995' row of the same table. Recorded for provenance and used only when pre_start_rule is 'uniform'. Not injected under the default rule."
+        },
+        "pre_start_span": {
+          "value": {
+            "start": 1982,
+            "end": 1995
+          },
+          "notes": "Window the '<=1995' lump would be spread over under the 'uniform' rule. 1982 is the first plausible Dutch diagnosis year. Inactive under the default rule."
+        },
+        "post_end_rule": {
+          "value": "freeze",
+          "notes": "C-3 base case. The economic horizon is 2025-2064 (freeze_year 2025, evaluation_years 40), so 100% of the analysis period is governed by this rule and nothing observed enters the ICER. 'freeze' holds the mean of the last freeze_window observed years. Alternatives 'trend' (down), 'recent_slope' (up) and 'net_migration' are runnable and the spread across all four is reported. Note the status quo this replaces was effectively a fifth rule -- migrant_hiv has no post-2024 entries, so the model currently injects ZERO exogenous non-MSM people across the entire horizon."
+        },
+        "freeze_window": {
+          "value": 3,
+          "notes": "Recovery window 2022-2024 (198, 212, 199), mean 203.0. NOT 2020-2024. The brief justified a 5-year window with '2020-24 are flat', but OLS on those five years gives slope +10.30/yr (SE 3.71, t=+2.78), verified against the workbook 2026-09-14: they are a COVID trough and a rebound, not a plateau, and their mean 189.6 is a level no year in the series represents (below 2018=214, 2019=251 and below 2023=212). The 2022-2024 window excludes the two COVID-suppressed testing years. Residual caveat no window removes: SHM's reporting-delay uplift on 2024 is +22.1% (163 reported -> 199 used), ramping 0.0/0.4/1.2/3.0/4.8/9.3/22.1% across 2018-2024, so the most recent point is the most provisional. Set to 5 to recover the brief's original anchor."
+        },
+        "trend_window": {
+          "value": {
+            "start": 2004,
+            "end": 2020
+          },
+          "notes": "C-3 alternative (down). Log-linear fit over the 2004-2020 decline, slope -19.92/yr (SE 1.23, t=-16.24) on the untransformed series. ALTERNATIVE ONLY: the trend reversed after 2020, so projecting it forward is a judgement call rather than continuation of a stable process."
+        },
+        "net_migration_base_window": {
+          "value": {
+            "start": 2020,
+            "end": 2024
+          },
+          "notes": "C-3 alternative 2. Base window whose mean net migration the frozen level corresponds to; later years scale by projected net migration relative to it. The series itself is taken from demography.migration.quantity.year_specific (World Bank history plus CBS central forecast to 2070) rather than duplicated here, so there is one source of truth."
+        },
+        "slope_window": {
+          "value": {
+            "start": 2020,
+            "end": 2024
+          },
+          "notes": "C-3 alternative (up). Linear slope of the post-COVID recovery, +10.30/yr (SE 3.71, t=+2.78). Added because the brief's three rules are all flat or falling while the data's own recent signal rises: a sensitivity set whose every member sits at or below the base case is one-sided. Alternative, not base case: five points spanning a collapse and rebound do not establish a durable trend."
+        },
+        "slope_cap_multiple": {
+          "value": 3.0,
+          "notes": "Ceiling on the recent_slope rule, as a multiple of the frozen level. An uncapped linear extrapolation over the 40-year horizon reaches levels the Dutch non-MSM epidemic has never approached, from a slope fitted on five points. Not a tuning knob: it states that this rule is an upper alternative rather than a forecast."
+        }
       }
     }
   },
@@ -1505,7 +1627,7 @@
       "eligible_age_range": {
         "value": {
           "min": "15-19",
-          "max": "64-69"
+          "max": "65-69"
         },
         "notes": "V11.5: Age groups eligible for PrEP initiation. Initiation only \u2014 existing users who age past max are NOT forced off PrEP. If absent, defaults to full age range (backward compat)."
       },
@@ -1573,7 +1695,7 @@
       "eligible_age_range": {
         "value": {
           "min": "15-19",
-          "max": "64-69"
+          "max": "65-69"
         },
         "notes": "V11.5: Age groups eligible for Lenacapavir initiation. Initiation only \u2014 existing users who age past max are NOT forced off. If absent, defaults to full age range (backward compat)."
       },

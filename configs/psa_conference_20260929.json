@@ -1,0 +1,38 @@
+{
+  "_readme": "Conference PSA: 1,000 shared LHS draws, conditional on each selected point-calibrated backbone. Placeholder HTA distributions are excluded. Calibration-fit uncertainty is handled as a separate plausible-fit/structural analysis, not mislabelled as posterior uncertainty.",
+  "sampling": {
+    "n_draws": {"value": 1000},
+    "method": {"value": "lhs"},
+    "seed": {"value": 12345},
+    "tiers_to_sample": {
+      "value": ["uncertain"],
+      "notes": "Estimated/calibrated marginals are not independently sampled because the confirmed shortlist is not a posterior and the calibrated coordinates are correlated."
+    },
+    "exclude_parameters": {"value": []},
+    "include_parameters": {"value": []},
+    "correlation_groups": {
+      "value": [],
+      "notes": "Not implemented. Independence is a declared limitation of this conditional PSA."
+    }
+  },
+  "hta_sampling": {
+    "enabled": {"value": true},
+    "exclude_placeholders": {
+      "value": true,
+      "notes": "Unsourced placeholder distributions are excluded from the conference PSA."
+    },
+    "exclude_parameters": {"value": []}
+  },
+  "outputs": {
+    "directory": {"value": "outputs/suites/conference_overnight_20260929/psa"},
+    "raw_draws": {"enabled": true, "format": "csv"},
+    "summary_excel": {"enabled": false},
+    "plots": {
+      "tornado": {"enabled": false, "metric": "nmb", "top_n": 10},
+      "histogram": {"enabled": false, "metrics": []},
+      "convergence": {"enabled": false, "metric": "nmb"},
+      "format": {"value": "png"},
+      "dpi": {"value": 300}
+    }
+  }
+}

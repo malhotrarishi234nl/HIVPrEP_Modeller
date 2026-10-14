@@ -25,17 +25,32 @@ from engine_v3 import (
     TimeSystem, GroupSystem, ConfigValidator,
     PopulationState
 )
-from config_utils import extract_value
+from config_utils import extract_value, require_idx
 from config_reader import ConfigReader
 from transmission_corrected import TransmissionEngine
 from output_writer import OutputWriter
 from demography import DemographyModule
 from schedule_utils import ScheduleManager, TimeSchedule, validate_schedule_before_intro  # V5, V12.15
 from migration import MigrationModule                                       # V9
+from exogenous_diagnoses import ExogenousNonMsmForcing                       # C-1
+from stochastic_allocation import deterministic_allocate_events, deterministic_allocate_total
+from counter_based_rng import CounterBasedRNGFactory
+from stage_structured_diagnosis import (
+    load_stage_structured_diagnosis, stage_step_probability,
+    validate_effective_probability,
+)
+from aids_observation import (
+    AIDS_OBSERVATION_FIELDS, progression_observation_counts,
+    diagnosis_observation_counts,
+)
 import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
+
+
+
+
 
 # ---------------------------------------------------------------------------
 # V11.8.4: PrEP naming bridge
@@ -102,6 +117,13 @@ class SimulationEngineV3:
             seed = extract_value(self.config["simulation_controls"].get("seed", {"value": 42}))
         self.seed = seed
         self.rng = np.random.RandomState(seed)
+        # A-4: stochastic event streams are counter-based and process-scoped.
+        # ``self.rng`` remains the legacy RandomState for snapshot compatibility
+        # and for the bit-unchanged deterministic path; stochastic production
+        # calls obtain Philox streams through ``_process_rng`` below.
+        self._crn_factory = CounterBasedRNGFactory(seed)
+        self._current_step = None
+        self._current_year = None
 
         # Initialize time system
         self.time = TimeSystem(self.config["time"])
@@ -196,6 +218,24 @@ class SimulationEngineV3:
                   f"(interp={self.msm_relative_diagnosis_schedule.interpolation}, "
                   f"first_year={self.msm_relative_diagnosis_schedule.get_first_year()})")
 
+        # Diagnostic-only stage structure. Missing/disabled and the explicit
+        # identity profile retain the exact legacy diagnosis draw path.
+        self.stage_structured_diagnosis = load_stage_structured_diagnosis(self.config)
+        if self.stage_structured_diagnosis.enabled:
+            print("  Stage-structured diagnosis audit ENABLED "
+                  f"(rho={self.stage_structured_diagnosis.routine_hazard_scale}, "
+                  "AIDS symptom annual probability="
+                  f"{self.stage_structured_diagnosis.aids_symptom_annual_probability}, "
+                  "symptom start year="
+                  f"{self.stage_structured_diagnosis.symptom_start_year})")
+
+        # 2026-09-16 (Rishi decision B): optional two-era effective on-ART progression rate.
+        self.on_art_progression_schedule = self._build_on_art_progression_schedule()
+        if self.on_art_progression_schedule is not None:
+            print(f"  On-ART Chronic->AIDS schedule ENABLED "
+                  f"(interp={self.on_art_progression_schedule.interpolation}, "
+                  f"years={list(self.on_art_progression_schedule.years)})")
+
         # V13.6 diagnostic: optional calendar-era ART mortality effect schedule.
         # Falls back to the existing constant art_mortality_reduction when absent.
         self.art_mortality_reduction_schedule = self._build_art_mortality_reduction_schedule()
@@ -203,6 +243,15 @@ class SimulationEngineV3:
             print(f"  V13.6: ART mortality reduction schedule ENABLED "
                   f"(interp={self.art_mortality_reduction_schedule.interpolation}, "
                   f"first_year={self.art_mortality_reduction_schedule.get_first_year()})")
+
+        # C-1: exogenous non-MSM diagnosis forcing (safe default: off if key absent)
+        self.exogenous_non_msm = ExogenousNonMsmForcing(self.config)
+        if self.exogenous_non_msm.enabled:
+            print(f"  Exogenous non-MSM forcing: ENABLED "
+                  f"(observed {self.exogenous_non_msm.first_observed_year}-"
+                  f"{self.exogenous_non_msm.last_observed_year}, "
+                  f"pre={self.exogenous_non_msm.pre_start_rule}, "
+                  f"post={self.exogenous_non_msm.post_end_rule})")
 
         # V9: Net migration module (safe default: disabled if key absent)
         self.migration = MigrationModule(self.config, self.groups, self.demography)
@@ -242,6 +291,7 @@ class SimulationEngineV3:
 
         # Storage for outputs
         self.outputs = {
+            **{name: [] for name in AIDS_OBSERVATION_FIELDS},
             'step': [],
             'year': [],
             'new_infections': [],
@@ -252,6 +302,10 @@ class SimulationEngineV3:
             'new_aids_cases': [],
             'new_diagnoses': [],
             'new_diagnoses_msm': [],
+            'new_diagnoses_endogenous': [],
+            'new_diagnoses_endogenous_msm': [],
+            'new_diagnoses_endogenous_non_msm': [],
+            'new_diagnoses_exogenous_non_msm': [],
             'art_initiations': [],
             'art_initiations_acute': [],
             'art_initiations_chronic': [],
@@ -465,52 +519,34 @@ class SimulationEngineV3:
         if self.deterministic:
             return self._deterministic_allocate_events(n, p)
         else:
-            return self.rng.binomial(n, p)
+            return self._process_rng("unscoped_event_draw").binomial(n, p)
+
+    def _process_rng(self, process_id):
+        """Return the RNG for one named process in the current absolute step."""
+        if self.deterministic:
+            return self.rng
+        if self._current_step is None or self._current_year is None:
+            raise RuntimeError(
+                "Counter-based stochastic draw requested outside a simulation timestep"
+            )
+        return self._crn_factory.for_process(
+            year=self._current_year,
+            timestep=self._current_step,
+            process_id=process_id,
+        )
+
+    def _draw_events_for(self, process_id, n: np.ndarray, p: float) -> np.ndarray:
+        """Draw probability events from a stable, named counter-based stream."""
+        if self.deterministic:
+            # Route through the legacy two-argument method so existing tests and
+            # deterministic monkeypatch diagnostics retain their exact contract.
+            return self._draw_events(n, p)
+        return self._process_rng(process_id).binomial(n, p)
 
     @staticmethod
     def _deterministic_allocate_events(n: np.ndarray, p: float) -> np.ndarray:
-        """
-        Deterministic integer approximation to a binomial event draw.
-
-        Cellwise rounding can erase rare events when expected counts are spread
-        across many tensor cells. This allocator preserves the rounded aggregate
-        expected total, then assigns residual events to cells with the largest
-        fractional expected counts.
-        """
-        p = float(p)
-        if not np.isfinite(p) or p < 0.0 or p > 1.0:
-            raise ValueError(
-                f"Event probability must be finite and within [0, 1], got {p!r}"
-            )
-
-        n_arr = np.asarray(n)
-        if n_arr.size == 0:
-            return np.zeros_like(n_arr, dtype=np.int64)
-        if p == 0.0:
-            return np.zeros_like(n_arr, dtype=np.int64)
-        if p == 1.0:
-            return n_arr.astype(np.int64, copy=True)
-
-        expected = n_arr.astype(float) * p
-        base = np.floor(expected).astype(np.int64)
-        base = np.minimum(base, n_arr.astype(np.int64, copy=False))
-        target = min(int(np.round(expected.sum())), int(n_arr.sum()))
-        remainder = target - int(base.sum())
-
-        if remainder <= 0:
-            return base
-
-        events = base.copy()
-        fractional = (expected - base).ravel()
-        capacity = (n_arr.astype(np.int64, copy=False) - base).ravel()
-        eligible = np.flatnonzero(capacity > 0)
-        if eligible.size == 0:
-            return events
-
-        order = eligible[np.argsort(-fractional[eligible], kind="stable")]
-        take = min(remainder, order.size)
-        np.put(events, order[:take], events.ravel()[order[:take]] + 1)
-        return events
+        """Deterministic integer approximation to a binomial event draw."""
+        return deterministic_allocate_events(n, p)
 
     @staticmethod
     def _allocate_fixed_events(
@@ -676,6 +712,8 @@ class SimulationEngineV3:
         12. Record outputs
         """
         current_year = self.time.start_year + step * self.time.years_per_step
+        self._current_step = step
+        self._current_year = current_year
 
         # PATCH 2: Capture total population at start of timestep for mass balance
         prev_active = self.state.get_total_population()
@@ -727,7 +765,10 @@ class SimulationEngineV3:
 
         # --- 3. Transmission (corrected two-step) ---
         new_infections, infections_array = self.transmission_engine.calculate_transmission(
-            self.state.population, contacts, self.rng, self.deterministic
+            self.state.population,
+            contacts,
+            self._process_rng("transmission"),
+            self.deterministic,
         )
         self.state.population = self.transmission_engine.apply_infections_to_population(
             self.state.population, infections_array
@@ -747,7 +788,7 @@ class SimulationEngineV3:
             # Current production order:
             # progression -> diagnosis -> ART -> HIV mortality later in step 10.
             _progression = self._step_disease_progression()
-            diagnosis_result = self._step_diagnosis(current_year)
+            diagnosis_result = self._step_diagnosis_and_exogenous(current_year)
             art_result = self._step_art_transitions(current_year)
         elif variant == "mortality_before_diagnosis_art":
             # Diagnostic: progression -> HIV mortality -> diagnosis -> ART.
@@ -757,13 +798,13 @@ class SimulationEngineV3:
             _mortality_result = self._step_hiv_mortality(current_year)
             hiv_deaths = _mortality_result["total"]
             aids_deaths = _mortality_result["aids"]
-            diagnosis_result = self._step_diagnosis(current_year)
+            diagnosis_result = self._step_diagnosis_and_exogenous(current_year)
             art_result = self._step_art_transitions(current_year)
         elif variant == "art_lag_after_diagnosis":
             # Diagnostic: progression -> diagnosis -> HIV mortality -> ART.
             # Allows same-step diagnosis but blocks same-step ART mortality benefit.
             _progression = self._step_disease_progression()
-            diagnosis_result = self._step_diagnosis(current_year)
+            diagnosis_result = self._step_diagnosis_and_exogenous(current_year)
             aids_pre_mortality_counts = self._aids_state_counts()
             _mortality_result = self._step_hiv_mortality(current_year)
             hiv_deaths = _mortality_result["total"]
@@ -777,12 +818,17 @@ class SimulationEngineV3:
             hiv_deaths = _mortality_result["total"]
             aids_deaths = _mortality_result["aids"]
             _progression = self._step_disease_progression()
-            diagnosis_result = self._step_diagnosis(current_year)
+            diagnosis_result = self._step_diagnosis_and_exogenous(current_year)
             art_result = self._step_art_transitions(current_year)
         else:
             raise AssertionError(f"Unhandled diagnostic event order variant: {variant}")
 
-        new_diagnoses = diagnosis_result["total"]
+        # C-1 now fires inside the diagnosis step (see
+        # _step_diagnosis_and_exogenous), not at a later step 6b. Routed through
+        # new_diagnoses deliberately: the pre-existing migrant_hiv pathway writes
+        # into the tensor without touching this counter, which is part of why
+        # non-MSM diagnoses read as zero.
+        new_diagnoses = diagnosis_result["total"] + diagnosis_result["exogenous_non_msm"]
         new_diagnoses_msm = diagnosis_result["msm"]
 
         # --- 7. PrEP transitions (V5: time-scheduled) ---
@@ -795,16 +841,23 @@ class SimulationEngineV3:
         n_births = 0
         if self.demography.mode == "fertility_table" and self.demography.fertility_enabled:
             n_births = self.demography.calculate_births(
-                self.state.population, current_year, self.rng, self.deterministic
+                self.state.population,
+                current_year,
+                self._process_rng("birth_count"),
+                self.deterministic,
             )
-            self.demography.add_births_to_childhood(n_births, self.rng, self.deterministic)
+            self.demography.add_births_to_childhood(
+                n_births, self._process_rng("birth_sex"), self.deterministic
+            )
         elif self.demography.mode == "fixed_net_addition":
             n_births = self.demography.calculate_fixed_births()
-            self.demography.add_births_to_childhood(n_births, self.rng, self.deterministic)
+            self.demography.add_births_to_childhood(
+                n_births, self._process_rng("birth_sex"), self.deterministic
+            )
 
         # --- 9. Childhood mortality ---
         childhood_deaths = self.demography.apply_childhood_mortality(
-            self.rng, self.deterministic
+            self._process_rng("childhood_background_mortality"), self.deterministic
         )
 
         # --- 10. HIV mortality + adult background mortality ---
@@ -816,7 +869,10 @@ class SimulationEngineV3:
             hiv_deaths  = _mortality_result["total"]
             aids_deaths = _mortality_result["aids"]
         bg_deaths_array = self.demography.calculate_background_mortality(
-            self.state.population, current_year, self.rng, self.deterministic
+            self.state.population,
+            current_year,
+            self._process_rng("adult_background_mortality"),
+            self.deterministic,
         )
         self.state.population -= bg_deaths_array
         bg_deaths = np.sum(bg_deaths_array)
@@ -832,7 +888,7 @@ class SimulationEngineV3:
             self.demography.childhood,
             current_year,
             self.time,
-            self.rng,
+            self._process_rng("migration"),
             self.deterministic,
         )
         migrant_hiv_stats = getattr(self.migration, "last_migrant_hiv_stats", {})
@@ -864,8 +920,15 @@ class SimulationEngineV3:
             susceptible_pre_tx=susceptible_pre_tx,
             aids_deaths=aids_deaths,
             new_aids_cases=_progression["new_aids"],
+            aids_observation_counts={
+                **_progression["aids_observation"],
+                **diagnosis_result["aids_observation"],
+            },
             new_diagnoses=new_diagnoses,
             new_diagnoses_msm=new_diagnoses_msm,
+            endogenous_diagnoses=diagnosis_result["total"],
+            endogenous_diagnoses_msm=diagnosis_result["msm"],
+            exogenous_non_msm_diagnoses=diagnosis_result["exogenous_non_msm"],
             art_initiations=art_result["initiations"],
             art_initiations_by_stage=art_result["initiations_by_stage"],
             aids_start_counts=aids_start_counts,
@@ -877,6 +940,8 @@ class SimulationEngineV3:
 
         # Phase 2: Economics accumulation — per-step QALY/cost tracking
         if self._economics is not None:
+            if self._economics._ae_module is not None:
+                self._economics._ae_module.rng = self._process_rng("adverse_events")
             # V12.1 (BACKLOG-21): derive age-stratified new-infection vector from
             # the transmission array (shape [age, orient, activity, prep] → sum → (age,)).
             _new_inf_by_age = (
@@ -952,7 +1017,9 @@ class SimulationEngineV3:
 
         # 2. Residence-queue aging of children - returns those aging out of 10-14 bin
         aging_out_females, aging_out_males = self.demography.childhood.apply_fractional_aging(
-            self.rng, self.deterministic, self.time
+            self._process_rng("childhood_residence_aging"),
+            self.deterministic,
+            self.time,
         )
 
         # 3. Process sexual debut for children aging out of oldest bin
@@ -962,7 +1029,7 @@ class SimulationEngineV3:
             self.state.population, aging_debuts = self.demography.process_sexual_debut(
                 aging_out_females, aging_out_males,
                 self.state.population,
-                self.rng, self.deterministic
+                self._process_rng("sexual_debut_assignment"), self.deterministic
             )
             self._register_adult_phase_entries(self.state.population - before_debut_population)
 
@@ -973,7 +1040,9 @@ class SimulationEngineV3:
         """Legacy memoryless fractional aging retained for diagnostic comparison."""
         self._apply_fractional_aging_adults_legacy()
         aging_out_females, aging_out_males = self.demography.childhood.apply_fractional_aging_legacy(
-            self.rng, self.deterministic, self.time
+            self._process_rng("childhood_fractional_aging_legacy"),
+            self.deterministic,
+            self.time,
         )
 
         aging_debuts = 0
@@ -981,7 +1050,7 @@ class SimulationEngineV3:
             self.state.population, aging_debuts = self.demography.process_sexual_debut(
                 aging_out_females, aging_out_males,
                 self.state.population,
-                self.rng, self.deterministic
+                self._process_rng("sexual_debut_assignment"), self.deterministic
             )
 
         return 0, aging_debuts, aging_debuts
@@ -993,14 +1062,17 @@ class SimulationEngineV3:
 
         # 1. Continuous sexual debut (every timestep)
         debuting_females, debuting_males = self.demography.childhood.process_continuous_debut(
-            self.time, self.rng, self.deterministic
+            self.time,
+            self._process_rng("continuous_sexual_debut"),
+            self.deterministic,
         )
 
         if debuting_females > 0 or debuting_males > 0:
             self.state.population, continuous_debuts = self.demography.process_sexual_debut(
                 debuting_females, debuting_males,
                 self.state.population,
-                self.rng, self.deterministic
+                self._process_rng("sexual_debut_assignment_continuous"),
+                self.deterministic,
             )
 
         # 2. Discrete aging (every 5 years)
@@ -1016,7 +1088,8 @@ class SimulationEngineV3:
                 self.state.population, flush_debuts = self.demography.process_sexual_debut(
                     flushed_females, flushed_males,
                     self.state.population,
-                    self.rng, self.deterministic
+                    self._process_rng("sexual_debut_assignment_flush"),
+                    self.deterministic,
                 )
 
             # 2b. Age adult population (100% shift)
@@ -1193,7 +1266,9 @@ class SimulationEngineV3:
                 moving = self.state.population[age_idx, ...] - staying
             else:
                 # Stochastic: binomial draw for each compartment
-                moving = self.rng.binomial(
+                moving = self._process_rng(
+                    ("adult_fractional_aging_legacy", age_idx)
+                ).binomial(
                     self.state.population[age_idx, ...].astype(int),
                     aging_fraction
                 )
@@ -1292,9 +1367,11 @@ class SimulationEngineV3:
         n_act    = self.groups.n_activities
         contacts_allocated = np.zeros((n_orient, n_act, n_orient, n_act))
 
-        female_idx      = self.groups.orient_to_idx.get("Female", 0)
-        hetero_male_idx = self.groups.orient_to_idx.get("Heterosexual_Male", 1)
-        msm_idx         = self.groups.orient_to_idx.get("MSM", 2)
+        # Hardcoded positional defaults (0/1/2) would silently mislabel orientations if
+        # the group order ever changed. These three names are required.
+        female_idx      = require_idx(self.groups.orient_to_idx, "Female", "orientation")
+        hetero_male_idx = require_idx(self.groups.orient_to_idx, "Heterosexual_Male", "orientation")
+        msm_idx         = require_idx(self.groups.orient_to_idx, "MSM", "orientation")
 
         # -- Detect config mode ---------------------------------------------
         use_epsilon = (
@@ -1415,7 +1492,9 @@ class SimulationEngineV3:
             extract_value(disease_config["progression"]["acute_to_chronic"])
         )
         acute_pop = self.state.population[:, :, :, acute_idx, :, :, :]
-        progressions = self._draw_events(acute_pop, acute_to_chronic)
+        progressions = self._draw_events_for(
+            "progression_acute_to_chronic", acute_pop, acute_to_chronic
+        )
         self.state.population[:, :, :, acute_idx, :, :, :] -= progressions
         self.state.population[:, :, :, chronic_idx, :, :, :] += progressions
 
@@ -1428,19 +1507,33 @@ class SimulationEngineV3:
                 "chronic_to_aids_on_art", {"value": off_art_annual}
             )
         )
+        schedule = getattr(self, "on_art_progression_schedule", None)
+        if schedule is not None:
+            year = getattr(self, "_current_year", None)
+            if year is None:
+                raise RuntimeError("On-ART progression schedule enabled but the current year is unknown")
+            on_art_annual = schedule.get_value(float(year))
 
         chronic_to_aids_off_art = self.time.annual_to_step_rate(off_art_annual)
         chronic_to_aids_on_art  = self.time.annual_to_step_rate(on_art_annual)
 
         # Off-ART Chronic pool: all diagnosis states, ART=0
         chronic_off_art = self.state.population[:, :, :, chronic_idx, :, no_art_idx, :]
-        prog_off_art = self._draw_events(chronic_off_art, chronic_to_aids_off_art)
+        prog_off_art = self._draw_events_for(
+            "progression_chronic_to_aids_off_art",
+            chronic_off_art,
+            chronic_to_aids_off_art,
+        )
         self.state.population[:, :, :, chronic_idx, :, no_art_idx, :] -= prog_off_art
         self.state.population[:, :, :, aids_idx,   :, no_art_idx, :] += prog_off_art
 
         # On-ART Chronic pool: all diagnosis states, ART=1
         chronic_on_art = self.state.population[:, :, :, chronic_idx, :, on_art_idx, :]
-        prog_on_art = self._draw_events(chronic_on_art, chronic_to_aids_on_art)
+        prog_on_art = self._draw_events_for(
+            "progression_chronic_to_aids_on_art",
+            chronic_on_art,
+            chronic_to_aids_on_art,
+        )
         self.state.population[:, :, :, chronic_idx, :, on_art_idx, :] -= prog_on_art
         self.state.population[:, :, :, aids_idx,   :, on_art_idx, :] += prog_on_art
 
@@ -1459,6 +1552,12 @@ class SimulationEngineV3:
 
         return {
             "new_chronic":        new_chronic,
+            "aids_observation": progression_observation_counts(
+                prog_off_art, prog_on_art, self.groups.orient_to_idx.get("MSM"),
+                pool_off_art_after=chronic_off_art,
+                pool_on_art_after=chronic_on_art,
+                years_per_step=getattr(self.time, "years_per_step", None),
+            ),
             "new_aids":           new_aids,
             "new_chronic_by_age": new_chronic_by_age,   # np.ndarray shape (n_age_groups,)
             "new_aids_by_age":    new_aids_by_age,       # np.ndarray shape (n_age_groups,)
@@ -1482,7 +1581,10 @@ class SimulationEngineV3:
         if not schedule_dict:
             return None
         interp = extract_value(schedule_block.get("interpolation", {"value": "stepwise"}))
-        return TimeSchedule(schedule_dict, interpolation=interp)
+        # AVAILABILITY schedule: the first-generation HIV antibody assay was not available
+        # before this schedule's first anchor (1985), so nobody could be diagnosed and 0.0
+        # is correct. Pinned deliberately by tests/test_diagnosis_year_bands.py:184.
+        return TimeSchedule(schedule_dict, interpolation=interp, default_before=0.0)
 
     def _build_msm_relative_diagnosis_schedule(self):
         """V13.10: Build a TimeSchedule for the optional MSM-relative diagnosis multiplier.
@@ -1507,8 +1609,79 @@ class SimulationEngineV3:
         if not schedule_dict:
             return None
         interp = extract_value(schedule_block.get("interpolation", {"value": "stepwise"}))
+        # ────────────────────────────────────────────────────────────────────────────
+        # C-4 — FIXED 2026-09-14. This is a MULTIPLIER on the base diagnosis rate, not an
+        # availability schedule, and the neutral value of a multiplier is 1.0.
+        #
+        # It previously inherited TimeSchedule's default_before=0.0, so the MSM diagnosis
+        # rate was multiplied by ZERO for every year before this schedule's first anchor
+        # (1996 in every current config): NO MSM WAS EVER DIAGNOSED in 1985-1995, confirmed
+        # against A-20's deterministic baseline (new_diagnoses_msm = 0 every year to 1995,
+        # then 438 in 1996). 1996 is a DATA boundary — SHM publishes only a <=1995 lump —
+        # not an epidemiological one: the antibody assay existed from 1985 and the Amsterdam
+        # Cohort Studies had been testing MSM since 1984.
+        #
+        # 1.0 is the NEUTRAL value, chosen deliberately over fitting a number. It asserts no
+        # MSM-specific ascertainment difference before the first anchor. It is NOT a claim
+        # that the residual is zero: at 1.0 the model reaches ~79% of SHM's MSM <=1995 figure
+        # (1,646 +/- 261 across 8 stochastic seeds vs 2,095 observed). THAT RESIDUAL IS A
+        # REPORTED RESULT, not a defect to tune away — it is evidence the pre-1996 base
+        # diagnosis anchors are too low, which is what recalibration is for.
+        #
+        # A fitted pre-1996 multiplier was evaluated and REJECTED: the response is sublinear
+        # (elasticity 0.738), so the "derived" 1.273 missed the anchor it was built to hit;
+        # it overshot the held-out ECDC 1990-95 series by 8.8%; ECDC 1990-95 are themselves
+        # SCORED history-matching targets, so hard-coding from SHM double-counts the same
+        # information and shrinks NROY; and it would assert a 2.16x step down in MSM
+        # ascertainment at exactly 1996, the year ART arrived. See
+        # outputs/hta_results/c4prep_silent_default_audit_20260914_042723/C4_RECOMMENDATION.md
+        #
+        # Do NOT replace this with a fitted constant. If a residual survives C-1 and a joint
+        # recalibration wave, add explicit 1985/1990 anchors to this schedule and calibrate
+        # them jointly — which also removes the discontinuity at 1996 and makes
+        # default_before moot.
+        # ────────────────────────────────────────────────────────────────────────────
         return TimeSchedule({str(k): float(v) for k, v in schedule_dict.items()},
-                            interpolation=interp)
+                            interpolation=interp, default_before=1.0)
+
+    def _step_diagnosis_and_exogenous(self, current_year: float) -> dict:
+        """
+        Endogenous diagnosis, then C-1's exogenous non-MSM diagnoses.
+
+        ORDERING (changed 2026-09-14). C-1 must fire between diagnosis and
+        ``_step_art_transitions``, never after it. ``_step_art_transitions``
+        selects ``population[:, :, :, 1:, 1, 0, :]`` -- non-susceptible,
+        Diagnosed, not-on-ART -- which is exactly the cell
+        ``_step_exogenous_non_msm`` writes into. Every event-order variant runs
+        diagnosis before ART, so an endogenously diagnosed person can start ART
+        in the same timestep.
+
+        Until 2026-09-14 C-1 ran at a later step 6b, AFTER ART had already
+        fired. An injected person therefore waited a full timestep -- one
+        quarter at the production step size -- before becoming ART-eligible,
+        and served that quarter untreated and infectious. An endogenously
+        diagnosed person never served it. That asymmetry was an artefact of
+        where the call sat, not an epidemiological assumption: an exogenously
+        supplied diagnosis is the same kind of event as an endogenous one and
+        must be treated identically. Placing the call directly after diagnosis
+        makes that rule hold in all four variants, including
+        ``art_lag_after_diagnosis``, where both kinds of diagnosis now meet
+        that variant's interposed mortality step on the same terms.
+
+        DECISION (Rishi, 2026-09-14). Injected cases stay in the force of
+        infection: exogenous force is standard epidemiology, and the people a
+        proxy stands in for do transmit. This change corrects only WHEN they
+        become eligible for treatment. It asserts nothing about whether they
+        are treated -- that remains with the calibrated ``art_init_*``
+        schedule, which is what encodes how Dutch treatment practice changed
+        between 1996 and 2020.
+
+        Returns ``_step_diagnosis``'s result with an added
+        ``exogenous_non_msm`` count.
+        """
+        result = dict(self._step_diagnosis(current_year))
+        result["exogenous_non_msm"] = self._step_exogenous_non_msm(current_year)
+        return result
 
     def _step_diagnosis(self, current_year: float) -> dict:
         """Diagnose undiagnosed HIV+ individuals.
@@ -1538,6 +1711,14 @@ class SimulationEngineV3:
 
         msm_idx = self.groups.orient_to_idx.get("MSM")
 
+        stage_profile = getattr(
+            self, "stage_structured_diagnosis", load_stage_structured_diagnosis(None)
+        )
+        if stage_profile.enabled and not stage_profile.is_identity:
+            return self._step_stage_structured_diagnosis(
+                current_year, annual_rate, msm_idx, stage_profile
+            )
+
         if self.msm_relative_diagnosis_schedule is not None and msm_idx is not None:
             # V13.10: group-structured diagnosis path — draw MSM and non-MSM separately
             multiplier = max(
@@ -1555,12 +1736,16 @@ class SimulationEngineV3:
             # Non-MSM orientations: use base rate
             non_msm_undiag = undiagnosed.copy()
             non_msm_undiag[:, msm_idx, :, :, :, :] = 0
-            diagnosed_non_msm = self._draw_events(non_msm_undiag, base_step_rate)
+            diagnosed_non_msm = self._draw_events_for(
+                "diagnosis_non_msm", non_msm_undiag, base_step_rate
+            )
 
             # MSM orientation: use multiplied rate
             msm_undiag = np.zeros_like(undiagnosed)
             msm_undiag[:, msm_idx, :, :, :, :] = undiagnosed[:, msm_idx, :, :, :, :]
-            diagnosed_msm = self._draw_events(msm_undiag, msm_step_rate)
+            diagnosed_msm = self._draw_events_for(
+                "diagnosis_msm", msm_undiag, msm_step_rate
+            )
 
             diagnosed = diagnosed_non_msm + diagnosed_msm
             self.state.population[:, :, :, 1:, 0, :, :] -= diagnosed
@@ -1569,19 +1754,161 @@ class SimulationEngineV3:
             return {
                 "total": int(np.sum(diagnosed)),
                 "msm": msm_diagnoses,
+                "aids_observation": diagnosis_observation_counts(
+                    diagnosed, self.groups.hiv_to_idx["AIDS"], msm_idx
+                ),
             }
 
         # Default path (unchanged behavior)
         diagnosis_rate = self.time.annual_to_step_rate(annual_rate)
         undiagnosed = self.state.population[:, :, :, 1:, 0, :, :]
-        diagnosed = self._draw_events(undiagnosed, diagnosis_rate)
+        diagnosed = self._draw_events_for(
+            "diagnosis_all_orientations", undiagnosed, diagnosis_rate
+        )
         self.state.population[:, :, :, 1:, 0, :, :] -= diagnosed
         self.state.population[:, :, :, 1:, 1, :, :] += diagnosed
         msm_diagnoses = int(np.sum(diagnosed[:, msm_idx, :, :, :, :])) if msm_idx is not None else 0
         return {
             "total": int(np.sum(diagnosed)),  # V11.6.1: new diagnoses counter
             "msm": msm_diagnoses,
+            "aids_observation": diagnosis_observation_counts(
+                diagnosed, self.groups.hiv_to_idx["AIDS"], msm_idx
+            ),
         }
+
+    def _step_stage_structured_diagnosis(
+        self, current_year: float, annual_rate: float, msm_idx: int | None, profile
+    ) -> dict:
+        """Audit-only group/stage diagnosis; schedules remain the sole routine source."""
+        base_probability = validate_effective_probability(
+            annual_rate, "base diagnosis annual probability"
+        )
+        multiplier = 1.0
+        if self.msm_relative_diagnosis_schedule is not None and msm_idx is not None:
+            multiplier = float(self.msm_relative_diagnosis_schedule.get_value(current_year))
+            if not np.isfinite(multiplier) or multiplier < 0.0:
+                raise ValueError("MSM diagnosis multiplier must be finite and nonnegative")
+        effective = {
+            "non_msm": base_probability,
+            "msm": validate_effective_probability(
+                min(base_probability * multiplier, 1.0),
+                "MSM effective diagnosis annual probability",
+            ),
+        }
+        # Availability boundary: zero symptom uplift strictly before the declared
+        # year (legacy audit semantics when no boundary is declared).
+        symptom_probability = profile.symptom_probability_at(current_year)
+        undiagnosed = self.state.population[:, :, :, 1:, 0, :, :]
+        diagnosed = np.zeros_like(undiagnosed)
+        stages = ("acute", "chronic", "aids")
+        for population in ("non_msm", "msm"):
+            if population == "msm" and msm_idx is None:
+                continue
+            for stage_offset, stage in enumerate(stages):
+                pool = np.zeros_like(undiagnosed)
+                if population == "msm":
+                    pool[:, msm_idx, :, stage_offset, :, :] = \
+                        undiagnosed[:, msm_idx, :, stage_offset, :, :]
+                else:
+                    pool[:, :, :, stage_offset, :, :] = undiagnosed[:, :, :, stage_offset, :, :]
+                    if msm_idx is not None:
+                        pool[:, msm_idx, :, stage_offset, :, :] = 0
+                step_probability = stage_step_probability(
+                    effective[population],
+                    routine_hazard_scale=profile.routine_hazard_scale,
+                    aids_symptom_annual_probability=symptom_probability,
+                    years_per_step=self.time.years_per_step,
+                    aids_stage=stage == "aids",
+                )
+                diagnosed += self._draw_events_for(
+                    f"stage_structured_diagnosis_{population}_{stage}",
+                    pool,
+                    step_probability,
+                )
+        self.state.population[:, :, :, 1:, 0, :, :] -= diagnosed
+        self.state.population[:, :, :, 1:, 1, :, :] += diagnosed
+        msm_diagnoses = int(np.sum(diagnosed[:, msm_idx, :, :, :, :])) \
+            if msm_idx is not None else 0
+        observation = diagnosis_observation_counts(
+            diagnosed, self.groups.hiv_to_idx["AIDS"], msm_idx
+        )
+        if sum(observation[name] for name in (
+            "hiv_diagnoses_in_acute_stage", "hiv_diagnoses_in_chronic_stage",
+            "hiv_diagnoses_in_aids_stage",
+        )) != int(np.sum(diagnosed)):
+            raise AssertionError("stage diagnosis counters do not sum to endogenous total")
+        return {"total": int(np.sum(diagnosed)), "msm": msm_diagnoses,
+                "aids_observation": observation}
+
+    def _step_exogenous_non_msm(self, current_year: float) -> int:
+        """
+        C-1 (D-03) — inject the observed SHM non-MSM diagnosis series.
+
+        These people enter the PLHIV stock and consume care costs. They are not
+        produced by the transmission model, and they are never allocated to MSM.
+
+        MECHANISM. Susceptible people in the same non-MSM orientation are moved
+        to Chronic / Diagnosed / not-on-ART. Converting rather than appending
+        keeps total population mass unchanged, so the demography module's mass
+        balance is untouched and no population is invented. They are placed
+        not-on-ART so that the model's own ART machinery decides their treatment,
+        rather than this mechanism asserting a second unobserved split.
+
+        DETERMINISTIC BY CONSTRUCTION. Allocation across age and activity uses
+        stochastic_allocation.deterministic_allocate_total -- largest-remainder
+        on the current susceptible structure -- and consumes NO random numbers. This is deliberate, not incidental: a draw here would sit
+        in the middle of the step and re-key every later draw in that process
+        stream, which is the A-24 failure mode. Because this path never touches
+        an RNG, it cannot desynchronise the arms and cannot degrade the CRN
+        pairing A-28 restored.
+
+        Returns the number actually converted, which is added to new_diagnoses.
+        """
+        if not self.exogenous_non_msm.enabled:
+            return 0
+
+        split = self.exogenous_non_msm.split_for_step(
+            current_year, self.time.years_per_step
+        )
+        if not any(split.values()):
+            return 0
+
+        chronic_idx = require_idx(self.groups.hiv_to_idx, "Chronic", "HIV state")
+        prep_none_idx = require_idx(self.groups.prep_to_idx, "None", "PrEP state")
+        pop = self.state.population
+        injected = 0
+
+        for orient_name, requested in split.items():
+            if requested <= 0:
+                continue
+            orient_idx = self.groups.orient_to_idx.get(orient_name)
+            if orient_idx is None:
+                # The stratum does not exist in this configuration. Skipping is
+                # correct; silently inventing a destination is not.
+                continue
+
+            # Susceptible, no PrEP, in this orientation: [age, activity]
+            susceptible = pop[:, orient_idx, :, 0, 0, 0, prep_none_idx]
+            available = int(susceptible.sum())
+            if available <= 0:
+                continue
+            take = min(int(requested), available)
+
+            # Reuse the established largest-remainder helper rather than adding a
+            # fourth implementation. Capacity is safe because take <= available:
+            # raw_i = take * w_i / sum(w) <= w_i, so floor(raw_i) <= w_i, and the
+            # +1 pass can only reach w_i + 1 if frac_i == 0, which is never chosen
+            # while any positive fraction remains.
+            counts = deterministic_allocate_total(take, susceptible)
+            moved = counts.sum()
+            if moved <= 0:
+                continue
+
+            pop[:, orient_idx, :, 0, 0, 0, prep_none_idx] -= counts
+            pop[:, orient_idx, :, chronic_idx, 1, 0, prep_none_idx] += counts
+            injected += int(moved)
+
+        return injected
 
     def _step_art_transitions(self, current_year: float):
         """
@@ -1629,7 +1956,7 @@ class SimulationEngineV3:
             if stage_name != "Susceptible"
         }
         eligible = self.state.population[:, :, :, 1:, 1, 0, :]
-        initiated = self._draw_events(eligible, initiation_rate)
+        initiated = self._draw_events_for("art_initiation", eligible, initiation_rate)
         self.state.population[:, :, :, 1:, 1, 0, :] -= initiated
         self.state.population[:, :, :, 1:, 1, 1, :] += initiated
 
@@ -1645,7 +1972,7 @@ class SimulationEngineV3:
         self._art_step_initiations_by_stage = stage_counts
 
         on_art = self.state.population[:, :, :, 1:, 1, 1, :]
-        dropped = self._draw_events(on_art, dropout_rate)
+        dropped = self._draw_events_for("art_dropout", on_art, dropout_rate)
         self.state.population[:, :, :, 1:, 1, 1, :] -= dropped
         self.state.population[:, :, :, 1:, 1, 0, :] += dropped
         return {
@@ -1653,6 +1980,42 @@ class SimulationEngineV3:
             "dropouts": int(np.sum(dropped)),
             "initiations_by_stage": stage_counts,
         }
+
+    def _build_on_art_progression_schedule(self):
+        """Two-era EFFECTIVE on-ART Chronic->AIDS annual probability (2026-09-16).
+
+        Represents ALL on-ART person-time (the model has no suppression state), not a
+        suppressed-only rate. Schema, under transmission_model.disease.progression.
+        chronic_to_aids_on_art:
+          "schedule": {"value": {"2000": early, "2010": recent},
+                       "interpolation": {"value": "linear"},
+                       "supersedes_value": {"value": true}}
+        Before the first anchor the FIRST ANCHOR value applies (stated explicitly, not a
+        silent default); after the last anchor the last value applies. The scalar
+        ``value`` is ignored only when ``supersedes_value`` is true; otherwise a schedule
+        next to a scalar is ambiguous and raises.
+        """
+        block = self.config.get("disease", {}).get("progression", {}).get("chronic_to_aids_on_art", {})
+        if not isinstance(block, dict) or not block.get("schedule"):
+            return None
+        schedule_block = block["schedule"]
+        schedule_dict = extract_value(schedule_block.get("value", {}))
+        if not isinstance(schedule_dict, dict) or len(schedule_dict) < 1:
+            raise ValueError("chronic_to_aids_on_art.schedule.value must be a non-empty {year: value} mapping")
+        if not bool(extract_value(schedule_block.get("supersedes_value", {"value": False}))):
+            raise ValueError(
+                "chronic_to_aids_on_art has both a scalar value and a schedule; set "
+                "schedule.supersedes_value=true to declare which applies"
+            )
+        interpolation = extract_value(schedule_block.get("interpolation", {}))
+        if interpolation not in ("linear", "stepwise"):
+            raise ValueError("chronic_to_aids_on_art.schedule.interpolation must be declared 'linear' or 'stepwise'")
+        values = {str(k): float(v) for k, v in schedule_dict.items()}
+        for year, value in values.items():
+            if not 0.0 <= value < 1.0:
+                raise ValueError(f"chronic_to_aids_on_art schedule {year}={value} is not an annual probability")
+        first_value = values[min(values, key=float)]
+        return TimeSchedule(values, interpolation=interpolation, default_before=first_value)
 
     def _build_art_mortality_reduction_schedule(self):
         """
@@ -1790,11 +2153,16 @@ class SimulationEngineV3:
                                 {"value": {"min": self.groups.age_groups[0],
                                            "max": self.groups.age_groups[-1]}})
             )
-            age_min_idx = self.groups.age_to_idx.get(
-                age_range_raw["min"], 0
+            # A-25: these used .get(name, <plausible default>), so the "64-69" typo in
+            # every config silently resolved the eligibility cap to the LAST age bin and
+            # PrEP eligibility ran 15 to 110+ instead of 15-69.
+            age_min_idx = require_idx(
+                self.groups.age_to_idx, age_range_raw["min"],
+                "PrEP eligible_age_range.min",
             )
-            age_max_idx = self.groups.age_to_idx.get(
-                age_range_raw["max"], self.groups.n_age_groups - 1
+            age_max_idx = require_idx(
+                self.groups.age_to_idx, age_range_raw["max"],
+                "PrEP eligible_age_range.max",
             ) + 1  # exclusive upper bound for slicing
 
             # Activity modifiers (default: 1.0 for all if absent)
@@ -1832,7 +2200,11 @@ class SimulationEngineV3:
                             age_min_idx:age_max_idx, orient_idx, act_idx,
                             susc_idx, :, :, none_idx
                         ]
-                        new_users = self._draw_events(no_prep_slice, effective_uptake)
+                        new_users = self._draw_events_for(
+                            ("prep_uptake", prep_name, orient_idx, act_idx),
+                            no_prep_slice,
+                            effective_uptake,
+                        )
                         self.state.population[
                             age_min_idx:age_max_idx, orient_idx, act_idx,
                             susc_idx, :, :, none_idx
@@ -1847,7 +2219,9 @@ class SimulationEngineV3:
             # --- DROPOUT: ALL current PrEP users (no eligibility filter) ---
             if dropout_rate > 0:
                 prep_users = self.state.population[:, :, :, susc_idx, :, :, prep_idx]
-                dropouts = self._draw_events(prep_users, dropout_rate)
+                dropouts = self._draw_events_for(
+                    ("prep_dropout", prep_name), prep_users, dropout_rate
+                )
                 self.state.population[:, :, :, susc_idx, :, :, prep_idx] -= dropouts
                 # V12.2: Lenacapavir dropouts → Lenacapavir_Waning (1-step residual protection).
                 # All other PrEP dropouts → None as before.
@@ -1916,7 +2290,10 @@ class SimulationEngineV3:
         if not schedule:
             return default
         interpolation = str(extract_value(advanced.get("interpolation", {"value": "stepwise"})))
-        return TimeSchedule(schedule, interpolation=interpolation).get_value(current_year)
+        # AVAILABILITY-like: before the first anchor there is no forward target stock and
+        # no switch share, so 0.0 (no uptake / no switching) is the correct neutral value.
+        return TimeSchedule(schedule, interpolation=interpolation,
+                            default_before=0.0).get_value(current_year)
 
     def _prep_forward_target_stock(
         self,
@@ -2184,7 +2561,13 @@ class SimulationEngineV3:
             schedule = extract_value(corridor.get(key, {}))
             if not schedule:
                 return None
-            value = TimeSchedule(schedule, interpolation=interpolation).get_value(current_year)
+            # Reached only inside the corridor's own start_year/end_year window, so
+            # default_before is unreachable while start_year >= the first anchor. It is a
+            # A config setting start_year EARLIER than the first anchor would make a 0
+            # ceiling cap PrEP stock at zero, silently. ScheduleManager.validate_sanity
+            # refuses that configuration, so this stays unreachable.
+            value = TimeSchedule(schedule, interpolation=interpolation,
+                                 default_before=0.0).get_value(current_year)
             if not np.isfinite(value):
                 return None
             return max(int(round(value)), 0)
@@ -2575,12 +2958,20 @@ class SimulationEngineV3:
             stage_idx = self.groups.hiv_to_idx[stage_name]
 
             not_art = self.state.population[:, :, :, stage_idx, :, 0, :]
-            deaths_not_art = self._draw_events(not_art, mortality_rate)
+            deaths_not_art = self._draw_events_for(
+                ("hiv_mortality", stage_name, "off_art"),
+                not_art,
+                mortality_rate,
+            )
             self.state.population[:, :, :, stage_idx, :, 0, :] -= deaths_not_art
 
             on_art = self.state.population[:, :, :, stage_idx, :, 1, :]
             reduced_rate = mortality_rate * (1 - art_reduction)
-            deaths_art = self._draw_events(on_art, reduced_rate)
+            deaths_art = self._draw_events_for(
+                ("hiv_mortality", stage_name, "on_art"),
+                on_art,
+                reduced_rate,
+            )
             self.state.population[:, :, :, stage_idx, :, 1, :] -= deaths_art
 
             step_deaths  = int(np.sum(deaths_not_art) + np.sum(deaths_art))
@@ -2612,11 +3003,15 @@ class SimulationEngineV3:
                        new_aids_cases: int = 0,
                        new_diagnoses: int = 0,
                        new_diagnoses_msm: int = 0,
+                       endogenous_diagnoses: int = 0,
+                       endogenous_diagnoses_msm: int = 0,
+                       exogenous_non_msm_diagnoses: int = 0,
                        art_initiations: int = 0,
                        art_initiations_by_stage: dict = None,
                        aids_start_counts: dict = None,
                        aids_pre_mortality_counts: dict = None,
-                       event_order_variant: str = "current"):
+                       event_order_variant: str = "current",
+                       aids_observation_counts: dict = None):
         """
         Record timestep outputs.
 
@@ -2673,8 +3068,18 @@ class SimulationEngineV3:
         self.outputs['hiv_deaths'].append(hiv_d)
         self.outputs['aids_deaths'].append(aids_deaths)
         self.outputs['new_aids_cases'].append(new_aids_cases)
+        observation = aids_observation_counts or {}
+        for name in AIDS_OBSERVATION_FIELDS:
+            # Missing diagnostics are unavailable, not observed zero events.
+            self.outputs[name].append(observation.get(name, np.nan))
         self.outputs['new_diagnoses'].append(new_diagnoses)
         self.outputs['new_diagnoses_msm'].append(new_diagnoses_msm)
+        self.outputs['new_diagnoses_endogenous'].append(endogenous_diagnoses)
+        self.outputs['new_diagnoses_endogenous_msm'].append(endogenous_diagnoses_msm)
+        self.outputs['new_diagnoses_endogenous_non_msm'].append(
+            endogenous_diagnoses - endogenous_diagnoses_msm
+        )
+        self.outputs['new_diagnoses_exogenous_non_msm'].append(exogenous_non_msm_diagnoses)
         self.outputs['art_initiations'].append(art_initiations)
         art_stage_counts = art_initiations_by_stage or {}
         self.outputs['art_initiations_acute'].append(art_stage_counts.get("Acute", 0))
@@ -2714,7 +3119,7 @@ class SimulationEngineV3:
         susc_idx  = self.groups.hiv_to_idx["Susceptible"]
         msm_idx   = self.groups.orient_to_idx.get("MSM")
         high_idx  = self.groups.activity_to_idx.get("High")
-        none_prep = self.groups.prep_to_idx.get("None", 0)
+        none_prep = require_idx(self.groups.prep_to_idx, "None", "PrEP state")
         oral_prep = self.groups.prep_to_idx.get("Oral_PrEP", -1)
         lena_prep = self.groups.prep_to_idx.get("Lenacapavir", -1)
 
@@ -2736,9 +3141,15 @@ class SimulationEngineV3:
                                    "max": self.groups.age_groups[-1]}}
                     )
                 )
-                elig_age_min = self.groups.age_to_idx.get(age_range_raw["min"], 0)
-                elig_age_max = self.groups.age_to_idx.get(
-                    age_range_raw["max"], self.groups.n_age_groups - 1
+                # A-25: see _step_prep_transitions. This is the reporting twin of the
+                # same defect -- it set the MSM PrEP-coverage denominator.
+                elig_age_min = require_idx(
+                    self.groups.age_to_idx, age_range_raw["min"],
+                    "PrEP eligible_age_range.min (coverage denominator)",
+                )
+                elig_age_max = require_idx(
+                    self.groups.age_to_idx, age_range_raw["max"],
+                    "PrEP eligible_age_range.max (coverage denominator)",
                 ) + 1
             else:
                 elig_age_min = 0

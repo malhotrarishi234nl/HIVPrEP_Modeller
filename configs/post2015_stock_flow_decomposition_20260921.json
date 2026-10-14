@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "design": "post2015_stock_flow_decomposition_20260921",
+  "status": "READY_FOR_VALIDATION",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_confirmation": "outputs/calibration/coupled_forecast_windows_20260921_confirmation",
+  "source_confirmation_manifest_sha256": "d5195301feba73e2fb632fb76a603bd967f22b5d72ac13129db6668c6013c757",
+  "candidate_ids": [1326, 1788],
+  "candidate_rationale": "The two original fresh-seed primary passers that were not variance-stability flagged.",
+  "replicate_seeds": [
+    200600, 200601, 200602, 200603, 200604,
+    200605, 200606, 200607, 200608, 200609
+  ],
+  "reuse_rationale": "These are the baseline seeds from the completed post-2019 diagnosis-disruption audit. Reuse makes the descriptive ledger directly comparable to that audit; this is not a fresh confirmation.",
+  "first_flow_year": 2015,
+  "last_flow_year": 2024,
+  "stock_years": [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+  "trajectory_budget": 20,
+  "workers_recommended": 8,
+  "interpretation_contract": [
+    "This is a descriptive baseline stock-and-flow ledger, not calibration, confirmation or a policy scenario.",
+    "No model parameter or production transition is changed.",
+    "Each annual stock change must equal the sum of the recorded process contributions exactly for every candidate, seed, activity stratum and stock metric.",
+    "Activity movement is reported as not applicable because the production model has no activity-transition operator after assignment at entry.",
+    "The 2025 start-of-year stock is the end-of-2024 latent state relevant to forecast initialization."
+  ]
+}

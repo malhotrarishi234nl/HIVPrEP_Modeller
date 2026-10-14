@@ -20,6 +20,7 @@ They have only: age, biological sex, background mortality, aging.
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 from config_utils import extract_value
+from stochastic_allocation import deterministic_allocate_events
 
 
 class ChildhoodPool:
@@ -929,7 +930,7 @@ class DemographyModule:
         mortality_rate = self.time.annual_to_step_rate(self.background_mortality)
 
         if deterministic:
-            deaths = np.round(population * mortality_rate).astype(np.int64)
+            deaths = deterministic_allocate_events(population, mortality_rate)
         else:
             deaths = rng.binomial(population, mortality_rate)
 
@@ -978,7 +979,7 @@ class DemographyModule:
             # Females
             female_pop = population[age_idx, female_idx, :, :, :, :, :]
             if deterministic:
-                deaths[age_idx, female_idx, :, :, :, :, :] = np.round(female_pop * female_mort_step).astype(np.int64)
+                deaths[age_idx, female_idx, :, :, :, :, :] = deterministic_allocate_events(female_pop, female_mort_step)
             else:
                 deaths[age_idx, female_idx, :, :, :, :, :] = rng.binomial(female_pop, female_mort_step)
 
@@ -986,7 +987,7 @@ class DemographyModule:
             for m_idx in [male_idx, msm_idx]:
                 male_pop = population[age_idx, m_idx, :, :, :, :, :]
                 if deterministic:
-                    deaths[age_idx, m_idx, :, :, :, :, :] = np.round(male_pop * male_mort_step).astype(np.int64)
+                    deaths[age_idx, m_idx, :, :, :, :, :] = deterministic_allocate_events(male_pop, male_mort_step)
                 else:
                     deaths[age_idx, m_idx, :, :, :, :, :] = rng.binomial(male_pop, male_mort_step)
 

@@ -9,6 +9,7 @@ CRITICAL: Prevalence ONLY in step 1, NOT in p_trans calculation.
 """
 
 import numpy as np
+from itertools import product
 from typing import Dict, Tuple
 from config_utils import extract_value
 
@@ -22,6 +23,13 @@ class TransmissionEngine:
     - ART stratification (on ART vs off ART)
     - PrEP stratification (by PrEP state)
     """
+
+    # Deterministic infection residuals may only be exchanged within a
+    # structurally connected transmission system.  The infection array is
+    # [age, orientation, activity, prep_state], so axis 1 is the smallest
+    # production split that prevents the disjoint heterosexual and MSM systems
+    # from spending one another's residuals.
+    DETERMINISTIC_INFECTION_BLOCK_AXES = (1,)
     
     def __init__(self, config: Dict, groups, time_system):
         self.config = config
@@ -145,7 +153,8 @@ class TransmissionEngine:
     def _calc_msm_infections(self, n_pos_contacts: int, stage_name: str,
                              condom_modifier: float, prep_efficacy: float,
                              art_modifier: float, deterministic: bool,
-                             rng: np.random.RandomState) -> int:
+                             rng: np.random.RandomState,
+                             stratum_id=None) -> int:
         """
         V11.3: Split MSM contacts into receptive/insertive sub-passes.
 
@@ -160,11 +169,15 @@ class TransmissionEngine:
         if deterministic:
             n_receptive = int(n_pos_contacts * self.msm_versatility)
         else:
-            n_receptive = rng.binomial(n_pos_contacts, self.msm_versatility)
+            role_rng = self._rng_for_stratum(rng, (stratum_id, "role_split"))
+            n_receptive = role_rng.binomial(n_pos_contacts, self.msm_versatility)
         n_insertive = n_pos_contacts - n_receptive
 
         total = 0
-        for n_c, beta in [(n_receptive, beta_r), (n_insertive, beta_i)]:
+        for role, n_c, beta in [
+            ("receptive", n_receptive, beta_r),
+            ("insertive", n_insertive, beta_i),
+        ]:
             if n_c <= 0:
                 continue
             p_trans = beta * condom_modifier * (1 - prep_efficacy) * art_modifier
@@ -172,8 +185,18 @@ class TransmissionEngine:
             if deterministic:
                 total += int(n_c * p_trans)
             else:
-                total += rng.binomial(n_c, p_trans)
+                infection_rng = self._rng_for_stratum(
+                    rng, (stratum_id, "role_infection", role)
+                )
+                total += infection_rng.binomial(n_c, p_trans)
         return total
+
+    @staticmethod
+    def _rng_for_stratum(rng, stratum_id):
+        """Use an explicit CRN stratum when supported, else preserve RandomState."""
+        if hasattr(rng, "for_stratum"):
+            return rng.for_stratum(stratum_id)
+        return rng
 
     def _calc_msm_expected_probability(self, stage_name: str,
                                        condom_modifier: float,
@@ -199,14 +222,17 @@ class TransmissionEngine:
     def _deterministic_allocate_expected_infections(
         expected: np.ndarray,
         capacity: np.ndarray,
+        group_axes=None,
     ) -> np.ndarray:
         """
         Convert expected infection counts to integer events without local floors.
 
         Cellwise truncation can erase rare transmission when expected counts are
-        spread over many cells. This preserves the rounded aggregate expected
-        total, then assigns residual events to cells with the largest fractional
-        expected counts, never exceeding susceptible capacity.
+        spread over many cells.  Within each declared block this preserves the
+        rounded expected total, then assigns residual events to cells with the
+        largest fractional expected counts, never exceeding susceptible
+        capacity.  Production groups on orientation because heterosexual and
+        MSM transmission are structurally disjoint systems.
         """
         expected_arr = np.asarray(expected, dtype=float)
         capacity_arr = np.asarray(capacity).astype(np.int64, copy=False)
@@ -220,26 +246,48 @@ class TransmissionEngine:
         if np.any(~np.isfinite(expected_arr)) or np.any(expected_arr < 0):
             raise ValueError("Expected infections must be finite and non-negative")
 
-        capped_expected = np.minimum(expected_arr, capacity_arr.astype(float))
-        base = np.floor(capped_expected).astype(np.int64)
-        base = np.minimum(base, capacity_arr)
-        target = min(int(np.round(capped_expected.sum())), int(capacity_arr.sum()))
-        remainder = target - int(base.sum())
+        if group_axes is None:
+            group_axes = TransmissionEngine.DETERMINISTIC_INFECTION_BLOCK_AXES
+        group_axes = tuple(int(axis) for axis in group_axes)
+        if len(set(group_axes)) != len(group_axes) or any(
+            axis < 0 or axis >= expected_arr.ndim for axis in group_axes
+        ):
+            raise ValueError(
+                f"group_axes must be unique valid axes for shape {expected_arr.shape}, "
+                f"got {group_axes}"
+            )
 
-        if remainder <= 0:
-            return base
+        infections = np.zeros_like(capacity_arr, dtype=np.int64)
+        combinations = product(*(range(expected_arr.shape[axis]) for axis in group_axes))
+        for combination in combinations:
+            key = [slice(None)] * expected_arr.ndim
+            for axis, index in zip(group_axes, combination):
+                key[axis] = slice(index, index + 1)
+            key = tuple(key)
 
-        infections = base.copy()
-        fractional = (capped_expected - base).ravel()
-        residual_capacity = (capacity_arr - base).ravel()
-        eligible = np.flatnonzero(residual_capacity > 0)
-        if eligible.size == 0:
-            return infections
+            block_capacity = capacity_arr[key]
+            capped_expected = np.minimum(
+                expected_arr[key], block_capacity.astype(float)
+            )
+            block = np.floor(capped_expected).astype(np.int64)
+            block = np.minimum(block, block_capacity)
+            target = min(
+                int(np.round(capped_expected.sum())), int(block_capacity.sum())
+            )
+            remainder = target - int(block.sum())
 
-        order = eligible[np.argsort(-fractional[eligible], kind="stable")]
-        take = min(remainder, order.size)
-        flat = infections.ravel()
-        flat[order[:take]] += 1
+            if remainder > 0:
+                fractional = (capped_expected - block).ravel()
+                residual_capacity = (block_capacity - block).ravel()
+                eligible = np.flatnonzero(residual_capacity > 0)
+                if eligible.size > 0:
+                    order = eligible[
+                        np.argsort(-fractional[eligible], kind="stable")
+                    ]
+                    take = min(remainder, order.size)
+                    flat = block.ravel()
+                    flat[order[:take]] += 1
+            infections[key] = block
         return infections
 
     def calculate_transmission(self,
@@ -353,12 +401,23 @@ class TransmissionEngine:
                                 # mode keeps the V11.4 floor + Bernoulli
                                 # contact split.
                                 contacts_float = n_contacts * cell_proportion
+                                cell_stratum = (
+                                    orient_to,
+                                    act_to,
+                                    orient_from,
+                                    act_from,
+                                    age_idx,
+                                    prep_idx,
+                                )
                                 if deterministic:
                                     n_contacts_cell = contacts_float
                                 else:
                                     n_contacts_cell = int(contacts_float)
                                     frac = contacts_float - n_contacts_cell
-                                    if frac > 0 and rng.random() < frac:
+                                    contact_rng = self._rng_for_stratum(
+                                        rng, (cell_stratum, "fractional_contact")
+                                    )
+                                    if frac > 0 and contact_rng.random() < frac:
                                         n_contacts_cell += 1
 
                                 if n_contacts_cell == 0:
@@ -383,11 +442,14 @@ class TransmissionEngine:
                                     # Process off-ART partners
                                     prev_off = stage_prevalence[stage_name]['off_art']
                                     if prev_off > 0:
+                                        off_stratum = (cell_stratum, stage_name, "off_art")
                                         # STEP 1: Draw HIV+ contacts
                                         if deterministic:
                                             n_pos_contacts_off = n_contacts_cell * prev_off
                                         else:
-                                            n_pos_contacts_off = rng.binomial(
+                                            n_pos_contacts_off = self._rng_for_stratum(
+                                                rng, (off_stratum, "positive_contacts")
+                                            ).binomial(
                                                 n_contacts_cell, prev_off
                                             )
 
@@ -404,7 +466,8 @@ class TransmissionEngine:
                                                     inf_off = self._calc_msm_infections(
                                                         n_pos_contacts_off, stage_name,
                                                         condom_modifier, prep_efficacy,
-                                                        1.0, deterministic, rng
+                                                        1.0, deterministic, rng,
+                                                        stratum_id=off_stratum,
                                                     )
                                             else:
                                                 # STEP 2: Draw infections from HIV+ contacts
@@ -415,7 +478,9 @@ class TransmissionEngine:
                                                 if deterministic:
                                                     inf_off = n_pos_contacts_off * p_trans_off
                                                 else:
-                                                    inf_off = rng.binomial(
+                                                    inf_off = self._rng_for_stratum(
+                                                        rng, (off_stratum, "infection")
+                                                    ).binomial(
                                                         n_pos_contacts_off, p_trans_off
                                                     )
 
@@ -429,11 +494,14 @@ class TransmissionEngine:
                                     # Process on-ART partners
                                     prev_on = stage_prevalence[stage_name]['on_art']
                                     if prev_on > 0:
+                                        on_stratum = (cell_stratum, stage_name, "on_art")
                                         # STEP 1: Draw HIV+ contacts
                                         if deterministic:
                                             n_pos_contacts_on = n_contacts_cell * prev_on
                                         else:
-                                            n_pos_contacts_on = rng.binomial(
+                                            n_pos_contacts_on = self._rng_for_stratum(
+                                                rng, (on_stratum, "positive_contacts")
+                                            ).binomial(
                                                 n_contacts_cell, prev_on
                                             )
 
@@ -451,7 +519,8 @@ class TransmissionEngine:
                                                     inf_on = self._calc_msm_infections(
                                                         n_pos_contacts_on, stage_name,
                                                         condom_modifier, prep_efficacy,
-                                                        art_modifier, deterministic, rng
+                                                        art_modifier, deterministic, rng,
+                                                        stratum_id=on_stratum,
                                                     )
                                             else:
                                                 # STEP 2: Draw infections from HIV+ contacts
@@ -462,7 +531,9 @@ class TransmissionEngine:
                                                 if deterministic:
                                                     inf_on = n_pos_contacts_on * p_trans_on
                                                 else:
-                                                    inf_on = rng.binomial(
+                                                    inf_on = self._rng_for_stratum(
+                                                        rng, (on_stratum, "infection")
+                                                    ).binomial(
                                                         n_pos_contacts_on, p_trans_on
                                                     )
 

@@ -1,9 +1,36 @@
-# HIV Transmission Model — V11
+# HIV Transmission Model
 
 **Author:** Rishi Malhotra — Thesis Research
-**Status:** Active development
-**Version:** 11.2
-**Last updated:** 2026-03-03
+**Status:** Phase 2 — converting the submitted MSc thesis into a publishable manuscript
+**Version:** V13.24 (see `CHANGELOG.md`)
+**Last updated:** 2026-09-15
+
+> ## Start here
+>
+> **`STATE_OF_PLAY_2026-09-11.md`** — the broad Phase 2 state captured on 2026-09-11.
+> It is an historical snapshot; its statements that C-1, A-5, or production-path history
+> matching have not run are superseded by the dated 2026-09-15 calibration records below.
+>
+> Then, depending on what you are doing:
+> - **task board** → `PHASE2_AGENT_HANDOFF_2026-09-09.md` (§1A is the binding verification
+>   and academic-integrity standard for all work in this repo)
+> - **gates and decision log** → `PHASE2_DEVELOPMENT_CHECKLIST.md`
+> - **reasoning behind the Phase 2 decisions** → `PHASE2_STRATEGY_BRIEF_2026-09-06.md`
+> - **calibration method and current operating guide** →
+>   `documentation/guides/HISTORY_MATCHING_GUIDE.md`
+> - **calibration build rationale and historical decisions** →
+>   `HISTORY_MATCHING_BUILD_SPEC.md`
+> - **Wave 1 declaration** → `HM_BASELINE_LEARNING_RUN_2026-09-15.md`
+> - **Wave 2 focused-continuation declaration** →
+>   `HM_FOCUSED_CONTINUATION_RUN_2026-09-15.md`
+> - **prepared many-seed confirmation** →
+>   `HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md`
+> - **work specified but not yet done** → the `TASK_BRIEF_*.md` files
+>
+> **Everything below this box describes the V11-era model and is retained for structural
+> orientation only. It was last revised 2026-03-03 and predates the V12–V13 work, the
+> Phase 2 rebuild, and every finding in the state-of-play document. Do not rely on it for
+> version, status, calibration or results claims.**
 
 ---
 

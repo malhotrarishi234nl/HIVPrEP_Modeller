@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "design": "art_interpolation_shape_audit_20260921",
+  "status": "READY_FOR_BOUNDED_DIAGNOSTIC",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_confirmation": "outputs/calibration/coupled_forecast_windows_20260921_confirmation",
+  "source_confirmation_manifest_sha256": "d5195301feba73e2fb632fb76a603bd967f22b5d72ac13129db6668c6013c757",
+  "candidate_ids": [1326, 1788],
+  "replicate_seeds": [200900, 200901, 200902, 200903, 200904],
+  "profiles": [
+    {"id": "baseline", "art_geometry": "linear_probability", "msm_geometry": "linear_multiplier"},
+    {"id": "art_hazard_linear", "art_geometry": "linear_hazard", "msm_geometry": "linear_multiplier"},
+    {"id": "art_smoothstep", "art_geometry": "smoothstep_probability", "msm_geometry": "linear_multiplier"},
+    {"id": "art_stepwise", "art_geometry": "stepwise_probability", "msm_geometry": "linear_multiplier"},
+    {"id": "msm_log_reference", "art_geometry": "linear_probability", "msm_geometry": "log_linear_multiplier"},
+    {"id": "msm_log_plus_art_hazard", "art_geometry": "linear_hazard", "msm_geometry": "log_linear_multiplier"},
+    {"id": "msm_log_plus_art_smoothstep", "art_geometry": "smoothstep_probability", "msm_geometry": "log_linear_multiplier"}
+  ],
+  "profile_contract": {"quarter_step": 0.25},
+  "trajectory_budget": 70,
+  "workers_recommended": 8,
+  "outputs": {
+    "annual_years": [1996, 2000, 2004, 2005, 2010, 2015, 2019, 2022, 2024],
+    "annual_series": [
+      "new_infections_msm",
+      "new_diagnoses_msm",
+      "aids_first_diagnosis_proxy_msm",
+      "msm_undiagnosed_hiv_pos",
+      "on_art_stock"
+    ]
+  },
+  "decision_contract": [
+    "This is an anchor-preserving paired structural sensitivity audit, not recalibration, confirmation or a policy scenario.",
+    "Every existing ART-initiation and diagnosis anchor remains exactly unchanged.",
+    "Betas, contacts, mixing, PrEP, seeding, progression and all parameter values remain fixed.",
+    "Hazard-linear and smoothstep profiles change only the path between ART anchors; stepwise is an explicit boundary test.",
+    "The MSM log-linear profiles reproduce the best diagnosis-geometry signal from the preceding temporal audit and test interaction with ART interpolation only.",
+    "A useful response must improve diagnosis RMSE and diagnostic primary I_max without worsening 2022 AIDS absolute error.",
+    "No profile may enter calibration or the HTA baseline directly from this audit."
+  ]
+}

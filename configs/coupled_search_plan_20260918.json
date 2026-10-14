@@ -1,0 +1,336 @@
+{
+  "design": {
+    "name": "coupled_calibration_search_20260918",
+    "question": "Can compensating parameter combinations in the existing 33-parameter model reproduce all 15 focused targets jointly under the existing observation and uncertainty contracts?",
+    "status_vocabulary": [
+      "PREPARED",
+      "SMOKE_PASSED",
+      "SEARCH_COMPLETE",
+      "CONFIRMATION_COMPLETE",
+      "PARTIAL_TIME_LIMIT",
+      "FAILED"
+    ],
+    "declared_as": "bounded first joint-search attempt; numerical settings are declared computational choices, not empirical estimates or claims of optimality",
+    "not": [
+      "emulator",
+      "gradient inference",
+      "posterior sampler",
+      "proof of efficient global optimization",
+      "exhaustive coverage of 33 dimensions"
+    ]
+  },
+  "inputs": {
+    "source_experiment": "outputs/calibration/hm_focused_diagnoses_then_aids_20260916",
+    "base_config": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json",
+    "calib_space": "configs/calib_space_v13_15_1975_orientation_seed_abc_onart_two_era_20260916.json",
+    "target_register": "configs/hm_target_register_focused_20260916.json",
+    "wave_plan": "configs/hm_wave_plan_focused_diagnoses_then_aids_20260916.json",
+    "warm_start": "configs/hm_focused_warm_start_20260916.csv",
+    "expected_sha256": {
+      "base_config": "c7aaec0f3ae36929ff3266f7305c128952e08714575363436d273e73dbd53187",
+      "calib_space": "fce261fe07449f3a17fd50fd72770740f1afc4e9cebd5b40425e836b0793bd5e",
+      "target_register": "87db68409e1a3e0c6ede762b37fd7f8c64008a1ba289b4965eb7a7be645e7a03",
+      "wave_plan": "d622647a1745b90af2dc578e61e7e3bb8a62eadfd1b300025a02d9fa809a70fb"
+    }
+  },
+  "targets": {
+    "n": 15,
+    "frozen_order": [
+      "shm_new_diagnoses_msm@1996",
+      "shm_new_diagnoses_msm@2000",
+      "shm_new_diagnoses_msm@2004",
+      "shm_new_diagnoses_msm@2010",
+      "shm_new_diagnoses_msm@2015",
+      "shm_new_diagnoses_msm@2019",
+      "shm_new_diagnoses_msm@2024",
+      "rivm_aids_msm@1990",
+      "rivm_aids_msm@1995",
+      "rivm_aids_msm@2000",
+      "rivm_aids_msm@2005",
+      "rivm_aids_msm@2010",
+      "rivm_aids_msm@2015",
+      "rivm_aids_msm@2019",
+      "rivm_aids_msm@2022"
+    ],
+    "diagnosis_series": "shm_new_diagnoses_msm",
+    "diagnosis_years": [
+      1996,
+      2000,
+      2004,
+      2010,
+      2015,
+      2019,
+      2024
+    ],
+    "aids_series": "rivm_aids_msm",
+    "aids_years": [
+      1990,
+      1995,
+      2000,
+      2005,
+      2010,
+      2015,
+      2019,
+      2022
+    ],
+    "reporting_groups": {
+      "diagnoses_through_2004": [
+        "shm_new_diagnoses_msm@1996",
+        "shm_new_diagnoses_msm@2000",
+        "shm_new_diagnoses_msm@2004"
+      ],
+      "diagnoses_after_2004": [
+        "shm_new_diagnoses_msm@2010",
+        "shm_new_diagnoses_msm@2015",
+        "shm_new_diagnoses_msm@2019",
+        "shm_new_diagnoses_msm@2024"
+      ],
+      "aids_through_1995": [
+        "rivm_aids_msm@1990",
+        "rivm_aids_msm@1995"
+      ],
+      "aids_after_1995": [
+        "rivm_aids_msm@2000",
+        "rivm_aids_msm@2005",
+        "rivm_aids_msm@2010",
+        "rivm_aids_msm@2015",
+        "rivm_aids_msm@2019",
+        "rivm_aids_msm@2022"
+      ]
+    },
+    "unresolved_target_policy": "fatal; never silently dropped"
+  },
+  "parameters": {
+    "n": 33,
+    "coordinates": "original linear normalized u=(x-lower)/(upper-lower)",
+    "transformations": "none",
+    "blocks": {
+      "initial_burden": [
+        "seed_prevalence",
+        "seed_msm_fraction",
+        "p_msm",
+        "seed_msm_chronic_share",
+        "seed_msm_aids_share",
+        "seed_non_msm_chronic_share",
+        "seed_non_msm_aids_share"
+      ],
+      "contacts_mixing": [
+        "orient_female",
+        "orient_msm",
+        "epsilon_hetero",
+        "epsilon_msm",
+        "activity_med",
+        "activity_high",
+        "contact_low",
+        "contact_med",
+        "contact_high"
+      ],
+      "diagnosis": [
+        "diagnosis_1985",
+        "diagnosis_1990",
+        "diagnosis_1997",
+        "diagnosis_2019",
+        "msm_diag_mult_1996",
+        "msm_diag_mult_2004",
+        "msm_diag_mult_2019"
+      ],
+      "care_progression_survival": [
+        "art_init_1996",
+        "art_init_2000",
+        "art_init_2015",
+        "art_init_2020",
+        "art_dropout_rate",
+        "chronic_to_aids",
+        "chronic_to_aids_on_art_early",
+        "chronic_to_aids_on_art_recent",
+        "aids_mortality",
+        "art_mortality_reduction"
+      ]
+    },
+    "block_pairs": [
+      [
+        "initial_burden",
+        "contacts_mixing"
+      ],
+      [
+        "initial_burden",
+        "diagnosis"
+      ],
+      [
+        "initial_burden",
+        "care_progression_survival"
+      ],
+      [
+        "contacts_mixing",
+        "diagnosis"
+      ],
+      [
+        "contacts_mixing",
+        "care_progression_survival"
+      ],
+      [
+        "diagnosis",
+        "care_progression_survival"
+      ]
+    ]
+  },
+  "objective": {
+    "search_residual": "r_i = (mu_i - z_i)/sqrt(B_i)",
+    "B_i": "frozen non-process variance: observation + code + target-relative 0.1 discrepancy (+ any extra budget term)",
+    "group_statistic": "R_G = sqrt(mean(r_i^2))",
+    "rank": "J = max_G R_G; ties by mean_G R_G, then candidate id",
+    "purpose": "SEARCH RANKING ONLY; equal group treatment is a declared heuristic and is not a likelihood, weight or acceptance rule"
+  },
+  "acceptance": {
+    "rule": "existing 15-target primary maximum implausibility",
+    "process_variance": "s_i^2 (1 + 1/K)",
+    "discrepancy": 0.1,
+    "cutoff": 3.0,
+    "boundary": "I_max <= cutoff passes",
+    "sensitivity_discrepancy": 0.2,
+    "sensitivity_status": "reported only; never promotes a candidate",
+    "recorded_fields": [
+      "search_rank",
+      "discovery_primary_pass",
+      "fresh_confirmation_primary_pass",
+      "sensitivity_pass"
+    ]
+  },
+  "search": {
+    "initial_archive": 128,
+    "source_vector_ids": [
+      620,
+      621,
+      548
+    ],
+    "max_warm_vectors": 24,
+    "batches": 8,
+    "batch_size": 48,
+    "per_batch": {
+      "global_lhs": 12,
+      "differential_full": 18,
+      "differential_block": 18
+    },
+    "max_discovery_vectors": 512,
+    "parent_pool": {
+      "size": 64,
+      "best_by_J": 24,
+      "per_group": 8,
+      "maximin_diversity": 8
+    },
+    "differential": {
+      "formula": "u_new = u_a + F (u_b - u_c)",
+      "F_values": [
+        0.5,
+        0.8
+      ],
+      "F_rule": "alternating by proposal index",
+      "crossover": false,
+      "clipping": false,
+      "domain_shrinking": false
+    },
+    "rejection": {
+      "max_attempts_per_slot": 200,
+      "fallback": "one valid global draw, recorded",
+      "max_raw_global_proposals_per_batch": 100000,
+      "duplicate_tolerance_max_coordinate": 1e-10
+    },
+    "early_stopping": "none; neither a good fit nor an empty accepted set stops the run"
+  },
+  "seeds": {
+    "discovery": [
+      197000,
+      197001,
+      197002,
+      197003,
+      197004
+    ],
+    "confirmation": [
+      197100,
+      197101,
+      197102,
+      197103,
+      197104,
+      197105,
+      197106,
+      197107,
+      197108,
+      197109,
+      197110,
+      197111,
+      197112,
+      197113,
+      197114,
+      197115,
+      197116,
+      197117,
+      197118,
+      197119
+    ],
+    "smoke": [
+      197200,
+      197201,
+      197202
+    ],
+    "proposal_rng": 197300,
+    "design": "common random numbers shared across candidates within a stage; confirmation seeds disjoint from discovery and from previous experiments"
+  },
+  "budget": {
+    "table": [
+      {
+        "stage": "three paired harness-versus-production smoke checks",
+        "maximum_full_trajectories": 6
+      },
+      {
+        "stage": "128 initial + 8x48 adaptive vectors, K=5",
+        "maximum_full_trajectories": 2560
+      },
+      {
+        "stage": "at most 10 fresh confirmations, K=20",
+        "maximum_full_trajectories": 200
+      },
+      {
+        "stage": "total scientific/smoke maximum",
+        "maximum_full_trajectories": 2766
+      }
+    ],
+    "total": 2766,
+    "default_workers": 4,
+    "max_workers": 8,
+    "wall_time_cap_seconds": 21600,
+    "on_cap": "stop dispatch, finish bounded in-flight work, mark PARTIAL_TIME_LIMIT",
+    "resume": "never resets the total simulation budget; spent launch attempts stay spent"
+  },
+  "confirmation": {
+    "shortlist_size": 10,
+    "primary_pass_head": 5,
+    "replicates": 20,
+    "rules": [
+      "freeze the shortlist before any fresh simulation",
+      "never pool discovery and confirmation seeds",
+      "never choose a favourable seed subset",
+      "never iteratively replace a failed candidate"
+    ]
+  },
+  "diagnostics": {
+    "stock_years": [
+      1990,
+      2000,
+      2010,
+      2025
+    ],
+    "stock_axes": [
+      "orientation",
+      "hiv_stage",
+      "diagnosis",
+      "art"
+    ],
+    "confirmation_state_tensors": {
+      "years": [
+        2025
+      ],
+      "restart_safe": false
+    },
+    "observer": "passive; consumes no RNG, mutates no state, verified by paired smoke"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "version": "2026-09-16",
+  "source_policy": "newest_vetted_edition_per_year",
+  "user_approved": true,
+  "status": "SOURCE_POLICY_APPROVED_NOT_RUN_READY",
+  "raw_D76_workbook_tab": "preserve_unchanged",
+  "overlapping_editions": "alternative_vintages_not_independent_observations",
+  "incomplete_terminal_years": "exclude_from_primary_candidate",
+  "D77": "quarantine_pooled_and_total_rows; annual_rows_pending_separate_review",
+  "D79_2016": "hold_pending_count_percentage_reconciliation; do_not_silently_correct_or_fallback",
+  "historical_annual_1983_1987": "retain_D76_workbook_evidence; group_table_contains_only_pooled_period",
+  "candidate_selection": "latest_complete_unflagged_annual_row_from_D76_D78_D79_except_2016_hold",
+  "production_target_activation": false,
+  "run_blockers": [
+    "Source-compatible AIDS observation mapping, eligibility and reporting assumptions not finalized",
+    "Non-MSM conditional AIDS-at-entry evidence bounds and mechanism not implemented",
+    "Process variability versus Monte Carlo mean-error variance contract not finalized"
+  ]
+}

@@ -60,6 +60,41 @@ POSITIVE_SHAPE_PARAMS: frozenset = frozenset({"alpha", "beta", "sigma"})
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Index-map accessor (ENG-F04: a name mismatch must raise, never resolve silently)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class GroupNameError(KeyError):
+    """A configured group name does not exist in the model's index map."""
+
+
+def require_idx(index_map: dict, name: Any, what: str) -> int:
+    """Resolve ``name`` to a tensor index, raising if the map does not contain it.
+
+    ``mapping.get(name, <plausible default>)`` is the pattern that produced A-25: the
+    config asked for the age bin ``"64-69"``, no such bin exists (it is ``"65-69"``), and
+    ``age_to_idx.get(name, n_age_groups - 1)`` silently resolved it to the LAST bin. PrEP
+    eligibility therefore spanned 15 to 110+ instead of 15-69, in every config in
+    ``configs/``, undetected.
+
+    This is the project's ENG-F04 rule made reusable: a ``KeyError`` on a name mismatch is
+    correct; a silent wrong index is not. Use this wherever the name is *required* to
+    exist. Where a state is genuinely *optional* -- Lenacapavir in an arm that does not
+    model it -- the existing ``get(name, -1)`` sentinel guarded by ``if idx >= 0`` is the
+    right idiom and must be left alone; the two questions are different.
+    """
+    try:
+        return index_map[name]
+    except (KeyError, TypeError):
+        available = ", ".join(repr(k) for k in sorted(map(str, index_map)))
+        raise GroupNameError(
+            f"{what}: {name!r} is not a valid name. This is a configuration error, not a "
+            f"missing default -- resolving it silently is how A-25 hid an eligibility "
+            f"range of 15-110+ behind an intended 15-69. Available names: {available}"
+        ) from None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Core accessor (unchanged)
 # ──────────────────────────────────────────────────────────────────────────────
 

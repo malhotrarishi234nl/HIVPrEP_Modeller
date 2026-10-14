@@ -1,0 +1,84 @@
+{
+  "version": "1.0",
+  "design": "recent_mechanism_audit_20260921",
+  "status": "READY_FOR_USER_LAUNCH",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_confirmation": "outputs/calibration/coupled_forecast_windows_20260921_confirmation",
+  "source_confirmation_manifest_sha256": "d5195301feba73e2fb632fb76a603bd967f22b5d72ac13129db6668c6013c757",
+  "candidate_ids": [1326, 1788],
+  "candidate_rationale": "The two original fresh-seed primary passers that were not variance-stability flagged.",
+  "replicate_seeds": [
+    200500, 200501, 200502, 200503, 200504,
+    200505, 200506, 200507, 200508, 200509
+  ],
+  "variants": [
+    {
+      "id": "baseline",
+      "kind": "reference",
+      "description": "Unchanged calibrated candidate."
+    },
+    {
+      "id": "prep_corridor_off",
+      "kind": "mechanism_isolation",
+      "description": "Disable only the 2019-2025 oral-PrEP stock corridor; retain scheduled uptake and dropout."
+    },
+    {
+      "id": "prep_floor_only",
+      "kind": "mechanism_isolation",
+      "description": "Set historical oral-PrEP initiation rates through 2025 to zero while retaining the stock corridor and dropout; isolates corridor-forced minimum stock."
+    },
+    {
+      "id": "prep_half_rate_corridor_off",
+      "kind": "structural_sensitivity",
+      "description": "Halve historical oral-PrEP initiation rates through 2025 and disable the stock corridor. The 50% factor is diagnostic, not an evidence-derived bound."
+    },
+    {
+      "id": "prep_none_historical",
+      "kind": "mechanism_deletion_upper_bound",
+      "description": "Set historical oral-PrEP initiation through 2025 to zero and disable the stock corridor. This is an explanatory upper bound, not a credible Netherlands scenario."
+    },
+    {
+      "id": "art_transmission_reduction_0_80",
+      "kind": "declared_bound_sensitivity",
+      "description": "Change ART transmission reduction from 0.96 to its declared lower bound 0.80."
+    },
+    {
+      "id": "art_recent_initiation_0_75x",
+      "kind": "structural_sensitivity",
+      "description": "Multiply the calibrated 2015 and 2020 ART-initiation anchors by 0.75. The factor is diagnostic, not an evidence-derived bound."
+    },
+    {
+      "id": "msm_diagnosis_2019_anchor_0_75x",
+      "kind": "structural_sensitivity",
+      "description": "Multiply the MSM-relative diagnosis 2019 anchor by 0.75; because interpolation is linear, this also changes the 2004-2019 ramp."
+    },
+    {
+      "id": "msm_diagnosis_2019_anchor_1_25x",
+      "kind": "structural_sensitivity",
+      "description": "Multiply the MSM-relative diagnosis 2019 anchor by 1.25; because interpolation is linear, this also changes the 2004-2019 ramp."
+    }
+  ],
+  "workers_recommended": 8,
+  "trajectory_budget": 180,
+  "outputs": {
+    "annual_years": [2015, 2019, 2020, 2021, 2022, 2023, 2024],
+    "annual_series": [
+      "new_infections_msm",
+      "new_diagnoses_msm",
+      "aids_first_diagnosis_proxy_msm",
+      "on_art_stock",
+      "msm_on_oral_mean",
+      "prep_oral_initiations",
+      "prep_oral_dropouts",
+      "prep_oral_corridor_additions",
+      "prep_oral_corridor_removals"
+    ]
+  },
+  "interpretation_contract": [
+    "This is a paired common-random-number mechanism audit, not calibration and not confirmation.",
+    "Every variant uses the same seeds as its candidate baseline, so paired differences identify model response rather than parameter uncertainty.",
+    "Mechanism-deletion and arbitrary-factor variants are explanatory sensitivities and must not be called plausible policy scenarios.",
+    "No variant may be promoted to the HTA baseline from this audit. The audit only determines which existing mechanism should be corrected or sourced before recalibration."
+  ]
+}

@@ -335,7 +335,7 @@ def _run_single_hta_draw(draw_index, epi_draw_row, hta_draw_row,
             cfg, arm_name, analysis_scenario,
             runtime_config=hta_cfg.get("_runtime_config"),
         )
-        if arm_name == "lenacapavir":
+        if arm_name in ("lenacapavir", "oral_prep_plus_lena"):
             _validate_lenacapavir_schedule_active(
                 arm_cfg, analysis_scenario, freeze_year, eval_years
             )

@@ -6,6 +6,455 @@ Major version changes are explicitly set by the user (VX → VY).
 
 ---
 
+## Diagnostic record — 2026-09-17 (90-run joint comparison)
+
+- Recorded completed stochastic factorial results in `documentation/reports/calibration/HM_JOINT_COMPARISON_FINDINGS_2026-09-17.md`.
+- Added read-only numerical audit `tools/summarize_joint_fit_comparison_20260917.py`.
+- Earlier diagnosis improves the local trade-off, but no tested cell meets the prespecified search trigger or joint HM cutoff. Next step is a bounded early-AIDS observation-contract decision, not another wave or automatic model addition.
+- No simulator, allocator, targets, parameter bounds or source run outputs changed.
+
+## Unreleased — 2026-09-16 (ECDC early hold-out; focused staged run prepared)
+
+- `ECDC_EARLY_HIV_SOURCE_DECISION_2026-09-16.md`: pre-1996 Dutch HIV diagnoses are survivor-restricted (RIVM report on 2008, §1.8). Rishi decided to hold ECDC HIV 1990–95 out as one-sided cross-validation; the survivor-restriction operator was declined.
+- Register v1.2: `configs/hm_target_register_focused_20260916.json`.
+- `run_history_matching.py`: declared, hash-pinned supplementary (warm-start) design rows for wave 1 of a new sequence.
+- `tools/build_focused_warm_start_20260916.py` and `configs/hm_focused_warm_start_20260916.csv` (22 rows).
+- Plan: `configs/hm_wave_plan_focused_diagnoses_then_aids_20260916.json` (diagnoses-only wave 1, then AIDS added cumulatively). Validated; not run. See `documentation/reports/calibration/HM_FOCUSED_DIAGNOSES_THEN_AIDS_RUN_2026-09-16.md`.
+- Verification: 255 focused tests passed.
+
+## Unreleased — 2026-09-16 (two-era effective on-ART progression, decision B)
+
+- Bounded evidence check: `documentation/reports/calibration/ON_ART_PROGRESSION_EVIDENCE_DECISION_2026-09-16.md`. SHM 2025 reports first AIDS events at 6.2 (5.2–7.4)/1,000 PYFU in 2024, and CDC-C events at 5.88/1,000 PYFU among people suppressed on ART.
+- `run_v3.py`: optional `chronic_to_aids_on_art.schedule`. It is an effective all-ART rate, with the early value up to 2000, a linear ramp, and the recent value from 2010. A declaration guard is included.
+- New base config and calibration space (`*_onart_two_era_20260916.json`). Priors: early 0.002–0.030 (assumption), recent 0.002–0.008 (evidence-anchored). The original files are unchanged.
+- Verification: a full stochastic run with equal anchors is bitwise identical to the original base case; 22 focused tests passed.
+
+## Unreleased — 2026-09-16 (diagnostic-wave follow-up: ART split counters, analysis hardening)
+
+- `aids_observation.py`: diagnosed-stage Chronic→AIDS progression split into `_off_art` / `_on_art`, plus
+  `chronic_diagnosed_{off,on}_art_person_years` (pre-draw at-risk stock × years_per_step, reconstructed as
+  post-draw pool + draw). These are passive: no RNG use and no population change. Person-time is NaN when pools are
+  not supplied. `run_v3.py` passes the pools. The two-step smoke tests confirm legacy outputs and population are
+  unchanged. 3 new tests.
+- `tools/analyze_msm_aids_diagnostic_20260916.py` rewritten. It computes every headline in `DIAGNOSTIC_FINDINGS.md`
+  and refuses to run unless the plan, calibration space, register, scoring modules and evaluated.csv hash-match the
+  run manifest.
+- `DIAGNOSTIC_FINDINGS.md` revision 2: over-claims softened; two numeric corrections (1990 range, Spearman
+  year range).
+
+- `tools/run_art_split_decomposition_20260916.py` + `ART_SPLIT_DECOMPOSITION_RUN_2026-09-16.md`: 10-vector × 10-seed
+  decomposition rerun with the new counters. It includes an exact-reproduction regression check against the diagnostic
+  run. Validated; not run.
+
+Verification: 269 focused tests passed.
+
+## Unreleased — 2026-09-16 (MSM-AIDS diagnostic wave: predictive variance contract)
+
+User decisions:
+- predictive V_ensemble(x) = s(x) + s(x)/K, estimated locally, A-5 not used;
+- AIDS compartment confirmed as clinical AIDS (CASCADE 2000/2003), so no recognition fraction;
+- score RIVM MSM AIDS only, with non-MSM AIDS kept for validation.
+
+Added:
+- `aids_first_diagnosis_proxy{,_msm,_non_msm}` (assumption), computed per replicate in `calib_extractor.py`;
+- the `rivm_aids_candidate_json` register source with a pinned SHA-256;
+- `configs/hm_target_register_rivm_msm_aids_20260916.json` (ECDC AIDS demoted to cross-validation; the original register is unchanged);
+- `v_ensemble_mode: predictive_local` with a chi-square stability diagnostic;
+- `implausibility_matrix_pointwise`.
+
+Default `a5_file` behaviour is unchanged. Plan `configs/hm_wave_plan_msm_aids_diagnostic_20260916.json` is validated and not run; see `documentation/reports/calibration/HM_MSM_AIDS_DIAGNOSTIC_RUN_2026-09-16.md`.
+
+Correction: A-5 post-dates A-28 (identical RNG/demography module hashes), so A-5 was not inflated by the A-28 defect.
+
+Verification: 248 focused tests passed. The 14 `test_lhs_calibration.py` failures are pre-existing and identical without this change.
+
+## Unreleased — 2026-09-16 (AIDS observation diagnostics)
+
+- Added nine passive timestep/annual diagnostics: AIDS progression while HIV
+  undiagnosed, progression while diagnosed, and HIV diagnosis in the AIDS stage,
+  each for total/MSM/non-MSM. Existing `new_aids_cases` remains biological
+  progression and its economic use is unchanged. No new random draws or stage
+  allocations are introduced.
+- These are mechanism diagnostics, not yet validated RIVM surveillance targets.
+  The current exogenous non-MSM pathway remains Chronic at entry; no presentation
+  fraction has been selected. Pre-existing AIDS among diagnosed migrant arrivals
+  is not classified as a new domestic AIDS diagnosis by these counters.
+- Annual extraction preserves unavailable diagnostic values rather than
+  converting missing/partial records to zero. Runtime provenance includes the
+  new `aids_observation.py` module. Active targets and production plans unchanged.
+- Added synthetic partition/no-double-counting tests and two-timestep tests
+  comparing legacy outputs and state with accounting enabled versus disabled.
+
+## Unreleased — 2026-09-15 (stochastic history-matching learning waves)
+
+### Post-fix Wave 1 and focused Wave 2
+
+- Wave 1 evaluated 1,000 complete 32-parameter vectors with three stochastic CRN
+  replicates each and zero errors. The illustrative output-variance rule retained
+  46 primary NROY members; the 10% target-relative sensitivity retained one.
+- Checksum-verified continuation support was added to `run_history_matching.py`.
+  A continuation reads the final parent NROY geometry without altering or replaying
+  the parent, rejects incompatible inputs/runtime modules, and records a provenance chain.
+- Focused Wave 2 proposed 1,000 points, evaluated 974 after proximity thinning, and
+  completed with zero errors. It retained 90 primary members while reducing the
+  bounding volume from 7.05% to 1.42% of the original box. Two vectors—Wave 2
+  design IDs 25 and 342—survived both target-relative 10% and 20% sensitivities.
+- The primary result remains `V_disc`-dominated and is explicitly a learning set,
+  not a final calibration ensemble. Tier-2 female PLHIV remains systematically
+  underpredicted in cross-validation.
+
+### Many-seed confirmation machinery
+
+- Added `run_hm_confirmation.py` to re-evaluate selected complete parameter vectors
+  under fresh seeds, parallelized at the individual-seed level.
+- The confirmation exports exact selected parameters, seed-level outputs, confirmed
+  means and empirical standard errors, original-versus-confirmed shifts, 10%/20%
+  target-relative scores, and a checksummed manifest.
+- The prepared confirmation for designs 25 and 342 uses 50 fresh seeds per vector
+  (100 simulations total). It has been validated but not run.
+- Current operating documentation: `documentation/guides/HISTORY_MATCHING_GUIDE.md`.
+  History-matching-focused test suite: 115 passed.
+
+## Unreleased — 2026-09-14 (model-output regression baseline)
+
+### The gap this closes
+
+An audit today established that **not one test in the repository asserted a model
+output**. Every green pin measured something the production changes structurally could not
+move: RNG key derivation (the four A-13 pins -- which are CRN key-compatibility golden
+vectors in `tests/test_a13_crn_key_compatibility.py`, NOT mortality pins), sampler moments
+on synthetic inputs (A-28), config reachability (A-12 guards), static AST structure (A-20),
+the v6 config golden dict. Conversely **every harness comparing model output to a stored
+reference is now failing or silently stale**: 4/4 digest assertions, 5/6 A-22 level-0
+controls, A-16's gate (179/180 checks), A-9, A-20's two numeric controls, B-8's drift guard.
+
+So A-28's "all four A-13 pins pass unchanged" was literally true and gave **no assurance
+whatever** about A-25, C-4 or C-1 -- and a regression in the model itself would have been
+caught by nothing.
+
+### New: `tools/postchange_baseline.py` + `tests/test_postchange_model_output_baseline.py`
+
+- Pins the deterministic digest (`c61a75eb...2015`), 11 diagnosable scalars, and three
+  stochastic per-seed digests (seeds 42/43/44 -- catches RNG-path regressions deterministic
+  mode cannot see, since the deterministic allocator and the A-28 coupled samplers are
+  different code).
+- Hashes 13 result-driving modules plus the config, so a mismatch can be **attributed**
+  rather than merely observed.
+- Self-contained: defines its own METRICS and run helpers, inheriting nothing from the
+  stale-reference tools.
+- **Teeth verified**: disabling C-1 in the config produced **11 failures**; restoring gave
+  18 passes.
+- Re-baselining requires `write_baseline(reason=...)` with a non-empty reason, stamped with
+  the date into the artefact. Regenerating it to make a test pass is prohibited (§1A.4).
+
+### ADDENDUM ONLY -- the old references are deliberately left failing
+
+Nothing was re-baselined. A-15's stored outputs, A-16's `validate_reproduction`, A-9's exact
+controls and the `8d186b35...` assertions in `run_a21_*`/`run_a22_*` all remain as they were,
+failing, as standing flags that the model has moved. A test in the new collection
+**asserts that those stale digests are still present**, so that "helpfully" updating them
+would itself fail.
+
+### The baseline is NOT a correctness certificate
+
+It records what the model produced on 2026-09-14, not what it should produce. Several pinned
+values are known provisional (C-1 reproduces at 101.1% not 100%; `infections_averted`
+variance rose 1.58-1.96x; A-3 criterion 1 now fails at 6.57 SE). **Do not quote a baseline
+value as a result.**
+
+Suite: 58 failed / 2,008 passed / 21 skipped / 5 errors -- `problem_set_equal: True`.
+
+## Unreleased — 2026-09-14 (stochastic confirmation)
+
+Report: `outputs/hta_results/c1_exogenous_non_msm_20260914_061217/STOCHASTIC_CONFIRMATION.md`.
+Seeds 42-56, n=15 CRN-paired.
+
+- **C-1 RNG neutrality: PASS.** C-1 enabled with zero counts is **bit-identical** to C-1
+  disabled across **15/15 seeds**, 79 numeric columns, worst absolute difference 0.0. C-1
+  cannot degrade the CRN pairing A-28 restored. This was the outstanding pre-wave check.
+- **Correction:** the double-count leak is **~1.0%**, not zero (see above).
+- **Correction:** the +6.5% MSM shift is **deterministic-mode only**; stochastic is -0.0%.
+- **Post-C-1 headline (A-16, n=15).** **Every switch level now has a determinate sign** --
+  at the 2026-09-11 run, switch 10% and 25% had CIs straddling zero. CI widths narrowed
+  **4.0x to 9.4x**. Switch 10% is QALY-positive (+96.4 [61.5, 131.3]); 25% and above are
+  QALY-negative and worsen monotonically, so lenacapavir substitution is **dominated at 25%+**
+  on these inputs. Narrowing is mostly A-28; level shifts carry A-25, C-4 and C-1 together and
+  are not separable from this run.
+- **A-16 did not pass its own validation.** It completed all 15 seeds and wrote
+  `per_seed_economics.csv`, then aborted in `validate_reproduction`: that gate asserts the fresh
+  runs reproduce A-15's stored epidemiological artefacts, and A-15 predates A-28/A-25/C-4/C-1.
+  The gate is correct; the references are stale. The headline above is computed from A-16's
+  per-seed output. **Re-baselining A-15 is a decision, not a fix, and has not been taken.**
+
+## Unreleased — 2026-09-14 (later)
+
+### C-1 — exogenous non-MSM forcing implemented (D-03)
+
+New module `exogenous_diagnoses.py`, wired at `run_v3.SimulationEngineV3._step_exogenous_non_msm`
+and enabled in `configs/V13.22_20260604_nearfit_rank001_basecase.json`.
+Report: `outputs/hta_results/c1_exogenous_non_msm_20260914_061217/C1_EXOGENOUS_NON_MSM.md`.
+
+- Observed SHM Table 1.1 non-MSM diagnoses (1996-2024) injected as exogenous forcing;
+  routed through `new_diagnoses`. **Zero free parameters** — counts and the male/female
+  split are both read off the published table.
+- Non-MSM diagnoses 1996-2024: **78 (0.8% of observed) -> 9,712 (100.8%)**.
+  PLHIV 2024 +8,658; `on_art_stock` +8,361; `plhiv_female_15plus` 838 -> 4,531.
+- **Double-count leak ~1.0%** (CORRECTED by the stochastic run; deterministic mode said zero):
+  +93.4 endogenous non-MSM infections across 15 seeds, non-zero in 15/15. The deterministic
+  zero was the artefact -- sub-critical per-cell expectations round to zero. The series
+  reproduces at 101.1%, not exactly 100%.
+- Deliberately a separate module, not an extension of `migration.py` (whose header
+  declares it a demographic layer and "NOT an epidemiological driver"), which also
+  avoided its `orientation_distribution` being 53% MSM.
+- Placement consumes **no randomness** by design, so it cannot re-key a process stream
+  (A-24 failure mode). Verified: enabled-with-zero-counts reproduces disabled exactly.
+- Digest `de6a2c63…4d80` -> `c61a75eb…2015`.
+
+### Silent default found and fixed — `ConfigReader.disease()` allowlist
+
+C-1 initially had **no effect at all**. `ConfigReader.disease()` copies an allowlist of
+four keys and silently discarded `exogenous_non_msm`; the engine saw no block and
+disabled the mechanism with no error. Same class as A-25 and C-4. Fixed, with two guard
+tests confirmed to fail with the fix reverted.
+
+### Finding — the deterministic allocator couples strata through integer bookkeeping
+
+**Deterministic mode only.** MSM infections +1,805 (+6.5%), diverging from 1996. Routes, contacts and prevalence
+denominators are all orientation-block-diagonal, so this is **not** a transmission
+pathway: `deterministic_allocate_events` computes its target over the whole tensor and
+ranks residuals across all cells, so every stratum competes with every other for the same
+integer units. Demonstrated in isolation. Not created by C-1, only exposed by it —
+D-14 / A-17 territory. **In STOCHASTIC mode the shift is -5.0 +/- 14.9 (-0.0%), i.e. absent** --
+the A-28 coupled samplers key per stratum, so no cross-stratum re-ranking occurs. The headline
+is stochastic, so the artefact does not contaminate it.
+
+### C-3 — base case corrected, fourth rule added
+
+- The brief's premise that 2020-24 "are flat" is **false**: OLS slope **+10.30/yr
+  (SE 3.71, t = +2.78)**. Those years are a COVID trough and a recovery, and their mean
+  (189.6) is a level no year in the series represents.
+- Default freeze window changed to the recovery years **2022-2024 (mean 203)**.
+- Added a fourth rule, `recent_slope`: the brief's three were all flat or falling while
+  the data's recent signal rises, so the sensitivity set was one-sided.
+- **Spread across the four rules over 2025-2064: 7.41x** (2,272 to 16,836 cumulative).
+  Reported as a finding per the brief's own standard.
+- 2024 carries a **+22.1%** reporting-delay uplift (163 reported -> 199 used).
+
+### C-2 — partially actioned
+
+`new_infections_msm` / `new_infections_non_msm` added to `calib_extractor.py`. The outputs
+existed in `run_v3.py` but were never extracted. C-2 is tractable and does **not** gate
+C-1: the HM machinery refuses to let a cross-validation series enter `I_max`. The legacy
+gates (`calib_acceptance_gates.py:177`, `calib_distance.py:159`) remain exposed — B-5.
+
+### A-12 inventory extended
+
+`ALLOC-02` (`deterministic_allocate_total`) and `C1-01` (`_step_exogenous_non_msm`)
+triaged into the inventory. Audited candidate count 258 -> 265; the A-12 report text is
+stale by exactly those seven sites.
+
+Suite: 58 failed / 1,990 passed / 21 skipped / 5 errors — `problem_set_equal: True`.
+
+## Unreleased — 2026-09-14
+
+### A-28 — coupled CRN samplers (ΔQALY SD 1,200 → 360)
+
+**Files modified:** `counter_based_rng.py`, `tests/test_a4_common_random_numbers.py`
+**Files added:** `tests/test_a28_coupled_samplers.py` (37 tests)
+**Report:** `outputs/hta_results/a28_crn_coupling_fix_20260914_032810/A28_CRN_COUPLING_FIX.md`
+
+Two samplers were not monotone in their parameters, so a hair-width between-arm difference put the
+arms on different random paths and destroyed CRN pairing. `multinomial` used NumPy's rejection-based
+`Generator.multinomial`; adult background mortality was keyed per tensor cell, re-randomising everyone
+the intervention merely relocates between cells. Both replaced by couplings promoted from A-24's
+harness: a sequential-conditional-binomial inverse-CDF multinomial, and a group-level binomial split
+by sequential hypergeometric inverse CDF.
+
+**ΔQALY SD 1,200.142 → 360.189** (variance to 9.0%, ≈11.1× equivalent seeds), n=15, seeds 42–56.
+Production reproduces A-24's `run_cf_both_base` **bitwise** — 65 columns × 15 seeds, atol=rtol=0.
+Distribution preservation proven at R=20,000 against tolerances derived from R alone. All four A-13
+golden CRN pins pass **unchanged**. Deterministic digest unchanged, with tripwires proving
+`CounterBasedRNG` is never constructed in deterministic mode. Full-suite failure/error identity set
+unchanged (58 failed / 5 errors).
+
+Base-case mean moved 956.2 → 1,150.7 (+20.3%, 0.63 pre-fix SE) — **unresolved, not a new central
+estimate**. `infections_averted` and `ly_via_hiv_deaths_disc` variances rose ~120% — unresolved,
+inside n=15 chi-square noise.
+
+### A-25 — PrEP eligibility age cap was silently ignored
+
+**Files modified:** `config_utils.py` (new `require_idx` / `GroupNameError`), `run_v3.py`,
+`economics.py`, `schedule_utils.py`, 10 configs in `configs/`, `tests/test_prep_dynamics.py`,
+`tests/test_diagnosis_year_bands.py`, `tests/test_msm_relative_diagnosis_v13_10.py`
+**Files added:** `tests/test_a25_silent_default_guards.py` (50 tests)
+**Report:** `outputs/hta_results/c4prep_silent_default_audit_20260914_042723/`
+
+`eligible_age_range.max` was `"64-69"`. No such age bin exists — it is `"65-69"` — and
+`age_to_idx.get(name, n_age_groups - 1)` silently resolved it to the LAST bin. **PrEP eligibility
+spanned 15 to 110+ instead of 15–69**, in all ten model configs, undetected, affecting the submitted
+thesis. It fired at two sites: PrEP uptake (`_step_prep_transitions`) and the MSM coverage
+denominator (`record_outputs`).
+
+A runtime probe found **668 index-map misses in one deterministic run**. 436 are a *correct*, guarded
+`get(name, -1)` sentinel for optional PrEP states and were deliberately left alone; 232 were A-25.
+
+Deterministic A/B on identical code, cap `110+` vs `65-69`: `delta_qaly` 854.57 → **1533.02
+(+79.4%)**, `infections_averted` 827 → **1051 (+27.1%)**, `delta_discounted_person_years` +144.0%.
+The pre-fix column reproduces the pinned two-platform reference exactly. **Both arms move**, because
+both restore copies of one 2025 frozen snapshot and the 1975–2025 history contains the PrEP rollout —
+so this changes the calibrated baseline, and the figures are **pre-recalibration**.
+
+The new guard immediately caught a second instance of the same typo class in the test suite
+(`"49-54"`, not a bin either), where two tests had been asserting against eligibility capped at 110+.
+
+### C-4 — MSM were never diagnosed before 1996
+
+**Files modified:** `run_v3.py`, `schedule_utils.py`, `configs/hm_target_register.json` (notes only)
+**Report:** `outputs/hta_results/c4prep_silent_default_audit_20260914_042723/C4_RECOMMENDATION.md`
+
+`TimeSchedule.default_before` defaulted to 0.0. That is correct for an *availability* schedule and
+wrong for a *multiplier*. The MSM relative-diagnosis multiplier inherited it, so the MSM diagnosis
+rate was multiplied by ZERO before its first anchor: **no MSM diagnosed 1985–1995**.
+
+**Fixed to the neutral value 1.0.** A fitted constant (≈1.273, set to match SHM's MSM ≤1995 figure)
+was evaluated and **rejected**: the response is sublinear (elasticity 0.738) so it missed the anchor
+it was built to hit; it overshot the held-out ECDC 1990–95 series by 8.8%; ECDC 1990–95 are
+themselves *scored* history-matching targets, so hard-coding from SHM double-counts the same
+information and shrinks NROY; and it asserts a 2.16× step down in MSM ascertainment at exactly 1996,
+the year ART arrived.
+
+**The residual is reported, not tuned away:** at 1.0 the model reaches ~79% of SHM's MSM ≤1995
+(1,646 ± 261 over 8 stochastic seeds vs 2,095 observed; 0/8 seeds reach it). That is evidence the
+pre-1996 base diagnosis anchors are too low — a recalibration question, not a defect.
+
+**Deterministic digest: `8d186b35…a455` → `0215d456…eeb8` (A-25) → `de6a2c63…4d80` (C-4).**
+`tools/run_a21_*` and `tools/run_a22_*` still assert the original value and will now fail — left
+as-is, flagged, since they are A-21/A-22 artefacts.
+
+### Silent-default hardening (A-25 / C-4 prevention)
+
+`TimeSchedule.default_before` is now **required and keyword-only**; all 9 construction sites state
+their own value, with an AST test that fails if a new one omits it. `require_idx()` replaces 9
+unguarded index lookups whose default was a wrong answer. `ScheduleManager.validate_sanity` now
+refuses a PrEP stock corridor whose `start_year` precedes its first schedule anchor — a latent hazard
+where a 0 ceiling would silently cap PrEP stock at zero.
+
+**Source correction.** The C-4 entry and the target register both said *"SHM publishes only a ≤1995
+lump of 1,280"* and inferred a 3.4× undershoot. **1,280 is the NON-MSM lump** (`Other men` 719 +
+`Women` 561) that C-1 uses. SHM HIV Monitoring Report 2025 Table 1.1, ≤1995: **MSM 2,095, total
+3,443** — so the undershoot is **9.3×**. ECDC/TESSy 1990–95 verified from source: **2,602 total,
+1,542 MSM**. The two sources are **consistent** (implied MSM ≤1989 = 553).
+
+---
+
+## Unreleased — 2026-09-12
+
+### Phase 2 A-18 — the Jensen hypothesis, refuted; and its independent review
+
+**Files added:** `tools/a18_jensen_mechanism.py`, `tools/run_a18_jensen_mechanism.py`, `tools/run_a18_remedies.py`, `tests/test_a18_jensen_mechanism.py` (19 tests)
+
+**Files modified:** none. The working-tree diff is byte-identical to the one A-17 retained.
+
+**Reports:** `outputs/calibration/a18_jensen_mechanism_20260912_205053/A18_JENSEN_MECHANISM.md`,
+`…/ADDENDUM_2026-09-12_independent_review.md`, `outputs/calibration/a18_remedy_probes_20260912_211631/`
+(the earlier `…_210713/` is superseded and marked).
+
+**Summary:** The hypothesis that deterministic mode's level inflation arises from Jensen's inequality on a
+concave per-person force of infection `f(n) = 1 − (1−β)^n` is **refuted two independent ways**. By
+inspection, the model never computes that form: `transmission_corrected.py` runs a two-step binomial
+composing to `Binomial(n, prevalence·p_trans)`, whose expectation is affine in the contact count. By
+measurement, the literal hybrid — contacts drawn, everything else deterministic, n=50, seeds 7001–7050 —
+moved the median absolute log ratio across 222 scored target-years from 0.188377 to 0.188279 against a
+pre-specified threshold of <0.09419, i.e. 0.104% of the required reduction and 0.0047× the median
+per-year standard error. The +0.0062-per-step PLHIV signature is unchanged to five decimal places.
+
+All three remedy probes were run and none is available on current evidence: (A) stochastic calibration
+lowers median implausibility 19.5% but worsens `I_max`, and its verdict is conditional on the open
+decision D-11; (B) a derived discrepancy term leaves NROY at 0/4,000 and would need roughly ten times the
+measured magnitude — reported, not adopted; (C) a second-order correction is blocked because the model
+carries no contact-count variance, and is bit-identical to production when bounded by the only variance
+it does have.
+
+**Review outcome:** verdict upheld. One text correction — the report's claim that the transmission second
+derivative is "identically zero in every stratum" is overstated, since `transmission_corrected.py:518`,
+`:536–541` and `:586` apply concave `min()` caps. Measured on the report's own trace those caps never
+bind (0 of 1,995 cells; tightest at 0.16% of capacity), so the finding stands in a qualified form that
+survives the objection. The review also extracted two further results at zero additional compute from the
+retained replicate file, and opened **A-20** on that basis: the `hybrid_transmission` arm is not
+stochastic fade-out, and it tracks the fully stochastic reference to within ~1% through 1990 before
+separating monotonically from 1995 to −28.5% by 2015 — locating the divergence in the non-transmission
+processes, in the era when diagnosis and ART come online.
+
+**No production behaviour, parameter, tolerance, threshold or bound changed.** Full suite before the new
+test file: 58 failed / 1,768 passed / 2 skipped / 5 errors. After: 58 / 1,787 / 2 / 5 — the +19 is exactly
+the new file and the failure set is unchanged.
+
+---
+
+## Unreleased — 2026-09-10
+
+### Phase 2 A-4 — counter-based common random numbers
+
+**Files added:** `counter_based_rng.py`, `tools/run_a4_common_random_numbers.py`, `tests/test_counter_based_rng.py`, `tests/test_a4_common_random_numbers.py`
+
+**Files modified:** `run_v3.py`, `transmission_corrected.py`
+**Report:** `outputs/hta_results/a4_common_random_numbers_20260910_170048/A4_COMMON_RANDOM_NUMBERS.md`
+
+**Summary:** Replaced shared sequential stochastic draw history in evaluation runs with process- and stratum-keyed Philox streams. Keys include seed, calendar year, absolute timestep, named process and explicit stratum; binomial and Poisson draws use a shared keyed uniform and exact discrete inverse CDF. Common tensor coordinates therefore remain paired when an intervention adds a PrEP state or changes event counts. The legacy deterministic path is unchanged.
+
+Across seeds 42–56, base-case incremental-QALY SD fell from 41,917.9 before CRN to 1,200.1 (−97.14%); the within-seed range narrowed from approximately ±50,000 to −1,630.3 through +2,797.4. All eleven deterministic A-12 metrics reproduced exactly and the full null-perturbation hash check passed. A-3 remains open because 3/15 stochastic ΔQALYs were negative despite positive infections averted in all 15 seeds.
+
+**Upgrade guard added:** `tests/test_a13_crn_key_compatibility.py` independently pins the protocol-5 pickle payload, BLAKE2b-256 digest, little-endian key words, and NumPy Philox float64 stream. Environment upgrades can no longer change all CRN draws without a targeted test failure and an explicit evidence-rebaseline decision.
+
+### Phase 2 A-13 — deterministic HIV-mortality diagnostic
+
+**Files added:** `tools/run_a13_hiv_mortality_trace.py`, `tests/test_a13_hiv_mortality_trace.py`, `tests/test_a13_crn_key_compatibility.py`
+**Report:** `outputs/hta_results/a13_hiv_mortality_trace_20260910_230000/A13_HIV_MORTALITY_TRACE.md`
+
+**Diagnostic result:** The deterministic 41 versus stochastic-mean 100 HIV deaths averted discrepancy originates upstream of mortality. Multi-stage diagnosis, ART-initiation, and ART-dropout calls preserve aggregate expected counts but the deterministic allocator's global stable residual assignment does not preserve stage-specific expectations, systematically shifting events from AIDS into Chronic. Off-ART AIDS mortality exposure accounts for 89.2% of the total expected-mortality gap. The final mortality integerisation is not the source. A-13 changes no production behavior; it records that the deterministic base case understates mortality-mediated health gain and requires manuscript disclosure.
+
+### Phase 2 A-5a — epidemiological seed variability
+
+**Files added:** `tools/run_a5a_epidemiological_seed_variability.py`, `tests/test_a5a_epidemiological_seed_variability.py`
+**Report:** `outputs/calibration/a5a_epidemiological_seed_variability_20260910_162000/A5A_EPIDEMIOLOGICAL_SEED_VARIABILITY.md`
+
+Fifty stochastic replicates produced unbiased year-specific ensemble variances for seven calibration outputs across 222 target-years. The retained `raw/yearly_v_ensemble.csv` supplies the previously missing stochastic variance term for all 92 active tier-1 history-matching targets. Cross-year mean and p95 summaries are descriptive; production budgets should use the year-specific variance.
+
+**Verification:** 85 focused A-4/integration tests passed; 6 focused A-5a tests passed. Full suite: 58 failed, 1,681 passed, 2 skipped, 90 warnings, 5 errors — the same pre-existing 58-failure/5-error set as the pre-change baseline, plus 25 passing A-4/A-5a tests.
+
+---
+
+## V13.24 — 2026-09-10
+
+### Bayesian History Matching — calibration machinery (HM-1 … HM-4)
+
+**Files added:** `hm_implausibility.py`, `hm_variance_budget.py`, `hm_target_register.py`, `hm_diagnostics.py`, `run_history_matching.py`, `tools/hm_prototype_rescore.py`, `configs/hm_target_register.json`, `configs/hm_wave_plan_template.json`, `tests/test_hm_implausibility.py`, `tests/test_hm_variance_budget.py`, `tests/test_hm_target_register.py`, `tests/test_hm_wave_loop.py`
+**Files modified:** `HISTORY_MATCHING_BUILD_SPEC.md`, `PHASE2_AGENT_HANDOFF_2026-09-09.md`, `PHASE2_DEVELOPMENT_CHECKLIST.md` (documentation only — no existing module was changed)
+**Report:** `outputs/calibration/hm_prototype_20260910/HM_BUILD_REPORT_2026-09-10.md`
+
+**Summary:** Implements Bayesian history matching (Andrianakis et al. 2015, *PLoS Comput Biol* 11(1):e1003968) as the intended replacement for the ABC-SMC / SNPE calibration stack. Parameter-space *exclusion* rather than *inference*: a candidate is Not Ruled Out Yet when `I_max(x) = max_i |E[f_i(x)] − z_i| / sqrt(V_obs + V_code + V_ensemble + V_disc) <= 3`. The four separate accept/reject mechanisms (`calib_distance` weighted sum plus three gate modules) collapse into one non-compensatory maximum. **No emulator** — the simulator is evaluated directly, so `V_code` is a structural zero enforced by `assemble()`.
+
+**Nothing was retired.** `calib_distance.py`, `calib_acceptance_gates.py`, `calib_historical_shape_gates.py`, `calib_non_msm_diagnosis.py` and the ABC-SMC runner are untouched and still live; the new machinery sits alongside them. Retirement is task B-5 and waits until a production wave has run.
+
+**`hm_target_register.py` + `configs/hm_target_register.json`:** 11 declared series → 319 scalar (series, year) targets, each carrying an epistemic tier, a documented `z` derivation, and a `V_obs` that is either derived from source or explicitly flagged underivable. Tier 1 = observed surveillance counts (calibration targets); tier 2 = Spectrum CSAVR outputs (cross-validation comparators only — `score_wave` refuses to accept one as a target). Verified at source: UNAIDS low/high **are** 95% intervals per the Methods annex, and the workbook's AIDS-death series is the modelled UNAIDS one rather than CBS vital registration.
+
+**`hm_variance_budget.py`:** Each of the four terms is a `BudgetTerm` carrying `status` ∈ {derived, assumption, structural_zero, underivable}, a full derivation string, and the direction in which an imperfectly-known term biases the NROY set. The budget is emitted as a reportable table; `assemble()` rejects a non-zero `V_code` and an all-zero total.
+
+**`run_history_matching.py`:** Wave loop built on the LHS infrastructure, not the ABC-SMC runner. Per-wave artefacts plus a SHA-256 manifest. The CLI refuses to run without `--acknowledge-prerequisites` and names B-1 / B-2 / C-1 / post-fix code as the reasons.
+
+**Tests:** 105, all passing — including one budget case per dominating variance term, hand-computed max / 2nd-max / 3rd-max, provenance assertions on named workbook cells, and an end-to-end wave loop against a synthetic simulator. The full suite's 60 failures / 5 errors were proven unrelated by renaming every new file aside and re-running to byte-identical failure sets.
+
+**Findings that change what the method can claim** (details in the report):
+- All 92 tier-1 variance budgets are **100% `V_disc`** — `V_obs` = 0 for every one (SHM publishes a notification-delay handle only, zero for 23 of 29 years, and no ascertainment handle at all; ECDC and `UNAIDS-ART` publish no uncertainty) and `V_ensemble` = 0 for every one (task A-5 has not run; the existing seed-variability file holds economic outcomes, not epidemiological series).
+- The `V_disc` sensitivity curve is **steep**: NROY 0 → 42 → 496 → 3,991 of 4,000 as the multiplier goes 0.1 → 1 → 3.16 → 10.
+- **Scoring granularity dominates**: 92 targets → NROY 0/4,000; recent five years (10 targets) → 2,272; latest year only (2) → 2,347. Decision D-10.
+- The 20,000-particle sweep named in the spec **cannot be rescored** — 196 columns, no per-year simulator outputs.
+- Spec §2.3's Pukelsheim figure corrected: **95.06%** (Vysochanskii–Petunin, 4/81), not 93%.
+
+**No dependency added.** Uses `numpy`, `pandas` and `scipy`, all already in `requirements.txt`.
+
+---
+
 ## V13.23 — 2026-06-04
 
 ### SNPE Calibration Runner

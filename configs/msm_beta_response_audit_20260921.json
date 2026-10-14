@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "design": "msm_beta_response_audit_20260921",
+  "status": "READY_FOR_USER_LAUNCH",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_confirmation": "outputs/calibration/coupled_forecast_windows_20260921_confirmation",
+  "source_confirmation_manifest_sha256": "d5195301feba73e2fb632fb76a603bd967f22b5d72ac13129db6668c6013c757",
+  "candidate_ids": [1326, 1788],
+  "replicate_seeds": [200700, 200701, 200702, 200703, 200704],
+  "profiles": [
+    {"id": "baseline", "receptive_factor": 1.0, "insertive_factor": 1.0},
+    {"id": "both_0_90x", "receptive_factor": 0.90, "insertive_factor": 0.90},
+    {"id": "both_1_05x", "receptive_factor": 1.05, "insertive_factor": 1.05},
+    {"id": "both_1_10x", "receptive_factor": 1.10, "insertive_factor": 1.10},
+    {"id": "receptive_1_10x", "receptive_factor": 1.10, "insertive_factor": 1.0},
+    {"id": "insertive_1_10x", "receptive_factor": 1.0, "insertive_factor": 1.10}
+  ],
+  "trajectory_budget": 60,
+  "workers_recommended": 8,
+  "outputs": {
+    "annual_years": [1996, 2000, 2004, 2010, 2015, 2019, 2022, 2024],
+    "annual_series": [
+      "new_infections_msm",
+      "new_diagnoses_msm",
+      "aids_first_diagnosis_proxy_msm",
+      "msm_undiagnosed_hiv_pos",
+      "on_art_stock"
+    ]
+  },
+  "decision_contract": [
+    "This is a local paired response audit, not calibration, confirmation or a policy scenario.",
+    "Only the two chronic MSM anal-route transmission betas may change; all contacts, diagnosis, ART, PrEP, seeding and progression controls remain fixed.",
+    "Every changed beta must remain within its existing literature bound.",
+    "The primary question is whether a beta change improves the observed 2024/2019 MSM diagnosis ratio rather than merely lifting or lowering all years.",
+    "A strict response requires improved 2024 level error, improved 2024/2019 shape error and no worsening of diagnostic primary I_max.",
+    "No profile may be promoted into the calibration or HTA baseline from this audit."
+  ]
+}

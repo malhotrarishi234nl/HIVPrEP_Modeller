@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "status": "READY_FOR_USER_LAUNCH",
+  "analysis_status": "focused_continuation_learning_wave_not_final_calibration_ensemble",
+  "expected_parameter_count": 32,
+  "purpose": "Continue the completed baseline learning run by concentrating new simulations in the primary 46-member NROY region, while measuring whether target-relative discrepancy rules find a usable tighter set.",
+  "limitations": [
+    "This plan must be launched with --continue-from pointing to the completed hm_baseline_learning_20260915 run; it is not a standalone wave-1 plan.",
+    "The continuation region is the axis-aligned bounding box of the parent primary NROY set, thinned by proximity to that set. It is a conservative superset approximation because no emulator is used.",
+    "The parent NROY region was defined by the illustrative output-variance discrepancy rule. Target-relative results remain sensitivity analyses and do not determine continuation.",
+    "The selected 1975 calibration space retains its diagnostic seed bounds; the wider union bounds recommended by B-1/B-2 remain deferred.",
+    "No output from this run may be called a posterior, credible interval, or final calibration ensemble."
+  ],
+  "stopping_rule": {
+    "max_waves": 1,
+    "min_volume_shrinkage": 0.1,
+    "min_nroy_members": 10,
+    "rationale": {
+      "max_waves": "Run one new focused wave (wave 2) from the verified parent NROY set.",
+      "min_volume_shrinkage": "Retained for loop compatibility; only one new wave is scheduled.",
+      "min_nroy_members": "Fewer than 10 primary survivors is too sparse for automatic continuation and must be reviewed."
+    }
+  },
+  "discrepancy": {
+    "method": "fraction_of_output_variance",
+    "multiplier": 0.1,
+    "rationale": "Maintains the parent's primary learning rule so wave-to-wave contraction can be diagnosed; this remains an illustrative rather than final scientific choice."
+  },
+  "sensitivity_discrepancies": [
+    {
+      "label": "target_relative_10pct",
+      "method": "relative_to_target",
+      "multiplier": 0.1,
+      "rationale": "A one-sigma model-discrepancy allowance equal to 10% of each observed target; diagnostic only."
+    },
+    {
+      "label": "target_relative_20pct",
+      "method": "relative_to_target",
+      "multiplier": 0.2,
+      "rationale": "A prespecified wider target-relative sensitivity used to determine whether the promising region is merely sparsely sampled; diagnostic only."
+    }
+  ],
+  "scored_years": {
+    "ecdc_hiv_confirmed_cases": [1990, 1991, 1992, 1993, 1994, 1995],
+    "shm_new_diagnoses_msm": [1996, 2000, 2004, 2010, 2015, 2019, 2024],
+    "ecdc_aids_confirmed_cases": [1990, 1995, 2000, 2005, 2010, 2017]
+  },
+  "scored_years_rationale": "Uses the identical nineteen prespecified Tier-1 trajectory anchors as the parent learning wave.",
+  "waves": [
+    {
+      "index": 2,
+      "n_design": 1000,
+      "seed": 20260916,
+      "target_series": [
+        "ecdc_hiv_confirmed_cases",
+        "shm_new_diagnoses_msm",
+        "ecdc_aids_confirmed_cases"
+      ],
+      "comment": "Focused wave drawn from the verified parent primary NROY geometry; 10% and 20% target-relative alternatives are scored on the same simulations."
+    }
+  ],
+  "run_settings": {
+    "deterministic_calibration": false,
+    "replicates_per_design_point": 3,
+    "simulation_seed": 91000,
+    "replicate_seed_stride": 1,
+    "progress_every": 25,
+    "simulation_start_year": 1975,
+    "scoring_start_year": 1990,
+    "v_ensemble_file": "outputs/hta_results/a5_ensemble_variance_20260914_150556/raw/recommended_v_ensemble.csv",
+    "note": "Uses the same three CRN seeds and A-5 V_ensemble scaling as the parent, so differences reflect the focused parameter design rather than a changed stochastic estimator."
+  }
+}

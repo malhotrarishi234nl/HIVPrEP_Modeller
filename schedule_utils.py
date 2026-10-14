@@ -4,7 +4,10 @@ Time-Based Schedule Utilities (V5)
 Handles year-based schedules for ART/PrEP availability and uptake rates.
 Supports stepwise (carry-forward) and linear interpolation between years.
 
-Default behavior: Before first scheduled year, value = 0 (unavailable).
+Before the first scheduled year, TimeSchedule returns `default_before`, which is
+REQUIRED and keyword-only. There is no default. (Corrected 2026-09-14: this line
+previously read 'value = 0 (unavailable)', which documented the C-4 defect as if it
+were the contract. That silent 0.0 made MSM undiagnosable for 1975-1995.)
 """
 
 from typing import Dict, Optional, Any
@@ -17,20 +20,28 @@ class TimeSchedule:
     Manages time-based schedules for rates/probabilities.
 
     Schedule format: {year: value, year: value, ...}
-    Before first year: returns 0 (unavailable)
+    Before first year: returns ``default_before`` (required; see __init__)
     After last year: returns last value
     Between years: stepwise or linear interpolation
     """
 
     def __init__(self, schedule: Dict[str, float], interpolation: str = "stepwise",
-                 default_before: float = 0.0):
+                 *, default_before: float):
         """
         Initialize time schedule.
 
         Args:
             schedule: Dictionary mapping year (str or int) to value
             interpolation: "stepwise" (carry-forward) or "linear"
-            default_before: Value to return before first scheduled year (default: 0.0)
+            default_before: Value returned before the first scheduled year.
+                **Required, and keyword-only, deliberately.** It used to default to 0.0,
+                which is correct for an *availability* schedule (the assay did not exist
+                before 1985, so nobody could be diagnosed) and wrong for a *multiplier*
+                (the neutral value of a multiplier is 1.0). C-4 is exactly that mistake:
+                the MSM relative-diagnosis multiplier silently returned 0.0 for 1975-1995,
+                making MSM undiagnosable for the first 21 years of the epidemic. Forcing
+                every construction site to state its own value means a silent zero cannot
+                recur -- the caller has to decide which kind of schedule it is.
         """
         if not schedule:
             self.years = []
@@ -180,9 +191,14 @@ class ScheduleManager:
 
     def _load_schedule(self, config_section: Dict, schedule_key: str,
                        interpolation: str) -> TimeSchedule:
-        """Helper to load a single schedule from config."""
+        """Helper to load a single schedule from config.
+
+        AVAILABILITY schedules (ART initiation, PrEP initiation/discontinuation): the
+        intervention does not exist before its first anchor year, so 0.0 is correct and
+        deliberate. Audited 2026-09-14; see the C-4 prep audit.
+        """
         schedule_dict = config_section.get(schedule_key, {})
-        return TimeSchedule(schedule_dict, interpolation)
+        return TimeSchedule(schedule_dict, interpolation, default_before=0.0)
 
     def get_art_initiation_rate(self, current_year: float) -> float:
         """Get ART initiation rate for given year."""
@@ -283,8 +299,36 @@ class ScheduleManager:
                         )
 
             interpolation = extract_value(corridor.get("interpolation", {"value": "stepwise"}))
-            floor_ts = TimeSchedule(floor_schedule, interpolation=interpolation)
-            ceiling_ts = TimeSchedule(ceiling_schedule, interpolation=interpolation)
+            # VALIDATION ONLY: evaluated solely at years present in the schedule, so
+            # default_before is unreachable here.
+            floor_ts = TimeSchedule(floor_schedule, interpolation=interpolation,
+                                    default_before=0.0)
+            ceiling_ts = TimeSchedule(ceiling_schedule, interpolation=interpolation,
+                                      default_before=0.0)
+            # A corridor evaluated BEFORE its first schedule anchor falls through to
+            # TimeSchedule's default_before. For the CEILING that means a cap of 0, which
+            # silently pins PrEP stock at zero for every such year -- no error, just no
+            # PrEP. It is unreachable while start_year >= the first anchor, which is why
+            # this has never bitten; it becomes live the moment a config widens
+            # start_year backwards. Refuse that configuration rather than discover it in
+            # a fitted result.
+            start_year = extract_value(corridor.get("start_year"))
+            if start_year is not None:
+                for label, schedule in (("floor", floor_schedule),
+                                        ("ceiling", ceiling_schedule)):
+                    if not schedule:
+                        continue
+                    first_anchor = min(float(y) for y in schedule)
+                    if float(start_year) < first_anchor:
+                        raise ValueError(
+                            f"{prep_type} historical_stock_corridor start_year "
+                            f"{float(start_year):g} precedes the first {label} anchor "
+                            f"{first_anchor:g}. Years in between would silently take "
+                            f"TimeSchedule's default_before; for the ceiling that caps "
+                            f"PrEP stock at zero. Add an explicit anchor at "
+                            f"{float(start_year):g} instead."
+                        )
+
             years = sorted({float(y) for y in floor_schedule} | {float(y) for y in ceiling_schedule})
             for year in years:
                 floor = None if floor_ts.is_empty else floor_ts.get_value(year)

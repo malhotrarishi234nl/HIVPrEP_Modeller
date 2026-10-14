@@ -1,0 +1,78 @@
+{
+  "version": "1.0-template",
+  "status": "TEMPLATE -- NOT A PRODUCTION PLAN",
+  "analysis_status": "template_not_for_execution",
+  "expected_parameter_count": 32,
+  "why_template": "Spec section 5 requires the stopping rule, discrepancy rules, estimator, anchors, and each wave's target set to be declared before compute. This file documents the current schema but is intentionally rejected by the runner until copied, dated, reviewed, and given a non-template status.",
+
+  "stopping_rule": {
+    "max_waves": 5,
+    "min_volume_shrinkage": 0.10,
+    "min_nroy_members": 10,
+    "rationale": {
+      "max_waves": "PROVISIONAL. Set from the compute budget before the run; do not extend it after inspecting acceptance.",
+      "min_volume_shrinkage": "PROVISIONAL. Stop when a wave removes less than 10% of the retained fraction its predecessor kept, i.e. the data have stopped discriminating. Spec section 5 requires this threshold be written down first; 0.10 is the proposal, not a decision.",
+      "min_nroy_members": "Spec section 10 escalates below ~10 members at I_max <= 3 with a defensible V_disc. The loop stops there rather than continuing into a set too small to sample."
+    }
+  },
+
+  "discrepancy": {
+    "method": "fraction_of_output_variance",
+    "multiplier": 0.10,
+    "rationale": "EXAMPLE ONLY. This is the documented illustrative rule, not an automatically defensible final choice."
+  },
+
+  "sensitivity_discrepancies": [
+    {
+      "label": "target_relative_10pct",
+      "method": "relative_to_target",
+      "multiplier": 0.10,
+      "rationale": "EXAMPLE ONLY. Sensitivities are diagnostic and never continue or rescue the primary sequence."
+    }
+  ],
+
+  "scored_years": {
+    "ecdc_hiv_confirmed_cases": [1990, 1991, 1992, 1993, 1994, 1995],
+    "shm_new_diagnoses_msm": [1996, 2000, 2004, 2010, 2015, 2019, 2024],
+    "ecdc_aids_confirmed_cases": [1990, 1995, 2000, 2005, 2010, 2017]
+  },
+  "scored_years_note": "The current example uses the 19-anchor learning-wave contract. Anchor selection is a scientific decision because the maximum rule becomes more stringent as additional correlated annual outputs are added.",
+
+  "waves": [
+    {
+      "index": 1,
+      "n_design": 1000,
+      "seed": 20260920,
+      "target_series": ["ecdc_hiv_confirmed_cases", "shm_new_diagnoses_msm", "ecdc_aids_confirmed_cases"],
+      "comment": "Example full-box wave using the current 19-anchor contract."
+    },
+    {
+      "index": 2,
+      "n_design": 1000,
+      "seed": 20260921,
+      "target_series": ["ecdc_hiv_confirmed_cases", "shm_new_diagnoses_msm", "ecdc_aids_confirmed_cases"],
+      "comment": "Example focused wave. When launched separately, use --continue-from and start at the next parent wave index."
+    },
+    {
+      "index": 3,
+      "n_design": 1000,
+      "seed": 20260922,
+      "target_series": ["ecdc_hiv_confirmed_cases", "shm_new_diagnoses_msm", "ecdc_aids_confirmed_cases"],
+      "comment": "Example further focused wave with an unchanged target contract."
+    }
+  ],
+
+  "run_settings": {
+    "deterministic_calibration": false,
+    "replicates_per_design_point": 3,
+    "simulation_seed": 92000,
+    "replicate_seed_stride": 1,
+    "progress_every": 25,
+    "simulation_start_year": 1975,
+    "scoring_start_year": 1990,
+    "v_ensemble_file": "outputs/hta_results/a5_ensemble_variance_20260914_150556/raw/recommended_v_ensemble.csv",
+    "note": "Current example averages three stochastic replicates per vector and uses identical seeds across vectors for CRN stability. A-5 per-run V_ensemble is divided by the replicate count."
+  },
+
+  "excluded_series_note": "shm_new_diagnoses_non_msm appears in no wave because C-1 now injects it as an observed exogenous input. SHM total diagnoses are cross-validation rather than calibration because their residual is collinear with MSM diagnoses and partly input-driven. Tier-2 UNAIDS/Spectrum series remain cross-validation comparators."
+}

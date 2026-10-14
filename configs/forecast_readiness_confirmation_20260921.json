@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "design": "forecast_readiness_confirmation_20260921",
+  "status": "READY_FOR_USER_LAUNCH",
+  "source_search": "outputs/calibration/coupled_forecast_windows_20260921_search",
+  "source_manifest_sha256": "d1dcac90b7b206c1426846a5dafea31bff904e019eb56d847abbb2494e0600a7",
+  "source_artifact_sha256": {
+    "archive_summary.csv": "ad866297fab84385daea1cb888cd15c79ac378125e07b6ae4f294b80a224603c",
+    "signed_search_residuals.csv": "3d33a771e3fe1748716253340a38174ef74810cc0a882cad8ed63cac4bd52978",
+    "orientation_boundary_diagnostics.csv": "dc3721c1eba8977235383ba5a77118fdb42faef666e6150c4b8a0b7352f8c6f9"
+  },
+  "selection_rule": {
+    "discovery_primary_pass": true,
+    "recent_targets": [
+      "shm_new_diagnoses_msm@2019",
+      "shm_new_diagnoses_msm@2024"
+    ],
+    "maximum_absolute_relative_mean_error": 0.1,
+    "orientation_bound_exclusion_fraction": 0.05,
+    "meaning": "Select every completed-search discovery passer whose five-seed mean is within 10% of both recent HIV-diagnosis observations and whose orientation parameters are not within 5% of either declared bound."
+  },
+  "selected_candidate_ids": [1765, 1846, 1076, 1568, 1721],
+  "confirmation_rule": {
+    "primary_history_match": "I_max <= 3 across the unchanged 13 primary targets",
+    "forecast_readiness": "Twenty-seed mean within 10% of both 2019 and 2024 HIV-diagnosis observations",
+    "combined_pass": "Both primary_history_match and forecast_readiness must pass",
+    "sensitivity": "The existing 20% discrepancy result is reported only and cannot promote a candidate."
+  },
+  "replicate_seeds": [
+    200400, 200401, 200402, 200403, 200404,
+    200405, 200406, 200407, 200408, 200409,
+    200410, 200411, 200412, 200413, 200414,
+    200415, 200416, 200417, 200418, 200419
+  ],
+  "workers_recommended": 8,
+  "trajectory_budget": 100,
+  "interpretation": [
+    "This is a prospectively frozen fresh-seed forecast-readiness validation of a post-search selection rule, not an amendment to the completed original confirmation.",
+    "The selection was motivated after inspecting the original shortlist, so results must be labelled forecast-focused validation rather than the original predeclared confirmation.",
+    "No parameter is refitted, no target is removed, and no interaction term is added.",
+    "A combined pass supports candidate-level forecast readiness under this contract; it does not establish HTA readiness without checking the 2025 state and intervention inputs."
+  ]
+}

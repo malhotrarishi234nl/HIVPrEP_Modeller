@@ -1,0 +1,128 @@
+{
+  "version": "1.0",
+  "design": "diagnosis_triangulation_orchestration_20260922",
+  "status": "FROZEN",
+  "brief": "TASK_BRIEF_DIAGNOSIS_TRIANGULATION_ORCHESTRATION_2026-09-22.md",
+  "scientific_status": "structural model comparison for a preliminary result; not production adoption and not an HTA baseline",
+  "prior_focused_run": {
+    "output_dir": "outputs/calibration/stage_structured_diagnosis_focused_calibration_20260922",
+    "manifest_sha256": "255636bb54bb8318bcaef7eaba4150fe12a801c3713655e4100642b3ae9eef86",
+    "frozen_plan_sha256": "534e0d8f04f1aba662699f2b1c9427295953fc606fcf08c391511f260c8a0675",
+    "design_sha256": "db2c37c84dfc32ab06efb9aba1f3c4a59689aec1d9c19f9c3428c1e5a2fa3668",
+    "confirmation_summary_sha256": "dc29d985f9231268962b49a6b4bc8c89a6b219337278ce893c36a9640a1bdcdc",
+    "note": "Read-only provenance. The prior frozen plan and design rebuild the backbone and candidate configurations; any change to these files refuses every stage."
+  },
+  "evidence": {
+    "workbook": "../data/raw/validation/DiseaseData.xlsx",
+    "workbook_sha256": "0ff530cea5cb2545b32c6c20ab40de324bfadf7846c2078e59eec6b79eb93404",
+    "rivm_newest_vetted_candidate": "outputs/calibration/rivm_aids_vintage_audit_20260916/candidate_newest_vetted_20260916.json"
+  },
+  "backbones": [1326, 1788],
+  "symptom_start_year": 1985,
+  "routine_hazard_scale": 1.0,
+  "coordinates": [
+    {"name": "msm_diag_mult_1996", "anchor_year": "1996", "lower": 0.0, "upper": 2.0},
+    {"name": "msm_diag_mult_2004", "anchor_year": "2004", "lower": 0.0, "upper": 2.0},
+    {"name": "msm_diag_mult_2019", "anchor_year": "2019", "lower": 0.0, "upper": 2.0},
+    {"name": "aids_symptom_annual_probability", "anchor_year": null, "lower": 0.0, "upper": 0.5}
+  ],
+  "models": {
+    "M0": "legacy diagnosis structure: the backbone configuration with no stage_structured_diagnosis block (existing era schedule and MSM multiplier, no symptom component)",
+    "M1": "routine plus AIDS-symptom cause-specific hazards; routine_hazard_scale = 1; only the three MSM multiplier anchors and the AIDS symptom probability vary",
+    "M2": "described in AIDS_DEFINITION_ADJUDICATION.md / IMPLEMENTATION_NOTE.md only; never built or simulated in this design"
+  },
+  "benchmark": {
+    "tuples": [
+      {"tuple_id": "M0_1326", "backbone": 1326, "model": "M0", "role": "legacy_comparator"},
+      {"tuple_id": "M0_1788", "backbone": 1788, "model": "M0", "role": "legacy_comparator"},
+      {"tuple_id": "B_1326_v002", "backbone": 1326, "model": "M1", "role": "balanced_candidate", "prior_tuple_id": "B_1326_v002"},
+      {"tuple_id": "B_1788_v123", "backbone": 1788, "model": "M1", "role": "balanced_candidate", "prior_tuple_id": "B_1788_v123"},
+      {"tuple_id": "B_1788_v048", "backbone": 1788, "model": "M1", "role": "aggressive_comparator", "prior_tuple_id": "B_1788_v048"}
+    ],
+    "seeds": [202100, 202101, 202102, 202103, 202104, 202105, 202106, 202107, 202108, 202109,
+              202110, 202111, 202112, 202113, 202114, 202115, 202116, 202117, 202118, 202119,
+              202120, 202121, 202122, 202123, 202124, 202125, 202126, 202127, 202128, 202129],
+    "trajectory_budget": 150
+  },
+  "discovery": {
+    "vectors_per_backbone": 192,
+    "centres": {"1326": "B_1326_v002", "1788": "B_1788_v123"},
+    "anchors": {
+      "1326": ["B_1326_v002", "B_1326_v057", "B_1326_v040"],
+      "1788": ["B_1788_v123", "B_1788_v057", "B_1788_v048"]
+    },
+    "anchor_rule": "identity (M0) plus every prior Stage-C mechanism tuple of the backbone that passed the primary contract on fresh seeds (clause c1)",
+    "inner_half_width_normalized": 0.125,
+    "outer_half_width_normalized": 0.30,
+    "n_inner": 124,
+    "n_outer": 64,
+    "geometry": "L-infinity boxes in coordinates normalised to the authorized ranges, centred on the balanced candidate and clipped to [0, 1]; inner box = maximin Latin hypercube; outer ring = outer box minus inner box, greedy maximin selection from a seeded uniform pool, distances including every earlier point",
+    "design_rng_seed": 202400,
+    "maximin_lhs_candidates": 2000,
+    "outer_pool_size": 20000,
+    "seeds": [202200, 202201, 202202, 202203, 202204],
+    "shard_count": 8,
+    "shard_rule": "shard k covers backbone index (k mod 2) and slice (k div 2) of 4; vectors of a backbone are assigned to slices round-robin in design order; the identity and anchors are in slice 0; a partial discovery may be frozen only from a completed prefix of shards 0..2j+1",
+    "trajectory_budget": 1920
+  },
+  "confirmation": {
+    "max_tuples": 12,
+    "legacy_comparators_within_max": 2,
+    "max_mechanism_finalists": 10,
+    "seeds": [202300, 202301, 202302, 202303, 202304, 202305, 202306, 202307, 202308, 202309,
+              202310, 202311, 202312, 202313, 202314, 202315, 202316, 202317, 202318, 202319,
+              202320, 202321, 202322, 202323, 202324, 202325, 202326, 202327, 202328, 202329],
+    "shard_count": 2,
+    "shard_rule": "(tuple, seed) pairs sorted by tuple order then seed; pair i goes to shard i mod 2",
+    "max_trajectory_budget": 360,
+    "low_infection_increase_fraction": 0.05
+  },
+  "smoke": {
+    "seeds": [202500],
+    "tuples": ["M0_1326", "B_1788_v048"],
+    "counts_toward_budget": false,
+    "note": "optional user-run two-trajectory check of the real trajectory path, written to a separate directory outside the provenance chain"
+  },
+  "total_trajectory_budget_max": 2430,
+  "time": {
+    "total_cap_seconds": 7200,
+    "stop_dispatch_seconds": 6600,
+    "hard_abandon_seconds": 6900,
+    "clock": "measure of the union of wall-clock intervals of every simulation-dispatching invocation (benchmark, discovery shards, confirmation shards); review pauses between invocations do not count; concurrent shards are not double counted",
+    "prior_seconds_per_trajectory_at_8_workers": 16.3,
+    "workers_max": 8,
+    "reserve_rule": "before and during a discovery shard, new work stops when the remaining dispatch time would fall below the estimated confirmation time (360 trajectories at the measured benchmark seconds per trajectory, x1.10); confirmation is never pre-empted by discovery",
+    "reserve_safety_factor": 1.10
+  },
+  "annual_start_year": 1975,
+  "annual_end_year": 2025,
+  "full_output_start_year": 1996,
+  "boundary_check_years": [1975, 1987],
+  "ledger_first_year": 2015,
+  "ledger_last_year": 2024,
+  "target_contract": {
+    "source": "the 13-target forecast-window contract frozen 2026-09-21 (coupled_calibration_search.load_frozen_targets with the pinned register and wave plan); unchanged",
+    "primary_discrepancy": 0.10,
+    "sensitivity_discrepancy": 0.20,
+    "implausibility_cutoff": 3.0,
+    "groups": ["diagnoses_1996_2015", "aids_2000_2015", "diagnoses_after_2015", "aids_after_2015"],
+    "historical_cross_validation": [
+      {"key": "rivm_aids_msm@1990", "observed": 318, "model_output": "aids_first_diagnosis_proxy_msm", "role": "visible cross-validation only; never in I_max"},
+      {"key": "rivm_aids_msm@1995", "observed": 314, "model_output": "aids_first_diagnosis_proxy_msm", "role": "visible cross-validation only; never in I_max"}
+    ]
+  },
+  "decision_thresholds": {
+    "material_2024_error_reduction_fraction": 0.25,
+    "min_improved_paired_seeds_2024_fraction": 0.75,
+    "earlier_diagnosis_group_rms_tolerance": 1.10,
+    "boundary_occupancy_fraction": 0.025,
+    "neighbourhood_radius_normalized": 0.35,
+    "neighbourhood_min_neighbours": 2,
+    "neighbourhood_min_share_same_behaviour": 0.5,
+    "outer_ring_share_reported_only": true,
+    "identifiability_max_condition_number": 30.0,
+    "identifiability_max_symptom_r2": 0.90,
+    "identifiability_neighbours": 40,
+    "material_epidemic_change_fraction_flag": 0.10
+  }
+}

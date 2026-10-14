@@ -1,0 +1,109 @@
+{
+  "version": "1.0",
+  "status": "READY_FOR_USER_LAUNCH",
+  "analysis_status": "focused_diagnoses_first_then_aids_learning_sequence_not_final_calibration",
+  "expected_parameter_count": 33,
+  "question": "Can the same parameter sets reproduce MSM HIV diagnoses AND RIVM MSM AIDS under the declared assumptions (clinical-AIDS observation proxy; two-era effective on-ART progression; predictive variance s(x)+s(x)/K)?",
+  "success_criterion": "Joint NROY members in wave 2 under the primary rule, with mechanisms explainable. Survivors alone are not success; an empty joint set is a reportable limitation, not a reason to widen tolerances.",
+  "decisions_recorded": {
+    "on_art_progression": "Decision B: effective all-ART rate, early <=2000, linear ramp, recent >=2010; early 0.002-0.030 (assumption), recent 0.002-0.008 (SHM 2025 anchored). No early>=recent constraint; report the implied ordering among survivors.",
+    "ecdc_hiv_1990_1995": "Hold out as one-sided cross-validation (survivor-restricted registration).",
+    "variance": "predictive_local s(x)+s(x)/K.",
+    "non_msm_aids": "cross-validation only; no presentation layer."
+  },
+  "limitations": [
+    "Wave 1 scores SHM MSM diagnoses only (7 anchors). In the 2026-09-16 diagnostic run no point passed this block alone (min I_max 3.57 over 400 points in 32 dims); wave 1 may again retain fewer than 10 points, which stops the sequence for review.",
+    "Warm-start rows (22) propose points only; 14 had chronic_to_aids_on_art clipped into the new recent range.",
+    "Wave 2 samples the bounding box of wave-1 NROY thinned by proximity: a superset approximation, not an exhaustive plausible region.",
+    "K=5 replicates: s(x) has 4 df; the chi-square stability diagnostic is reported, not corrected.",
+    "Before 1996 only RIVM MSM AIDS 1990 and 1995 constrain the epidemic (wave 2); those come from the voluntary Inspectorate AIDS registry with unquantified completeness.",
+    "V_obs underivable (zero) for every scored target.",
+    "No output may be called a posterior or final calibration ensemble."
+  ],
+  "stopping_rule": {
+    "max_waves": 2,
+    "min_volume_shrinkage": 0.0,
+    "min_nroy_members": 10,
+    "rationale": {
+      "max_waves": "Wave 1 diagnoses-only discovery; wave 2 adds AIDS cumulatively.",
+      "min_volume_shrinkage": "Not used for a two-wave staged sequence.",
+      "min_nroy_members": "Fewer than 10 diagnosis-compatible points is too sparse to seed the AIDS stage; stop and review."
+    }
+  },
+  "discrepancy": {
+    "method": "relative_to_target",
+    "multiplier": 0.1,
+    "rationale": "Unchanged from the diagnostic wave; declared assumption."
+  },
+  "sensitivity_discrepancies": [
+    {
+      "label": "target_relative_20pct",
+      "method": "relative_to_target",
+      "multiplier": 0.2,
+      "rationale": "Diagnostic only; never continues the sequence."
+    }
+  ],
+  "scored_years": {
+    "shm_new_diagnoses_msm": [
+      1996,
+      2000,
+      2004,
+      2010,
+      2015,
+      2019,
+      2024
+    ],
+    "rivm_aids_msm": [
+      1990,
+      1995,
+      2000,
+      2005,
+      2010,
+      2015,
+      2019,
+      2022
+    ]
+  },
+  "cross_validation_years": null,
+  "waves": [
+    {
+      "index": 1,
+      "n_design": 600,
+      "seed": 20260918,
+      "target_series": [
+        "shm_new_diagnoses_msm"
+      ],
+      "comment": "Diagnoses-only discovery over the full 33-parameter prior box plus 22 declared warm-start proposals."
+    },
+    {
+      "index": 2,
+      "n_design": 400,
+      "seed": 20260919,
+      "target_series": [
+        "shm_new_diagnoses_msm",
+        "rivm_aids_msm"
+      ],
+      "comment": "AIDS added cumulatively; diagnosis constraints retained."
+    }
+  ],
+  "run_settings": {
+    "deterministic_calibration": false,
+    "replicates_per_design_point": 5,
+    "simulation_seed": 93000,
+    "replicate_seed_stride": 1,
+    "progress_every": 25,
+    "simulation_start_year": 1975,
+    "scoring_start_year": 1990,
+    "v_ensemble_mode": "predictive_local",
+    "supplementary_design_file": "configs/hm_focused_warm_start_20260916.csv",
+    "supplementary_design_sha256": "1f36ba2356129eacef0cd5b70d70fa1dec56454030f8df4012a6342409808c26",
+    "note": "Fresh CRN seeds 93000-93004."
+  },
+  "post_run_report_required": [
+    "joint NROY membership and binding targets per wave",
+    "implied ordering of chronic_to_aids_on_art_early vs _recent among survivors (declining/flat/increasing)",
+    "one-sided ECDC 1990-95 check: fraction of survivors with model new_diagnoses >= observed",
+    "non-MSM AIDS cross-validation gap",
+    "variance_contract_stability per wave"
+  ]
+}
