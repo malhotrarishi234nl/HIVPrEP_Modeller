@@ -62,6 +62,7 @@ import nroy_fixtures as fx  # noqa: E402
 from nroy_fixtures import ROOT  # noqa: E402
 
 import nroy_contract as nc  # noqa: E402
+from coupled_calibration_search import ContractError  # noqa: E402
 from run_v3 import SimulationEngineV3  # noqa: E402
 from stage_structured_diagnosis import (  # noqa: E402
     load_stage_structured_diagnosis,
@@ -323,28 +324,47 @@ def test_identity_fails_when_the_routine_hazard_scale_is_not_pinned():
         _assert_identical(m0, m1, what="rho != 1 at p=0")
 
 
-def test_a_p_just_above_zero_changes_the_trajectory_discontinuously():
-    """Why the contract rejects probes in ``(0, epsilon)`` instead of snapping.
+def test_a_tiny_positive_p_runs_and_is_compared_distributionally_not_paired():
+    """The engine evidence behind the prohibition of an exclusion band.
 
     ``p = 1e-18`` is physically negligible but leaves the identity branch, so
-    the engine draws from differently keyed RNG streams. The realised
-    trajectory changes even though the step probability barely moves. A probe
-    there would be scientifically meaningless, which is why
-    ``nroy_contract.p_discontinuity_reason`` refuses it rather than rounding it
-    to zero.
+    the engine draws from differently keyed RNG streams and the realised
+    trajectory changes even though the step probability barely moves.
+
+    The old implementation responded by refusing probes in ``(0, epsilon)``.
+    Both specifications now prohibit that band, and this test pins the correct
+    behaviour instead: the run **succeeds**, the vector is **admissible**, and
+    the only thing refused is a *paired* seed-by-seed comparison against
+    ``p = 0``.  The legitimate comparison is distributional across the seed
+    block.
     """
     base = _short_config()
-    seed = SEEDS[0]
-    m0 = _run(_without_stage_block(base), seed)
-    nudged = _run(_with_stage_block(base, rho=1.0, p=1e-18), seed)
-    with pytest.raises(AssertionError):
-        _assert_identical(m0, nudged, what="p = 1e-18")
+    nudged_by_seed: dict[int, float] = {}
+    zero_by_seed: dict[int, float] = {}
+    for seed in SEEDS[:3]:
+        m0 = _run(_without_stage_block(base), seed)
+        nudged = _run(_with_stage_block(base, rho=1.0, p=1e-18), seed)
+        # It ran: a tiny positive p is simulated, not rejected and not snapped.
+        infections = float(nudged["summary"]["new_infections_msm"].sum())
+        assert infections > 0, "a p=1e-18 run must be a real, non-vacuous trajectory"
+        zero_by_seed[seed] = float(m0["summary"]["new_infections_msm"].sum())
+        nudged_by_seed[seed] = infections
+    # Paired differencing is where the RNG re-keying actually bites, so the
+    # per-seed trajectories differ...
+    assert any(
+        zero_by_seed[seed] != nudged_by_seed[seed] for seed in nudged_by_seed
+    ), "p=1e-18 should leave the identity branch and change the realised path"
 
-    # ...and the contract refuses such a vector up front.
+    # ...and the contract refuses the paired comparison while keeping the value.
     m1_space = fx.m1_space()
     vector = nc.embed_m0_in_m1(fx.m0_space(), m1_space, fx.interior_vector(fx.m0_space()))
     vector[fx.P_NAME] = 1e-18
-    assert nc.p_discontinuity_reason(vector, m1_space, identity_epsilon=1e-6) is not None
+    nc.assert_p_admissible(vector, m1_space)
+    with pytest.raises(ContractError, match="remains admissible"):
+        nc.assert_comparison_mode(1e-18, nc.COMPARISON_PAIRED)
+    summary = nc.distributional_summary(nudged_by_seed)
+    assert summary["n_seeds"] == 3
+    assert summary["comparison_mode"] == nc.COMPARISON_DISTRIBUTIONAL
 
 
 def test_a_positive_p_actually_changes_the_model():

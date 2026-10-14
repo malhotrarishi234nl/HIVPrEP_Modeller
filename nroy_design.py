@@ -274,21 +274,22 @@ class Validator:
 
     space: ccs.ParameterSpace
     model: nc.ModelSpace
-    identity_epsilon: float | None = None
     injection_check: Callable[[dict[str, float]], None] | None = None
 
     def reasons(self, params: Mapping[str, float]) -> list[str]:
+        """Every reason to refuse, which is the declared bounds and constraints.
+
+        There is deliberately no ``p``-proximity rule here.  An earlier version
+        refused probes in ``(0, identity_epsilon)`` because the engine's RNG
+        streams change at any positive ``p``; both specifications now prohibit
+        that band, since stream re-keying constrains how a probe may be
+        *compared*, not whether its parameter value is valid.  See
+        :func:`nroy_contract.assert_comparison_mode`.
+        """
         vector = np.array([float(params[name]) for name in self.space.names], dtype=float)
-        out = list(
+        return list(
             ccs.invalid_reasons(self.space, vector, injection_check=self.injection_check)
         )
-        if self.model.p_name is not None and self.identity_epsilon is not None:
-            reason = nc.p_discontinuity_reason(
-                params, self.model, identity_epsilon=self.identity_epsilon
-            )
-            if reason:
-                out.append(reason)
-        return out
 
 
 # ==========================================================================
@@ -379,7 +380,6 @@ REASON_OUT_OF_BOUNDS = "out_of_bounds"
 REASON_NON_FINITE = "non_finite"
 REASON_CONSTRAINT = "constraint_violation"
 REASON_INJECTION = "production_injection_rejected"
-REASON_P_DISCONTINUITY = "p_identity_discontinuity"
 REASON_DUPLICATE = "duplicate_vector_hash"
 REASON_ANCHOR_SEPARATION = "below_min_anchor_neighbour_separation"
 REASON_NEIGHBOUR_SEPARATION = "below_min_neighbour_neighbour_separation"
@@ -391,7 +391,6 @@ REASON_CODES = (
     REASON_NON_FINITE,
     REASON_CONSTRAINT,
     REASON_INJECTION,
-    REASON_P_DISCONTINUITY,
     REASON_DUPLICATE,
     REASON_ANCHOR_SEPARATION,
     REASON_NEIGHBOUR_SEPARATION,
@@ -409,8 +408,6 @@ def reason_code(reason: str) -> str:
         return REASON_OUT_OF_BOUNDS
     if "non-finite" in text:
         return REASON_NON_FINITE
-    if nc.REJECT_P_DISCONTINUITY in text:
-        return REASON_P_DISCONTINUITY
     if "declared draw constraints" in text:
         return REASON_CONSTRAINT
     if "production injection rejected" in text:
@@ -773,17 +770,22 @@ def p_boundary_probes(
     *,
     stage: str,
     p_bins: Sequence[float],
-    identity_epsilon: float,
     seed: int,
     index_offset: int = 0,
+    extra_values: Sequence[float] = (),
 ) -> KernelOutcome:
-    """Explicit ``p = 0`` and one-sided probes just inside each declared bin.
+    """Explicit ``p = 0`` and one-sided probes at each declared bin edge.
 
     One-sided by construction: ``p`` cannot go below zero, so the neighbourhood
     at the boundary is one-sided and that is reported rather than read as
-    isolation.  Probes are placed at the bin edges that are at or above the
-    identity epsilon; the band ``(0, epsilon)`` is deliberately left empty
-    because the engine's exact ``p == 0`` dispatch makes it discontinuous.
+    isolation.
+
+    **Every declared bin edge is probed, including edges arbitrarily close to
+    zero.**  There is no exclusion band: the specification prohibits one, and
+    a positive edge is a valid parameter value whose only special property is
+    that it must be compared distributionally rather than paired with ``p=0``.
+    ``extra_values`` lets the plan add further declared ``p`` values (for
+    example a deliberately tiny positive probe) without widening the bins.
     """
     if model.p_name is None:
         raise ContractError("p-boundary probes require M1")
@@ -792,10 +794,9 @@ def p_boundary_probes(
     index = int(index_offset)
 
     wanted: list[float] = [0.0]
-    for edge in sorted({float(b) for b in p_bins}):
-        if edge == 0.0 or edge >= float(identity_epsilon):
-            if edge not in wanted:
-                wanted.append(edge)
+    for edge in sorted({float(b) for b in p_bins} | {float(v) for v in extra_values}):
+        if edge not in wanted:
+            wanted.append(edge)
     outcome.quota = len(wanted)
 
     for value in wanted:

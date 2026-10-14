@@ -244,33 +244,74 @@ def test_m1_identity_requires_the_routine_hazard_scale_to_be_pinned():
         nc.assert_m1_identity_preconditions(routine_hazard_scale=0.8, required_value=1.0)
 
 
-def test_probes_in_the_p_discontinuity_band_are_rejected_not_snapped():
-    """The engine dispatches on exact ``p == 0``, so (0, eps) is discontinuous."""
+def test_arbitrarily_small_positive_p_values_remain_admissible():
+    """Spec sec. 9: no exclusion band above zero, however tiny the value.
+
+    The RNG stream changes at any positive ``p``, but that constrains how the
+    probe may be *compared*, not whether the parameter value is valid.  The
+    design must accept it, unmodified, and must never snap it to zero.
+    """
     m1 = fx.m1_space()
     vector = nc.embed_m0_in_m1(fx.m0_space(), m1, fx.interior_vector(fx.m0_space()))
-    assert nc.p_discontinuity_reason(vector, m1, identity_epsilon=1e-6) is None
-    for bad in (1e-18, 1e-12, 9e-7):
+    validator = nd.Validator(space=m1.space, model=m1)
+    for tiny in (5e-324, 1e-300, 1e-18, 1e-12, 9e-7):
         near = dict(vector)
-        near[fx.P_NAME] = bad
-        reason = nc.p_discontinuity_reason(near, m1, identity_epsilon=1e-6)
-        assert reason is not None and nc.REJECT_P_DISCONTINUITY in reason
-        # The vector itself is never modified by the check.
-        assert near[fx.P_NAME] == bad
+        near[fx.P_NAME] = tiny
+        nc.assert_p_admissible(near, m1)
+        assert validator.reasons(near) == []
+        # Never snapped, never clipped: the value survives bit-for-bit.
+        assert near[fx.P_NAME] == tiny
+        assert not nc.is_exact_p_zero(near, m1)
 
 
-def test_p_boundary_probes_cover_bins_and_leave_the_discontinuity_band_empty():
+def test_the_prohibited_identity_epsilon_band_is_gone_from_the_contract(tmp_path):
+    """A removed guard must not linger as a dormant attribute or plan field."""
+    assert not hasattr(nc, "p_discontinuity_reason")
+    assert not hasattr(nc, "REJECT_P_DISCONTINUITY")
+    assert not hasattr(nd, "REASON_P_DISCONTINUITY")
+    assert "p_parameter.identity_epsilon" not in nc.REQUIRED_DECISIONS
+    assert "identity_epsilon" not in json.loads(fx.PRODUCTION_PLAN.read_text())["p_parameter"]
+    # And a plan that reintroduces the field is refused, not ignored.
+    with pytest.raises(ContractError, match="identity_epsilon is prohibited"):
+        nc.FrozenPlan.load(
+            fx.write_signed_plan(tmp_path, **{"p_parameter.identity_epsilon": 1e-6}),
+            root=ROOT,
+        )
+
+
+def test_paired_comparison_is_refused_above_zero_but_the_value_is_not():
+    """The constraint lands on the comparison, not on the parameter range."""
+    assert nc.comparison_mode_for_p(0.0) == nc.COMPARISON_PAIRED
+    nc.assert_comparison_mode(0.0, nc.COMPARISON_PAIRED)
+    for positive in (1e-18, 0.25):
+        assert nc.comparison_mode_for_p(positive) == nc.COMPARISON_DISTRIBUTIONAL
+        nc.assert_comparison_mode(positive, nc.COMPARISON_DISTRIBUTIONAL)
+        with pytest.raises(ContractError, match="remains admissible"):
+            nc.assert_comparison_mode(positive, nc.COMPARISON_PAIRED)
+    # A distributional summary exposes no per-seed field to difference.
+    summary = nc.distributional_summary({1: 10.0, 2: 12.0, 3: 11.0})
+    assert summary["comparison_mode"] == nc.COMPARISON_DISTRIBUTIONAL
+    assert not any("seed" in key and key != "n_seeds" for key in summary)
+    with pytest.raises(ContractError, match="at least 2 seeds"):
+        nc.distributional_summary({1: 10.0})
+
+
+def test_p_boundary_probes_cover_every_declared_bin_edge_and_extra_values():
     m1 = fx.m1_space()
     anchor = nd.Anchor.build(
         "A1", nc.embed_m0_in_m1(fx.m0_space(), m1, fx.interior_vector(fx.m0_space())), m1
     )
-    validator = nd.Validator(space=m1.space, model=m1, identity_epsilon=1e-6)
+    validator = nd.Validator(space=m1.space, model=m1)
+    bins = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
     outcome = nd.p_boundary_probes(
         anchor, m1, validator, stage=nc.STAGE_DISCOVERY,
-        p_bins=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5], identity_epsilon=1e-6, seed=11,
+        p_bins=bins, extra_values=[1e-18], seed=11,
     )
     values = sorted(p.params[fx.P_NAME] for p in outcome.accepted)
     assert 0.0 in values, "an explicit p=0 probe is required"
-    assert all(v == 0.0 or v >= 1e-6 for v in values)
+    # Every declared edge is probed, and the tiny positive value is kept.
+    assert set(bins).issubset(set(values))
+    assert 1e-18 in values
     assert outcome.quota == len(outcome.accepted)
 
 
@@ -491,10 +532,10 @@ def test_fixed_coordinates_stay_bit_identical():
     anchor = nd.Anchor.build(
         "A1", nc.embed_m0_in_m1(fx.m0_space(), m1, fx.interior_vector(fx.m0_space())), m1
     )
-    validator = nd.Validator(space=m1.space, model=m1, identity_epsilon=1e-6)
+    validator = nd.Validator(space=m1.space, model=m1)
     outcome = nd.p_boundary_probes(
         anchor, m1, validator, stage=nc.STAGE_DISCOVERY,
-        p_bins=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5], identity_epsilon=1e-6, seed=2,
+        p_bins=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5], seed=2,
     )
     nd.assert_coordinates_vary(
         outcome.accepted, m1,

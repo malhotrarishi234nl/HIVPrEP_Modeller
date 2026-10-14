@@ -109,8 +109,9 @@
     "routine_hazard_scale_identity_value": "UNSIGNED",
     "routine_hazard_scale_identity_value_proposal": 1.0,
     "routine_hazard_scale_identity_note": "StageStructuredDiagnosis.is_identity requires routine_hazard_scale == 1.0 AND p == 0.0. At p=0 with a rescaled routine hazard the engine takes the stage-structured branch and M1 would NOT nest M0.",
-    "identity_epsilon": "UNSIGNED",
-    "identity_epsilon_note": "The engine dispatches on exact p == 0.0 (run_v3.py _step_diagnosis). Any p > 0 draws from different named RNG streams, so the realised trajectory changes discontinuously at zero even though the step probability is continuous. Probes landing in (0, epsilon) must be REJECTED AND REDRAWN, never snapped to zero. This value is a declared computational choice and has no proposal in either specification; it requires an explicit decision.",
+    "no_identity_epsilon_note": "There is deliberately NO identity_epsilon and NO exclusion band above zero. Both specifications prohibit one (ROBUST_NROY_FREEZE_SPEC section 3.3; PRODUCTION_LOCKIN_SPEC section 2). The engine dispatches on exact p == 0.0, so any p > 0 draws from different named RNG streams -- but that changes seed-wise COUPLING, not the admissibility of a parameter value. Exact p=0 is retained as the M0 identity control; every positive value in the signed range is admissible, is never snapped to zero, and is compared DISTRIBUTIONALLY across the seed block rather than paired with p=0. nroy_contract.FrozenPlan.validate REFUSES a plan that declares an identity_epsilon field, so this cannot be reintroduced by a stale config.",
+    "extra_probe_values": [],
+    "extra_probe_values_note": "Optional additional declared p values probed by the p-boundary kernel, beyond the bin edges. Deliberately permitted to be arbitrarily small and positive: a tiny positive p is a valid point of the range. Empty is a legitimate frozen choice and is not an unsigned decision.",
     "symptom_start_year_proposal": 1985
   },
 

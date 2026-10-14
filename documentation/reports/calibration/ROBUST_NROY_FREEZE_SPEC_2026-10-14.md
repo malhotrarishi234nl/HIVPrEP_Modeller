@@ -34,7 +34,7 @@ For each confirmed point, freeze before simulation:
 
 1. **Ambient probes:** constrained maximin joint perturbations at two declared scales (proposed: 16 at 2.5% and 16 at 5% in the frozen normalised metric). The implementation plan must define whether scale is a radius or coordinate-wise bound and the direction generator; it may not infer either from code defaults. Invalid proposals are redrawn, never clipped. At bounds, feasible-direction coverage and redraw exhaustion are reported so a one-sided neighbourhood is not mistaken for isolation.
 2. **Correlation-following probes:** a predeclared number of paired moves derived reproducibly from nearby low-J archive vectors, differences among confirmed vectors and compensating cross-block directions already found by the coupled search. The source pool, neighbour rule, direction construction, scales, rank truncation and quota are frozen before outcomes are evaluated. "Low J" guides proposals but never establishes plausibility.
-3. **M1 boundary coverage:** explicit `p=0` points, one-sided local probes at that boundary and recorded coverage over predeclared `p` bins. A bin is descriptive coverage, not evidence that every value in it is plausible.
+3. **M1 boundary coverage:** explicit `p=0` points, one-sided local probes at that boundary and recorded coverage over predeclared `p` bins. A bin is descriptive coverage, not evidence that every value in it is plausible. The implementation must not create an `identity_epsilon` exclusion band above zero: the RNG stream changes at any positive `p`, but that affects seed-wise coupling rather than defining a scientifically invalid parameter interval. Positive probes are compared distributionally and are never snapped to zero.
 
 All probe vectors, RNG state, constraints, rejection reasons and distances are written before simulation. Discovery uses five common seeds. Promotion is frozen before execution: a probe is promoted if its nominal five-seed `I_max <= 3` or if rescoring with the predeclared upper confidence bound for process variance gives `I_max <= 3`. The latter is a conservative compute-allocation safeguard against five-seed false negatives, not acceptance. Final acceptance is recomputed nominally from the reserved 20-seed confirmation block, which was not inspected during promotion and is common to the anchor and its neighbours. The variance-stability result remains visible; if the only evidence for or against local support is variance-unstable, the local label is unresolved rather than negative.
 
@@ -144,6 +144,7 @@ Required before real distributed execution:
 - independent score recomputation from seed-level outputs.
 - boundary anchors with one-sided feasible neighbourhoods; insufficient directional coverage must become unresolved rather than negative;
 - exact M0 versus M1-at-`p=0` identity across multiple vectors and seeds, plus deliberate failure when any non-`p` input differs;
+- arbitrarily small valid positive `p` values remain admissible and are not rejected merely because their RNG streams differ from exact `p=0`;
 
 ### Sharding and handoff
 

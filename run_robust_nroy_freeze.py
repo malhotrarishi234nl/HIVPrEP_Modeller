@@ -178,14 +178,9 @@ def build_designs(
     quota raises :class:`nroy_design.KernelExhaustedError` and preparation
     fails; it never borrows another kernel's budget.
     """
-    identity_epsilon = (
-        float(plan.require("p_parameter.identity_epsilon"))
-        if model.p_name is not None else None
-    )
     validator = nd.Validator(
         space=model.space,
         model=model,
-        identity_epsilon=identity_epsilon,
         injection_check=injection_check,
     )
     seed = int(plan.seeds.proposal_rng)
@@ -256,7 +251,10 @@ def build_designs(
             boundary = nd.p_boundary_probes(
                 anchor, model, validator, stage=stage,
                 p_bins=[float(b) for b in plan.require("p_parameter.bins")],
-                identity_epsilon=float(identity_epsilon), seed=seed, index_offset=offset,
+                extra_values=[
+                    float(v) for v in (plan.get("p_parameter.extra_probe_values") or ())
+                ],
+                seed=seed, index_offset=offset,
             )
             outcomes.append(boundary)
             proposals.extend(boundary.accepted)

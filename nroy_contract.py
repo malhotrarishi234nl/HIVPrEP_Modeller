@@ -302,10 +302,6 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "p_parameter.routine_hazard_scale_identity_value": (
         "routine_hazard_scale pinned for M1; the engine's p=0 identity dispatch requires it"
     ),
-    "p_parameter.identity_epsilon": (
-        "exclusion half-width above exact p=0; the engine dispatches on p == 0.0 exactly, "
-        "so probes in (0, epsilon) are discontinuous and must be rejected, not snapped"
-    ),
     "budget.max_trajectories": "trajectory budget for this stage",
     "budget.max_attempts": "launch-attempt budget (attempts consume budget)",
     "budget.wall_time_cap_seconds": "wall-clock cap before the stage is PARTIAL",
@@ -792,46 +788,113 @@ def is_exact_p_zero(params: Mapping[str, float], m1: ModelSpace) -> bool:
     return float(params[m1.p_name]) == 0.0
 
 
-#: Reason code recorded when a probe lands in the discontinuous p band.
-REJECT_P_DISCONTINUITY = "p_in_identity_discontinuity_band"
+# --------------------------------------------------------------------------
+# How ``p`` values above zero are treated
+# --------------------------------------------------------------------------
+#
+# There is deliberately **no** ``identity_epsilon`` and no exclusion band above
+# zero.  An earlier revision of this module refused probes in ``(0, epsilon)``
+# on the grounds that the engine dispatches on ``p == 0.0`` exactly
+# (``run_v3.py`` ``_step_diagnosis`` -> ``StageStructuredDiagnosis.is_identity``)
+# so the realised trajectory changes discontinuously at zero.  Both
+# specifications now prohibit that band, and they are right to: the RNG
+# re-keying changes *seed-wise coupling*, not the admissibility of a parameter
+# value.  ``p = 1e-18`` is a valid point of the declared range; it simply
+# cannot be compared to ``p = 0`` seed-by-seed.
+#
+# The consequences are kept separate, and the separation is what this module
+# enforces:
+#
+# * **Admissibility** is a question about the declared range and the declared
+#   constraints only.  Every value in ``[p_min, p_max]`` is admissible.  No
+#   probe is ever rejected, clipped or snapped for being close to zero.
+# * **Comparison mode** is a question about RNG coupling.  A *paired*,
+#   seed-by-seed comparison is defined only at exact ``p = 0``, where the
+#   legacy path executes and the streams match.  Any ``p > 0`` must be compared
+#   distributionally across the seed block.
+
+#: Paired, seed-by-seed differencing.  Valid only at exact ``p = 0``.
+COMPARISON_PAIRED = "paired_by_seed"
+#: Distributional comparison across the whole seed block.
+COMPARISON_DISTRIBUTIONAL = "distributional_across_seed_block"
+COMPARISON_MODES = (COMPARISON_PAIRED, COMPARISON_DISTRIBUTIONAL)
 
 
-def p_discontinuity_reason(
-    params: Mapping[str, float],
-    m1: ModelSpace,
-    *,
-    identity_epsilon: float,
-) -> str | None:
-    """Why this M1 vector must be rejected for sitting just above ``p = 0``.
+def comparison_mode_for_p(p_value: float) -> str:
+    """The only valid M0/M1 comparison mode at this ``p``.
 
-    The engine dispatches on ``p == 0.0`` *exactly*
-    (``run_v3.py`` ``_step_diagnosis`` -> ``StageStructuredDiagnosis.is_identity``).
-    At exactly zero the legacy diagnosis code runs with the legacy counter-based
-    RNG streams; at any ``p > 0`` a different set of named streams is drawn
-    from, so the realised trajectory changes discontinuously even though the
-    step probability is continuous in ``p``.
-
-    A probe at, say, ``p = 1e-18`` is therefore scientifically meaningless: it
-    is not "M0 plus a negligible hazard", it is a different random path.  Such a
-    probe is **rejected and redrawn**, with this reason recorded.  It is never
-    snapped to zero and never clipped, because silently moving a proposal is
-    exactly what the specification forbids.
-
-    Returns ``None`` when the vector is acceptable.
+    Exact zero executes the legacy path on the legacy streams, so the two
+    models are the same realisation and may be differenced seed by seed.  At
+    any positive ``p`` the named counter-based streams differ, so a paired
+    difference measures the stream change rather than the mechanism, and the
+    comparison must be distributional.
     """
-    epsilon = float(identity_epsilon)
-    if epsilon < 0.0:
-        raise ContractError(f"identity_epsilon must be non-negative, got {identity_epsilon!r}")
-    value = float(params[m1.p_name])
-    if value == 0.0:
-        return None
-    if value < epsilon:
-        return (
-            f"{REJECT_P_DISCONTINUITY}: p={value!r} lies in (0, {epsilon}) where the engine's "
-            "exact p==0 identity dispatch makes the trajectory discontinuous; "
-            "redraw rather than snap"
+    return COMPARISON_PAIRED if float(p_value) == 0.0 else COMPARISON_DISTRIBUTIONAL
+
+
+def assert_comparison_mode(p_value: float, mode: str) -> None:
+    """Refuse a paired comparison at ``p > 0``.
+
+    This is the check that replaces the old exclusion band.  The old design
+    protected the paired comparison by deleting part of the parameter range;
+    this one keeps the whole range and refuses the invalid *comparison*, which
+    is where the problem actually was.
+    """
+    if mode not in COMPARISON_MODES:
+        raise ContractError(f"unknown comparison mode {mode!r}; expected one of {COMPARISON_MODES}")
+    required = comparison_mode_for_p(p_value)
+    if mode != required:
+        raise ContractError(
+            f"p={float(p_value)!r} requires {required!r}, not {mode!r}. A paired seed-by-seed "
+            "comparison is defined only at exact p=0, where the engine runs the legacy "
+            "diagnosis path on the legacy RNG streams. At any positive p the named streams "
+            "differ, so a paired difference measures the stream change rather than the "
+            "mechanism. This is a constraint on the comparison, NOT a reason to exclude the "
+            "parameter value: every p in the declared range remains admissible."
         )
-    return None
+
+
+def assert_p_admissible(params: Mapping[str, float], m1: ModelSpace) -> None:
+    """Every ``p`` inside the declared range is admissible, however small.
+
+    Deliberately total: the only grounds for refusal are the declared bounds
+    and non-finiteness.  Proximity to zero is **not** grounds for refusal, and
+    there is no epsilon argument to supply one.
+    """
+    if m1.p_name is None:
+        raise ContractError(f"{m1.model} has no p coordinate")
+    if m1.p_name not in params:
+        raise ContractError(f"vector has no {m1.p_name!r} coordinate")
+    value = float(params[m1.p_name])
+    if not np.isfinite(value):
+        raise ContractError(f"p={value!r} is not finite")
+    lower = float(m1.space.lower[m1.p_index])
+    upper = float(m1.space.upper[m1.p_index])
+    if not (lower <= value <= upper):
+        raise ContractError(f"p={value!r} is outside the declared M1 range [{lower}, {upper}]")
+
+
+def distributional_summary(values_by_seed: Mapping[int, float]) -> dict:
+    """Summarise one model's seed block without pairing it to another.
+
+    Returned deliberately without any per-seed field, so a caller cannot
+    accidentally difference two of these seed by seed.  This is the comparison
+    that is valid at ``p > 0``.
+    """
+    seeds = sorted(int(s) for s in values_by_seed)
+    if len(seeds) < 2:
+        raise ContractError(
+            f"a distributional summary needs at least 2 seeds, got {len(seeds)}"
+        )
+    series = np.asarray([float(values_by_seed[s]) for s in seeds], dtype=float)
+    return {
+        "n_seeds": len(seeds),
+        "mean": float(series.mean()),
+        "sd": float(series.std(ddof=1)),
+        "minimum": float(series.min()),
+        "maximum": float(series.max()),
+        "comparison_mode": COMPARISON_DISTRIBUTIONAL,
+    }
 
 
 def assert_m1_identity_preconditions(
@@ -1475,13 +1538,16 @@ class FrozenPlan:
                 "the engine's p=0 identity dispatch requires routine_hazard_scale == 1.0; "
                 f"the plan pins {rho!r}, under which M1 would not nest M0"
             )
-        epsilon = float(self.require("p_parameter.identity_epsilon"))
-        if epsilon < 0.0:
-            raise ContractError(f"p_parameter.identity_epsilon must be non-negative; got {epsilon}")
-        if epsilon >= p_max:
+        # Both specifications prohibit an identity_epsilon exclusion band above
+        # zero. A plan that still declares one is refused rather than ignored,
+        # so a stale config cannot quietly reintroduce the band.
+        if "identity_epsilon" in (self.get("p_parameter") or {}):
             raise ContractError(
-                f"p_parameter.identity_epsilon ({epsilon}) covers the whole declared p range "
-                f"[{p_min}, {p_max}]; no p > 0 probe could ever be drawn"
+                "p_parameter.identity_epsilon is prohibited. The specifications state that the "
+                "RNG re-keying at p>0 affects seed-wise coupling rather than defining a "
+                "scientifically invalid parameter interval: exact p=0 is retained as the "
+                "identity control and every positive value in the signed range is admissible. "
+                "Remove the field from the plan."
             )
 
         bins = [float(b) for b in self.require("p_parameter.bins")]

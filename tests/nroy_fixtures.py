@@ -50,7 +50,6 @@ TEST_SIGNATURES: dict[str, object] = {
     "p_parameter.max": 0.5,
     "p_parameter.bins": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
     "p_parameter.routine_hazard_scale_identity_value": 1.0,
-    "p_parameter.identity_epsilon": 1e-6,
     "budget.max_trajectories": 100000,
     "budget.max_attempts": 100000,
     "budget.wall_time_cap_seconds": 3600,
