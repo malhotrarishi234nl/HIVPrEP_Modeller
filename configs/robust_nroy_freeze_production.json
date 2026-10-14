@@ -1,0 +1,249 @@
+{
+  "_README": [
+    "PRODUCTION RUN PLAN -- robust NROY freeze stage.",
+    "",
+    "THIS PLAN IS DELIBERATELY UNSIGNED AND THEREFORE FAILS CLOSED.",
+    "Every required decision below holds the sentinel \"UNSIGNED\". The loader",
+    "(nroy_contract.FrozenPlan.load) refuses to return a plan while any required",
+    "value is unsigned, so no production simulation can start by accident.",
+    "",
+    "Each unsigned field has a sibling '<field>_proposal' recording the proposal",
+    "from PRODUCTION_LOCKIN_SPEC_2026-10-13.md / ROBUST_NROY_FREEZE_SPEC_2026-10-14.md.",
+    "A proposal is NOT a decision: the code never reads the _proposal fields as",
+    "values. To sign, replace the \"UNSIGNED\" sentinel with the chosen value and",
+    "complete the sign_off block.",
+    "",
+    "Section 5 of the production spec (the sign-off table) is still blank, and the",
+    "production spec is still marked DRAFT. Nothing here may be treated as locked."
+  ],
+
+  "design": {
+    "name": "robust_nroy_freeze",
+    "spec": "documentation/reports/calibration/ROBUST_NROY_FREEZE_SPEC_2026-10-14.md",
+    "parent_spec": "documentation/reports/calibration/PRODUCTION_LOCKIN_SPEC_2026-10-13.md",
+    "question": "Are fresh-seed-confirmed parameter vectors supported by stable neighbouring parameter combinations, including thin correlated ridges, or is no such support detected under the declared finite design?",
+    "declared_as": "finite support-detection design; not a proof that the NROY topology has been recovered",
+    "not": [
+      "a change to the primary I_max <= 3 acceptance rule",
+      "a posterior or any probability weighting",
+      "a proof of continuous connectivity",
+      "an authorisation to run simulations"
+    ]
+  },
+
+  "target_contract": {
+    "register_path": "UNSIGNED",
+    "register_path_proposal": "configs/hm_target_register_focused_20260916.json",
+    "n_targets": "UNSIGNED",
+    "n_targets_proposal": 13,
+    "frozen_order": "UNSIGNED",
+    "frozen_order_proposal": [
+      "shm_new_diagnoses_msm@1996",
+      "shm_new_diagnoses_msm@2000",
+      "shm_new_diagnoses_msm@2004",
+      "shm_new_diagnoses_msm@2010",
+      "shm_new_diagnoses_msm@2015",
+      "shm_new_diagnoses_msm@2019",
+      "shm_new_diagnoses_msm@2024",
+      "rivm_aids_msm@2000",
+      "rivm_aids_msm@2005",
+      "rivm_aids_msm@2010",
+      "rivm_aids_msm@2015",
+      "rivm_aids_msm@2019",
+      "rivm_aids_msm@2022"
+    ],
+    "frozen_order_note": "The 13-target contract is the production spec's RECOMMENDED choice because it implements the recorded 1996-onward HIV and 2000-onward AIDS source-window decision. Older 15-target memos predate that decision. Recommended is not signed.",
+    "register_sha256": "UNSIGNED",
+    "reporting_groups_proposal": {
+      "diagnoses_1996_2015": [
+        "shm_new_diagnoses_msm@1996",
+        "shm_new_diagnoses_msm@2000",
+        "shm_new_diagnoses_msm@2004",
+        "shm_new_diagnoses_msm@2010",
+        "shm_new_diagnoses_msm@2015"
+      ],
+      "aids_2000_2015": [
+        "rivm_aids_msm@2000",
+        "rivm_aids_msm@2005",
+        "rivm_aids_msm@2010",
+        "rivm_aids_msm@2015"
+      ],
+      "diagnoses_after_2015": [
+        "shm_new_diagnoses_msm@2019",
+        "shm_new_diagnoses_msm@2024"
+      ],
+      "aids_after_2015": [
+        "rivm_aids_msm@2019",
+        "rivm_aids_msm@2022"
+      ]
+    }
+  },
+
+  "models": {
+    "m0": {
+      "calib_space": "UNSIGNED",
+      "calib_space_proposal": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
+      "n_parameters_proposal": 33
+    },
+    "m1": {
+      "calib_space": "UNSIGNED",
+      "calib_space_note": "M1 = M0 + p as the LAST coordinate. Generate with nroy_contract.build_m1_calib_space once the p range is signed; do not hand-edit.",
+      "n_parameters_proposal": 34
+    }
+  },
+
+  "p_parameter": {
+    "name": "UNSIGNED",
+    "name_proposal": "aids_symptom_annual_probability",
+    "config_path_proposal": "transmission_model.disease.diagnosis.stage_structured_diagnosis.aids_symptom_annual_probability",
+    "min": "UNSIGNED",
+    "min_proposal": 0.0,
+    "min_note": "Must be exactly 0 so that M1 nests M0 and exact p=0 designs are included.",
+    "max": "UNSIGNED",
+    "max_proposal": 0.5,
+    "bins": "UNSIGNED",
+    "bins_proposal": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+    "routine_hazard_scale_identity_value": "UNSIGNED",
+    "routine_hazard_scale_identity_value_proposal": 1.0,
+    "routine_hazard_scale_identity_note": "StageStructuredDiagnosis.is_identity requires routine_hazard_scale == 1.0 AND p == 0.0. At p=0 with a rescaled routine hazard the engine takes the stage-structured branch and M1 would NOT nest M0.",
+    "identity_epsilon": "UNSIGNED",
+    "identity_epsilon_note": "The engine dispatches on exact p == 0.0 (run_v3.py _step_diagnosis). Any p > 0 draws from different named RNG streams, so the realised trajectory changes discontinuously at zero even though the step probability is continuous. Probes landing in (0, epsilon) must be REJECTED AND REDRAWN, never snapped to zero. This value is a declared computational choice and has no proposal in either specification; it requires an explicit decision.",
+    "symptom_start_year_proposal": 1985
+  },
+
+  "acceptance": {
+    "cutoff": 3.0,
+    "discrepancy": 0.1,
+    "process_variance": "s_i^2 (1 + 1/K)",
+    "note": "Unchanged from the calibration. This stage may not widen or tighten acceptance; the loader refuses a plan that alters the cutoff."
+  },
+
+  "ambient": {
+    "scales": "UNSIGNED",
+    "scales_proposal": [0.025, 0.05],
+    "scale_semantics": "UNSIGNED",
+    "scale_semantics_proposal": "radius",
+    "scale_semantics_note": "Must be 'radius' or 'coordinate_bound'. The spec forbids inferring this from code defaults.",
+    "quota_per_scale": "UNSIGNED",
+    "quota_per_scale_proposal": 16,
+    "direction_generator": "UNSIGNED",
+    "direction_generator_proposal": "gaussian_unit_sphere",
+    "max_attempts_per_anchor_proposal": 2000
+  },
+
+  "archive_following": {
+    "quota": "UNSIGNED",
+    "scales": "UNSIGNED",
+    "scales_proposal": [0.025, 0.05],
+    "neighbour_rule": "UNSIGNED",
+    "neighbour_rule_proposal": "k_nearest_low_J_archive_vectors",
+    "rank_truncation": "UNSIGNED",
+    "source_pool": "UNSIGNED",
+    "source_pool_proposal": [
+      "nearby low-J archive vectors",
+      "differences among confirmed vectors",
+      "compensating cross-block directions found by the coupled search"
+    ],
+    "note": "The spec requires 'a predeclared number of paired moves'. No number is proposed in either document; it requires a decision. 'Low J' guides proposals but never establishes plausibility."
+  },
+
+  "cross_block": {
+    "quota": "UNSIGNED",
+    "scales": "UNSIGNED",
+    "scales_proposal": [0.025, 0.05]
+  },
+
+  "separation": {
+    "min_anchor_neighbour": "UNSIGNED",
+    "min_neighbour_neighbour": "UNSIGNED",
+    "min_direction_classes": "UNSIGNED",
+    "min_direction_classes_note": "The spec requires correlation-following support to involve 'the required number of independent direction classes'. No number is given.",
+    "note": "Only unique vector hashes count as neighbours. These separations stop two near-identical probes counting as two neighbours."
+  },
+
+  "support": {
+    "min_confirming_neighbours": "UNSIGNED",
+    "min_confirming_neighbours_proposal": 2,
+    "min_confirming_neighbours_note": "The spec's two-neighbour rule is 'a predeclared operational threshold, not a confidence statement'."
+  },
+
+  "promotion": {
+    "variance_alpha": "UNSIGNED",
+    "variance_alpha_note": "Alpha for the upper confidence bound on process variance, used ONLY as a conservative compute-allocation safeguard against five-seed false negatives. It is not acceptance. run_history_matching.predictive_variance_stability uses alpha=0.05 as a diagnostic default; reusing that value here is a decision, not an inheritance.",
+    "rule": "promote if nominal five-seed I_max <= cutoff OR if rescoring with the upper confidence bound for process variance gives I_max <= cutoff; final acceptance is always recomputed nominally from the reserved 20-seed confirmation block"
+  },
+
+  "graph": {
+    "neighbour_rule": "UNSIGNED",
+    "neighbour_rule_proposal": "k_nearest",
+    "neighbour_count": "UNSIGNED",
+    "tie_breaking": "UNSIGNED",
+    "tie_breaking_proposal": "candidate_id_ascending",
+    "minimal_edge_algorithm": "UNSIGNED",
+    "minimal_edge_algorithm_proposal": "kruskal_min_spanning_forest",
+    "bridge_fractions": "UNSIGNED",
+    "bridge_fractions_proposal": [0.25, 0.5, 0.75],
+    "bridge_pass_rule": "UNSIGNED",
+    "bridge_pass_rule_proposal": "all_declared_probes_must_confirm",
+    "distance_metric": "euclidean_normalised",
+    "distance_metric_role": "edge proposal only; never establishes a region and never asserts continuous connectivity"
+  },
+
+  "representative_selection": {
+    "rule": "UNSIGNED",
+    "rule_proposal": "maximin_geometry",
+    "n_per_component": "UNSIGNED",
+    "note": "Selection uses parameter/baseline geometry only. Policy outcomes are unavailable to selection. The production spec lists 'how many representative parameter sets, and how they are drawn' as an outstanding decision, and this stage does not choose the final number."
+  },
+
+  "seeds": {
+    "discovery": "UNSIGNED",
+    "discovery_note": "Five common seeds for discovery (CRN). Must be disjoint from every earlier experiment; the coupled search used 200000-200004 for discovery and 200100-200119 for confirmation, so a production block must not reuse them.",
+    "confirmation": "UNSIGNED",
+    "confirmation_note": "20 disjoint fresh seeds, reserved and not inspected during promotion, common to an anchor and its neighbours.",
+    "proposal_rng": "UNSIGNED",
+    "known_used_elsewhere": [
+      200000, 200001, 200002, 200003, 200004,
+      200100, 200101, 200102, 200103, 200104, 200105, 200106, 200107, 200108, 200109,
+      200110, 200111, 200112, 200113, 200114, 200115, 200116, 200117, 200118, 200119,
+      200200, 200201, 200202, 200300,
+      197100, 197101, 197102, 197103, 197104, 197105, 197106, 197107, 197108, 197109,
+      197110, 197111, 197112, 197113, 197114, 197115, 197116, 197117, 197118, 197119,
+      197200, 197201, 197202, 197300
+    ],
+    "known_used_elsewhere_note": "Recorded so the loader can refuse a colliding production block. Extend this list if earlier runs are found."
+  },
+
+  "budget": {
+    "max_trajectories": "UNSIGNED",
+    "max_attempts": "UNSIGNED",
+    "max_attempts_note": "Launch attempts consume budget and are never refunded. Lost or failed attempts stay spent.",
+    "wall_time_cap_seconds": "UNSIGNED",
+    "on_cap": "stop dispatch, finish bounded in-flight work, mark the stage PARTIAL; a PARTIAL stage cannot become a parent",
+    "note": "The production spec requires a priced trajectory budget and a measured time per trajectory from a pilot before launch. No pilot has been run."
+  },
+
+  "tolerances": {
+    "merge_numerical_tolerance": "UNSIGNED",
+    "merge_numerical_tolerance_note": "Single-process and sharded merges must be bit-identical where arithmetic order is fixed, and numerically identical under a declared tight tolerance otherwise. This implementation fixes arithmetic order by sorting on (design_id, seed) before every reduction, so the bit-identical branch applies; the tolerance still needs a signed value for any future unordered reduction.",
+    "duplicate_vector_tolerance": 1e-10,
+    "duplicate_vector_tolerance_note": "Computational near-duplicate rule inherited from the coupled search. Not a scientific criterion."
+  },
+
+  "emulator": {
+    "enabled": false,
+    "note": "An emulator is NOT part of the base freeze stage. It is triggered only by a recorded unresolved geometry question, and may never rule out a region or declare plausibility without simulator evaluation. No such question has been recorded, so no emulator is built."
+  },
+
+  "correlated_output_diagnostic": {
+    "enabled": false,
+    "note": "Secondary and cannot change the primary set in this stage. Requires seed-block bootstrap and leave-one-candidate-out stability before it may be reported; absent justified observation/discrepancy covariance it is explicitly a correlated stochastic-residual diagnostic, not a multivariate acceptance calculation."
+  },
+
+  "sign_off": {
+    "signed_by": "UNSIGNED",
+    "signed_date": "UNSIGNED",
+    "spec_version": "UNSIGNED",
+    "note": "Section 5 of PRODUCTION_LOCKIN_SPEC_2026-10-13.md is still blank. Completing this block is necessary but not sufficient: every UNSIGNED value above must also be replaced."
+  }
+}

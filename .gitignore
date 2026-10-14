@@ -17,6 +17,7 @@ outputs/
 data/raw/
 data/model-outputs/
 *.log
+logs/
 sbi-logs/
 
 # OS / editor cruft
