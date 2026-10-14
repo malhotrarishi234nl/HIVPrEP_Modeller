@@ -709,10 +709,13 @@ def _run_pipeline(tmp_path, n_shards, *, model=nc.MODEL_M0, tag="", overrides=No
     space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
     anchors = _write_anchors(tmp_path / "anchors.csv", space)
     stage_dir = tmp_path / f"stage_{model}_{n_shards}{tag}"
-    assert runner.main([
+    argv = [
         "prepare", "--plan", str(plan_path), "--out", str(stage_dir),
         "--anchors", str(anchors), "--model", model,
-    ]) == 0
+    ]
+    if model == nc.MODEL_M1:
+        argv += ["--identity-gate", str(fx.write_identity_gate(tmp_path))]
+    assert runner.main(argv) == 0
     for shard in range(n_shards):
         assert runner.main([
             "evaluate", "--plan", str(plan_path), "--stage-dir", str(stage_dir),

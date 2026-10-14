@@ -124,6 +124,51 @@ def signed_plan(tmp_path: Path, **overrides) -> nc.FrozenPlan:
     return nc.FrozenPlan.load(write_signed_plan(tmp_path, **overrides), root=ROOT)
 
 
+def write_identity_gate(tmp_path: Path, *, passed: bool = True, **overrides) -> Path:
+    """A **fabricated** identity-gate artifact, for testing the gate *check*.
+
+    It carries the real code fingerprint, so the staleness check is exercised
+    honestly, but no engine was run to produce it.  That is deliberate: these
+    tests verify that ``assert_gate_satisfied`` refuses a missing, failed,
+    incomplete or stale artifact, which is logic that needs no trajectory.
+
+    The gate itself -- the part that actually proves the identity -- is run by
+    ``run_robust_nroy_freeze.py identity-gate`` and by
+    ``tests/test_nroy_m0_m1_engine_identity.py``, both of which build real
+    engines. A fabricated artifact is never evidence about the model.
+    """
+    import nroy_identity_gate as nig  # noqa: PLC0415 - test-only
+
+    artifact = {
+        "schema": nig.GATE_VERSION,
+        "passed": bool(passed),
+        "generated_utc": "2026-10-14T00:00:00Z",
+        "base_config": nig.DEFAULT_BASE_CONFIG,
+        "end_year": nig.DEFAULT_END_YEAR,
+        "seeds": list(nig.DEFAULT_SEEDS),
+        "code_sha256": nig.code_fingerprint(),
+        "checks": [
+            {"check": name, "passed": bool(passed), "detail": "fabricated fixture",
+             "evidence": {}}
+            for name in (
+                "not_vacuous", "identity_at_exact_p_zero",
+                "deliberate_failures_do_fail", "positive_p_changes_the_trajectory",
+            )
+        ],
+        "n_checks": 4,
+        "n_passed": 4 if passed else 0,
+        "fixture_warning": (
+            "FABRICATED by the verification suite to test the gate CHECK. No engine "
+            "was run. This is not evidence that the identity holds."
+        ),
+    }
+    artifact.update(overrides)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    path = tmp_path / nig.GATE_FILENAME
+    path.write_text(json.dumps(artifact, indent=1))
+    return path
+
+
 # ==========================================================================
 # Model spaces
 # ==========================================================================

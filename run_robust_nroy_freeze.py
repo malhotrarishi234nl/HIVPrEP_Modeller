@@ -1,14 +1,36 @@
 #!/usr/bin/env python3
 """Runner for the robust-NROY freeze stage.
 
-    .venv/bin/python run_robust_nroy_freeze.py validate --plan configs/robust_nroy_freeze_production.json
-    .venv/bin/python run_robust_nroy_freeze.py prepare  --plan <plan> --out <dir> --anchors <csv>
-    .venv/bin/python run_robust_nroy_freeze.py evaluate --stage-dir <dir> --shard 0 --of 4
-    .venv/bin/python run_robust_nroy_freeze.py merge    --stage-dir <dir>
-    .venv/bin/python run_robust_nroy_freeze.py report   --stage-dir <dir>
-    .venv/bin/python run_robust_nroy_freeze.py resume   --stage-dir <dir>
+    .venv/bin/python run_robust_nroy_freeze.py validate  --plan configs/robust_nroy_freeze_production.json
+    .venv/bin/python run_robust_nroy_freeze.py prepare   --plan <plan> --out <dir> --anchors <csv>
+    .venv/bin/python run_robust_nroy_freeze.py evaluate  --stage-dir <dir> --shard 0 --of 4
+    .venv/bin/python run_robust_nroy_freeze.py merge     --stage-dir <dir> --observed <json> --base-variance <json>
+    .venv/bin/python run_robust_nroy_freeze.py classify  --stage-dir <dir>
+    .venv/bin/python run_robust_nroy_freeze.py regions   --parent-dir <bridges dir> --out <dir>
+    .venv/bin/python run_robust_nroy_freeze.py diagnose  --stage-dir <dir>
+    .venv/bin/python run_robust_nroy_freeze.py report    --stage-dir <dir>
+    .venv/bin/python run_robust_nroy_freeze.py resume    --stage-dir <dir>
 
-Nothing here starts a production simulation on its own.
+The whole chain, for one model::
+
+    prepare --stage discovery    -> evaluate -> merge -> classify
+    prepare --stage promotion    -> evaluate -> merge -> classify   (parent: discovery)
+    prepare --stage confirmation -> evaluate -> merge -> classify   (parent: promotion)
+    prepare --stage bridges      -> evaluate -> merge               (parent: confirmation)
+    regions                                                        (parent: bridges)
+
+One command here runs the engine, and only one::
+
+    .venv/bin/python run_robust_nroy_freeze.py identity-gate --out <dir>
+
+That is the M0/M1-at-``p=0`` identity gate.  It is a **pre-production
+command, not a test**: every pytest that checks the identity is skipped under
+the repository's no-engine guard, so a green full suite does not establish it.
+``prepare --model M1`` requires its passing artifact and refuses a missing,
+failed, incomplete or stale one.  The gate's runs are short truncated
+trajectories, about a second each; nothing is written to ``outputs/``.
+
+Nothing else here starts a simulation on its own.
 
 * ``validate`` never simulates.  It is the dry-run gate: it reports every
   unsigned decision and exits non-zero while any remain.
@@ -45,6 +67,7 @@ import nroy_contract as nc
 import nroy_design as nd
 import nroy_execution as ne
 import nroy_graph as ng
+import nroy_identity_gate as nig
 import nroy_report as nrp
 from coupled_calibration_search import ContractError
 
@@ -401,6 +424,23 @@ def command_prepare(args: argparse.Namespace) -> int:
                 "p_parameter.routine_hazard_scale_identity_value")),
             required_value=1.0,
         )
+        # The identity is a production prerequisite, and the pytests that check
+        # it are SKIPPED under the no-engine guard, so a green full suite does
+        # not establish it. An M1 design therefore requires the gate artifact,
+        # and `assert_gate_satisfied` refuses a missing, failed, incomplete or
+        # stale one.
+        if not args.identity_gate:
+            raise ContractError(
+                "preparing an M1 design requires --identity-gate pointing at a passing "
+                f"{nig.GATE_FILENAME}. Produce it with\n"
+                "  .venv/bin/python run_robust_nroy_freeze.py identity-gate --out <dir>\n"
+                "ROBUST_NROY_FREEZE_SPEC section 2 requires the multi-vector, multi-seed "
+                "identity before M1 is launched, and the pytests that check it are "
+                "skipped under the no-engine guard."
+            )
+        gate = nig.assert_gate_satisfied(args.identity_gate)
+        print(f"M0/M1 identity gate: PASSED ({gate['n_passed']}/{gate['n_checks']} checks, "
+              f"{gate['generated_utc']})")
 
     # A stage beyond the first must descend from a validated, COMPLETE parent.
     # The guard existed and was tested but was not connected: prepare took the
@@ -1049,6 +1089,51 @@ def command_merge(args: argparse.Namespace) -> int:
 
 
 # ==========================================================================
+# identity-gate: the M0/M1 pre-production command
+# ==========================================================================
+
+def command_identity_gate(args: argparse.Namespace) -> int:
+    """Run the M0/M1-at-``p=0`` identity gate and write its artifact.
+
+    **This command runs the engine on purpose.**  It is the one place in this
+    stage that does, and it is not a pytest: the identity is a production
+    prerequisite, and every pytest that checks it is skipped under the
+    repository's no-engine guard, so a green full suite does not establish it.
+
+    The runs are short truncated trajectories (about a second each), not
+    production simulations: no calibration, no scenario and no PSA work is
+    dispatched, and nothing is written to ``outputs/``.
+    """
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    print("M0/M1 identity gate -- this runs the real engine on short truncated runs.")
+    print(f"  base config: {args.base_config}  end year: {args.end_year}")
+    print(f"  seeds:       {list(args.seeds)}")
+    print()
+    artifact = nig.run_gate(
+        base_config=args.base_config,
+        end_year=int(args.end_year),
+        seeds=[int(s) for s in args.seeds],
+    )
+    path = ne.atomic_write_json(
+        out / nig.GATE_FILENAME, artifact, overwrite_completed=True
+    )
+    for check in artifact["checks"]:
+        status = "PASS" if check["passed"] else "FAIL"
+        print(f"  [{status}] {check['check']}: {check['detail']}")
+    print()
+    print(f"wrote {path}")
+    if artifact["passed"]:
+        print(f"GATE PASSED ({artifact['n_passed']}/{artifact['n_checks']} checks) in "
+              f"{artifact['elapsed_seconds']:.1f}s")
+        print("This is a prerequisite for launching M1, not an authorisation to run one.")
+        return 0
+    print(f"GATE FAILED ({artifact['n_passed']}/{artifact['n_checks']} checks)")
+    print("No M1 design may be prepared.")
+    return 5
+
+
+# ==========================================================================
 # classify: local support and p coverage
 # ==========================================================================
 
@@ -1405,7 +1490,21 @@ def build_parser() -> argparse.ArgumentParser:
                         "after 'prepare'")
     p.add_argument("--parent-manifest-sha256", default="",
                    help="optional: assert the validated parent's manifest hash")
+    p.add_argument("--identity-gate", default="",
+                   help=f"path to a passing {nig.GATE_FILENAME}; REQUIRED for "
+                        "--model M1, because the pytests that check the identity are "
+                        "skipped under the no-engine guard")
     p.set_defaults(func=command_prepare)
+
+    p = sub.add_parser(
+        "identity-gate",
+        help="run the M0/M1-at-p=0 identity gate (RUNS THE ENGINE; required before M1)",
+    )
+    p.add_argument("--out", required=True, help="directory to write the gate artifact")
+    p.add_argument("--base-config", default=nig.DEFAULT_BASE_CONFIG)
+    p.add_argument("--end-year", type=int, default=nig.DEFAULT_END_YEAR)
+    p.add_argument("--seeds", type=int, nargs="+", default=list(nig.DEFAULT_SEEDS))
+    p.set_defaults(func=command_identity_gate)
 
     p = sub.add_parser("evaluate", help="worker: evaluate frozen rows of one shard")
     p.add_argument("--plan", default=None)

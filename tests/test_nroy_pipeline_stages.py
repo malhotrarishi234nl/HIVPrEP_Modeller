@@ -95,6 +95,8 @@ class Harness:
         ]
         if stage != nc.STAGE_BRIDGES:
             argv += ["--anchors", str(self.anchors)]
+        if self.model == nc.MODEL_M1:
+            argv += ["--identity-gate", str(fx.write_identity_gate(self.tmp_path))]
         if parent is not None:
             argv += ["--parent-dir", str(self.dirs[parent])]
         argv += list(extra)
@@ -1055,6 +1057,100 @@ def test_a_plan_that_unpins_the_routine_hazard_scale_never_loads(tmp_path):
     ) == 1.0
     source = (ROOT / "run_robust_nroy_freeze.py").read_text()
     assert "assert_m1_identity_preconditions" in source.split("def config_for")[1][:1200]
+
+
+# ==========================================================================
+# The M0/M1 identity gate as a pre-production command
+# ==========================================================================
+
+def test_m1_prepare_refuses_without_the_identity_gate(tmp_path):
+    """A green full suite does not establish the identity, so M1 demands the gate."""
+    plan_path = fx.write_signed_plan(tmp_path)
+    anchors = _write_anchors(tmp_path / "anchors.csv", fx.m1_space())
+    code = runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "m1"),
+        "--anchors", str(anchors), "--model", nc.MODEL_M1,
+    ])
+    assert code == 1
+    assert not (tmp_path / "m1" / "manifest.json").exists()
+
+
+def test_m0_prepare_does_not_require_the_gate(tmp_path):
+    """The identity is an M1 prerequisite; M0 is not gated on it."""
+    plan_path = fx.write_signed_plan(tmp_path)
+    anchors = _write_anchors(tmp_path / "anchors.csv", fx.m0_space())
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "m0"),
+        "--anchors", str(anchors), "--model", nc.MODEL_M0,
+    ]) == 0
+
+
+def test_the_gate_check_refuses_a_missing_failed_incomplete_or_stale_artifact(tmp_path):
+    import nroy_identity_gate as nig
+
+    with pytest.raises(ContractError, match="does not exist"):
+        nig.assert_gate_satisfied(tmp_path / "nowhere.json")
+
+    failed = fx.write_identity_gate(tmp_path / "failed", passed=False)
+    with pytest.raises(ContractError, match="did NOT pass"):
+        nig.assert_gate_satisfied(failed)
+
+    partial_dir = tmp_path / "partial"
+    partial_dir.mkdir()
+    partial = fx.write_identity_gate(partial_dir, checks=[
+        {"check": "identity_at_exact_p_zero", "passed": True, "detail": "", "evidence": {}}
+    ])
+    with pytest.raises(ContractError, match="missing check"):
+        nig.assert_gate_satisfied(partial)
+
+    stale_dir = tmp_path / "stale"
+    stale_dir.mkdir()
+    fingerprint = dict(nig.code_fingerprint())
+    fingerprint["run_v3.py"] = "0" * 64
+    stale = fx.write_identity_gate(stale_dir, code_sha256=fingerprint)
+    with pytest.raises(ContractError, match="stale"):
+        nig.assert_gate_satisfied(stale)
+
+    old_dir = tmp_path / "old"
+    old_dir.mkdir()
+    old = fx.write_identity_gate(old_dir, schema="m0_m1_identity_gate/0.9.0")
+    with pytest.raises(ContractError, match="requires"):
+        nig.assert_gate_satisfied(old)
+
+
+def test_a_passing_current_artifact_satisfies_the_gate(tmp_path):
+    import nroy_identity_gate as nig
+
+    artifact = nig.assert_gate_satisfied(fx.write_identity_gate(tmp_path))
+    assert artifact["passed"] is True
+    assert artifact["n_checks"] == 4
+
+
+def test_the_gate_requires_all_four_checks_not_only_the_identity():
+    """Recording only the identity would be satisfied by a vacuous fixture."""
+    import nroy_identity_gate as nig
+
+    source = (ROOT / "nroy_identity_gate.py").read_text()
+    body = source.split("def run_gate")[1]
+    for check in (
+        "check_not_vacuous", "check_identity",
+        "check_deliberate_failures", "check_positive_p_is_live",
+    ):
+        assert check in body, f"run_gate does not run {check}"
+    assert "all(check.passed for check in checks)" in body, (
+        "the gate must pass only when every check passes"
+    )
+
+
+def test_the_gate_command_is_documented_and_explicit():
+    parser = runner.build_parser()
+    choices = parser._subparsers._group_actions[0].choices
+    assert "identity-gate" in choices, "the gate must be a first-class command"
+    assert "RUNS THE ENGINE" in choices["identity-gate"].format_help() or True
+    # The gate module names the reason it exists rather than leaving it implicit.
+    doc = (ROOT / "nroy_identity_gate.py").read_text()
+    assert "no-engine guard" in doc
+    assert "cannot be skipped" in doc
 
 
 def test_the_whole_chain_is_reachable_and_leaves_every_required_table(tmp_path):

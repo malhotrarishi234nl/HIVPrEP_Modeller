@@ -62,8 +62,8 @@ import nroy_fixtures as fx  # noqa: E402
 from nroy_fixtures import ROOT  # noqa: E402
 
 import nroy_contract as nc  # noqa: E402
+import nroy_identity_gate as nig  # noqa: E402
 from coupled_calibration_search import ContractError  # noqa: E402
-from run_v3 import SimulationEngineV3  # noqa: E402
 from stage_structured_diagnosis import (  # noqa: E402
     load_stage_structured_diagnosis,
 )
@@ -87,65 +87,41 @@ SEEDS = (9182, 20260101, 777003)
 #: for the AIDS-symptom mechanism to bite: p=0.35 and rho=0.8 both change the
 #: output, while p=0 stays bit-identical.
 #: ``test_the_identity_fixture_is_not_vacuous`` enforces this.
-IDENTITY_END_YEAR = 1990
+IDENTITY_END_YEAR = nig.DEFAULT_END_YEAR
 
+
+# Every helper below delegates to `nroy_identity_gate`, which is also what the
+# `identity-gate` CLI command runs. There is deliberately ONE implementation of
+# the config shaping and the comparison: the pytest and the pre-production
+# command must not be able to drift apart, and the first version of this module
+# passed for the wrong reason precisely because its fixture was its own.
 
 def _short_config() -> dict:
     """A short stochastic run.  Stochastic mode is the case that can break."""
-    config = json.loads((ROOT / "configs/1980_test.json").read_text())
-    config["run_control"]["end_year"] = {"value": IDENTITY_END_YEAR}
-    config["run_control"]["deterministic_mode"] = {"value": False}
-    return config
+    return nig.gate_config(end_year=IDENTITY_END_YEAR)
 
 
 def _without_stage_block(config: dict) -> dict:
     """A genuine M0 configuration: the block is absent, not merely disabled."""
-    out = copy.deepcopy(config)
-    node = out
-    for key in PROFILE_PATH[:-1]:
-        node = node[key]
-    node.pop(PROFILE_PATH[-1], None)
-    return out
+    return nig.without_stage_block(config)
 
 
 def _with_stage_block(config: dict, *, rho: float, p: float, start_year: int = 1985) -> dict:
-    out = copy.deepcopy(config)
-    node = out
-    for key in PROFILE_PATH[:-1]:
-        node = node[key]
-    node[PROFILE_PATH[-1]] = {
-        "enabled": {"value": True},
-        "routine_hazard_scale": {"value": float(rho)},
-        "aids_symptom_annual_probability": {"value": float(p)},
-        "symptom_start_year": {"value": int(start_year)},
-    }
-    return out
+    return nig.with_stage_block(config, rho=rho, p=p, start_year=start_year)
 
 
 def _perturbed_config(config: dict, factor: float) -> dict:
     """Change one non-``p`` input: the MSM orientation contact multiplier."""
-    out = copy.deepcopy(config)
-    node = out["transmission_model"]["groups"]["advanced"][
-        "orientation_contact_multipliers"]["value"]
-    node["MSM"] = float(node["MSM"]) * factor
-    return out
+    return nig.perturbed_config(config, factor)
 
 
 def _run(config: dict, seed: int) -> dict:
-    engine = SimulationEngineV3(config, seed=seed)
-    engine.output_writer.enabled = False
-    return engine.run()
+    return nig.run_engine(config, seed)
 
 
 def _assert_identical(left: dict, right: dict, *, what: str) -> None:
-    np.testing.assert_array_equal(
-        left["final_state"], right["final_state"],
-        err_msg=f"{what}: final_state differs",
-    )
-    pd.testing.assert_frame_equal(
-        left["summary"], right["summary"], check_exact=True,
-        obj=f"{what}: summary",
-    )
+    same, detail = nig.identical(left, right)
+    assert same, f"{what}: {detail}"
 
 
 # ==========================================================================
@@ -375,3 +351,28 @@ def test_a_positive_p_actually_changes_the_model():
     active = _run(_with_stage_block(base, rho=1.0, p=0.35), seed)
     with pytest.raises(AssertionError):
         _assert_identical(m0, active, what="p = 0.35")
+
+
+def test_this_module_and_the_cli_gate_share_one_implementation():
+    """They must not be able to drift apart.
+
+    The gate is the pre-production command; this module is the pytest. If each
+    shaped its own config and wrote its own comparison, one could be fixed and
+    the other left stale -- and a stale pytest is exactly how this module's
+    first revision passed with three red guards.
+
+    This also runs under the no-engine guard, so the structural claim is
+    checked even when the engine tests are skipped.
+    """
+    source = Path(__file__).read_text()
+    for helper in (
+        "nig.gate_config", "nig.without_stage_block", "nig.with_stage_block",
+        "nig.perturbed_config", "nig.run_engine", "nig.identical",
+    ):
+        assert helper in source, f"{helper} is not delegated to the shared gate module"
+    # Built dynamically so this assertion does not match its own source line.
+    constructor = "SimulationEngine" + "V3("
+    assert constructor not in source, (
+        "this module must build engines only through nroy_identity_gate.run_engine"
+    )
+    assert IDENTITY_END_YEAR == nig.DEFAULT_END_YEAR
