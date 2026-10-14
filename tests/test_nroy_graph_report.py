@@ -831,20 +831,80 @@ def test_no_module_reads_a_proposal_field_as_a_value():
     assert not offenders, f"these read a _proposal as a value: {offenders}"
 
 
-def test_every_required_decision_is_actually_consumed_by_the_code():
-    """A required decision nobody reads is dead weight; one nobody declares is a hole."""
-    text = "".join(
-        (ROOT / name).read_text()
-        for name in (
-            "nroy_contract.py", "nroy_design.py", "nroy_execution.py",
-            "nroy_graph.py", "nroy_report.py", "run_robust_nroy_freeze.py",
-        )
-    )
-    unread = [
+def _consumption_blob() -> str:
+    """Module source with the REQUIRED_DECISIONS literal removed.
+
+    Searching the dict that *declares* the decisions would make any
+    consumption test vacuous -- every path trivially appears in its own
+    declaration. This strips that literal so the test measures real reads.
+    """
+    sources = {}
+    for name in (
+        "nroy_contract", "nroy_design", "nroy_execution",
+        "nroy_graph", "nroy_report", "run_robust_nroy_freeze",
+    ):
+        sources[name] = (ROOT / f"{name}.py").read_text()
+    contract = sources["nroy_contract"]
+    # Strip every literal that merely NAMES decisions, at any level: the
+    # declaration dict and both bookkeeping sets. Leaving any of them in makes
+    # the test vacuous, because each path trivially appears in its own listing.
+    for opening, closing in (
+        ("REQUIRED_DECISIONS: dict[str, str] = {", "\n}\n"),
+        ("DECISIONS_READ_BY_SUBSCRIPT = frozenset({", "\n})\n"),
+        ("DECISIONS_PENDING_WIRING = frozenset({", "\n})\n"),
+    ):
+        start = contract.index(opening)
+        end = contract.index(closing, start) + len(closing)
+        contract = contract[:start] + contract[end:]
+    sources["nroy_contract"] = contract
+    return "".join(sources.values())
+
+
+def test_every_signed_decision_is_either_consumed_or_declared_unwired():
+    """No required decision may be silently decorative.
+
+    A signed value that no code reads is worse than an honest default: the
+    sign-off sheet implies a decision is being honoured when it is not. Each
+    decision must therefore be genuinely read, read by subscript in a
+    ``from_plan`` constructor, or explicitly listed as pending wiring.
+    """
+    blob = _consumption_blob()
+    unread = {
         path for path in nc.REQUIRED_DECISIONS
-        if f'"{path}"' not in text
-    ]
-    assert not unread, f"required decisions never referenced in code: {unread}"
+        if f'"{path}"' not in blob
+    } - nc.DECISIONS_READ_BY_SUBSCRIPT
+    assert unread <= nc.DECISIONS_PENDING_WIRING, (
+        "these required decisions are silently decorative -- no code reads them and "
+        f"they are not declared as pending wiring: {sorted(unread - nc.DECISIONS_PENDING_WIRING)}"
+    )
+
+
+def test_the_pending_wiring_set_cannot_rot():
+    """Once a stage is wired, its decision must leave DECISIONS_PENDING_WIRING.
+
+    Without this, the set becomes a permanent excuse: a decision could be
+    wired up and still be advertised as unwired, or vice versa.
+    """
+    blob = _consumption_blob()
+    now_consumed = sorted(
+        path for path in nc.DECISIONS_PENDING_WIRING if f'"{path}"' in blob
+    )
+    assert not now_consumed, (
+        "these are now read by code and must be removed from "
+        f"DECISIONS_PENDING_WIRING: {now_consumed}"
+    )
+    unknown = sorted(nc.DECISIONS_PENDING_WIRING - set(nc.REQUIRED_DECISIONS))
+    assert not unknown, f"pending-wiring entries that are not required decisions: {unknown}"
+
+
+def test_subscript_read_decisions_really_are_read():
+    """Guard the other escape hatch: these must appear as a leaf-key read."""
+    blob = _consumption_blob()
+    for path in nc.DECISIONS_READ_BY_SUBSCRIPT:
+        leaf = path.split(".")[-1]
+        assert f'"{leaf}"' in blob, (
+            f"{path} is listed as read by subscript but {leaf!r} never appears"
+        )
 
 
 @pytest.mark.parametrize("command", ["merge", "report", "resume", "evaluate"])
@@ -880,3 +940,118 @@ def test_the_p_config_path_must_be_signed(tmp_path):
     assert "p_parameter.config_path" in nc.REQUIRED_DECISIONS
     with pytest.raises(nc.UnsignedConfigError):
         fx.signed_plan(tmp_path, **{"p_parameter.config_path": "UNSIGNED"})
+
+
+def test_merge_refuses_without_the_acceptance_inputs(tmp_path, capsys):
+    """z_i and B_i are the numerator and denominator of every implausibility.
+
+    Previously `merge` skipped scoring silently when the flags were omitted and
+    still published a COMPLETE, parentable stage containing no acceptance
+    arithmetic, while RUN_AUDIT.md reported recomputation as "NOT verified".
+    """
+    plan_path = fx.write_signed_plan(tmp_path)
+    space = fx.m0_space()
+    anchors = _write_anchors(tmp_path / "anchors.csv", space)
+    stage_dir = tmp_path / "stage"
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(stage_dir),
+        "--anchors", str(anchors),
+    ]) == 0
+    assert runner.main([
+        "evaluate", "--plan", str(plan_path), "--stage-dir", str(stage_dir),
+        "--shard", "0", "--of", "1", "--evaluator", "surrogate",
+    ]) == 0
+    code = runner.main(["merge", "--plan", str(plan_path), "--stage-dir", str(stage_dir)])
+    assert code == 1
+    assert "no acceptance arithmetic" in capsys.readouterr().err
+    assert not (stage_dir / "candidate_scores.csv").exists()
+
+
+def test_merge_refuses_acceptance_inputs_that_do_not_match_the_contract(tmp_path, capsys):
+    plan_path = fx.write_signed_plan(tmp_path)
+    space = fx.m0_space()
+    anchors = _write_anchors(tmp_path / "anchors.csv", space)
+    stage_dir = tmp_path / "stage"
+    runner.main(["prepare", "--plan", str(plan_path), "--out", str(stage_dir),
+                 "--anchors", str(anchors)])
+    runner.main(["evaluate", "--plan", str(plan_path), "--stage-dir", str(stage_dir),
+                 "--shard", "0", "--of", "1", "--evaluator", "surrogate"])
+    observed, base_variance = fx.observed_and_variance(TARGETS)
+
+    short = {k: v for k, v in observed.items() if k != TARGETS[0]}
+    (tmp_path / "short.json").write_text(json.dumps(short))
+    (tmp_path / "v.json").write_text(json.dumps(base_variance))
+    assert runner.main([
+        "merge", "--plan", str(plan_path), "--stage-dir", str(stage_dir),
+        "--observed", str(tmp_path / "short.json"),
+        "--base-variance", str(tmp_path / "v.json"),
+    ]) == 1
+    assert "--observed" in capsys.readouterr().err
+
+    (tmp_path / "o.json").write_text(json.dumps(observed))
+    zeroed = dict(base_variance)
+    zeroed[TARGETS[0]] = 0.0
+    (tmp_path / "zero.json").write_text(json.dumps(zeroed))
+    assert runner.main([
+        "merge", "--plan", str(plan_path), "--stage-dir", str(stage_dir),
+        "--observed", str(tmp_path / "o.json"),
+        "--base-variance", str(tmp_path / "zero.json"),
+    ]) == 1
+    assert "strictly positive" in capsys.readouterr().err
+
+
+def test_merge_records_the_hashes_of_the_acceptance_inputs(tmp_path):
+    """A stage must record what z_i and B_i actually were."""
+    stage_dir = _run_pipeline(tmp_path, 1, tag="_hash")
+    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    hashes = manifest["extra"]["target_inputs_sha256"]
+    assert set(hashes) == {"observed", "base_variance"}
+    assert all(len(v) == 64 for v in hashes.values())
+
+
+def test_a_later_stage_requires_a_validated_complete_parent(tmp_path, capsys):
+    """A PARTIAL stage must not be able to parent the next one.
+
+    `validate_parent_stage` was written and tested but not connected: prepare
+    took the parent hash as free text, so `--stage confirmation` could be run
+    against nothing at all.
+    """
+    plan_path = fx.write_signed_plan(tmp_path)
+    space = fx.m0_space()
+    anchors = _write_anchors(tmp_path / "anchors.csv", space)
+
+    # No --parent-dir at all.
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "promo"),
+        "--anchors", str(anchors), "--stage", nc.STAGE_PROMOTION,
+    ]) == 1
+    assert "--parent-dir is required" in capsys.readouterr().err
+
+    # A PREPARED (not COMPLETE) parent must be refused.
+    discovery = tmp_path / "discovery"
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(discovery),
+        "--anchors", str(anchors),
+    ]) == 0
+    assert json.loads((discovery / "manifest.json").read_text())["status"] == nc.STATUS_PREPARED
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "promo2"),
+        "--anchors", str(anchors), "--stage", nc.STAGE_PROMOTION,
+        "--parent-dir", str(discovery),
+    ]) == 1
+    assert "may be a parent" in capsys.readouterr().err
+
+
+def test_the_first_stage_needs_no_parent_and_refuses_a_spurious_one(tmp_path, capsys):
+    plan_path = fx.write_signed_plan(tmp_path)
+    space = fx.m0_space()
+    anchors = _write_anchors(tmp_path / "anchors.csv", space)
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "d1"),
+        "--anchors", str(anchors),
+    ]) == 0
+    assert runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "d2"),
+        "--anchors", str(anchors), "--parent-dir", str(tmp_path / "d1"),
+    ]) == 1
+    assert "has no parent" in capsys.readouterr().err

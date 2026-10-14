@@ -346,6 +346,45 @@ REQUIRED_DECISIONS: dict[str, str] = {
 }
 
 
+#: Decisions read through a dict subscript in a ``from_plan`` constructor
+#: rather than by dotted path (``node["frozen_order"]`` and friends).  They are
+#: genuinely consumed; they just do not appear as a dotted-path literal.
+DECISIONS_READ_BY_SUBSCRIPT = frozenset({
+    "target_contract.register_path",
+    "target_contract.frozen_order",
+    "target_contract.n_targets",
+    "seeds.discovery",
+    "seeds.confirmation",
+    "seeds.proposal_rng",
+})
+
+#: Decisions that must be signed but whose values **no code reads yet**,
+#: because the stage that would consume them is not wired into the runner.
+#:
+#: This is a deliberately explicit record of an implementation gap, not a
+#: parking space. The graph, bridge and representative-selection stages exist
+#: as tested library functions in :mod:`nroy_graph` but are not reachable from
+#: any ``run_robust_nroy_freeze.py`` subcommand, so their frozen rules are
+#: currently decorative: ``nroy_graph.classify_edge`` hardcodes "all declared
+#: probes must confirm" and ``select_representatives`` hardcodes
+#: ``maximin_geometry`` rather than receiving the signed value.
+#:
+#: Signing these does NOT mean they are being honoured. A paired test asserts
+#: that each entry really is unconsumed, so the set cannot rot: wiring a stage
+#: forces its entry to be removed.
+DECISIONS_PENDING_WIRING = frozenset({
+    "archive_following.neighbour_rule",
+    "archive_following.source_pool",
+    "budget.wall_time_cap_seconds",
+    "graph.neighbour_rule",
+    "graph.tie_breaking",
+    "graph.minimal_edge_algorithm",
+    "graph.bridge_pass_rule",
+    "representative_selection.rule",
+    "representative_selection.n_per_component",
+})
+
+
 def _dig(mapping: Mapping, path: str) -> tuple[bool, Any]:
     """Resolve a dotted path.  Returns ``(found, value)``."""
     node: Any = mapping

@@ -283,6 +283,44 @@ def command_prepare(args: argparse.Namespace) -> int:
             required_value=1.0,
         )
 
+    # A stage beyond the first must descend from a validated, COMPLETE parent.
+    # The guard existed and was tested but was not connected: prepare took the
+    # parent hash as free text, so `--stage confirmation` could be run against
+    # nothing at all, and a PARTIAL stage could parent the next one.
+    # 'prepare' is a command, not a produced stage: the discovery stage is the
+    # first thing written and has no predecessor directory. Every stage after
+    # it must descend from a validated, COMPLETE parent directory.
+    required_parent = nc.STAGE_PARENT.get(args.stage)
+    if required_parent == nc.STAGE_PREPARE:
+        required_parent = None
+    parent_manifest = None
+    parent_manifest_sha256 = ""
+    if required_parent is not None:
+        if not args.parent_dir:
+            raise ContractError(
+                f"stage {args.stage!r} descends from {required_parent!r}, so "
+                "--parent-dir is required. No stage beyond 'prepare' may be produced "
+                "without a validated parent."
+            )
+        parent_manifest = ne.validate_parent_stage(
+            _stage_directory(args.parent_dir),
+            expected_stage=required_parent,
+            expected_model=model.model,
+            targets=plan.targets,
+            seeds=plan.seeds,
+            child_stage=args.stage,
+        )
+        parent_manifest_sha256 = ccs.sha256_json(nc.json_safe(parent_manifest))
+        if args.parent_manifest_sha256 and args.parent_manifest_sha256 != parent_manifest_sha256:
+            raise ContractError(
+                f"declared parent manifest hash {args.parent_manifest_sha256} does not "
+                f"match the validated parent ({parent_manifest_sha256})"
+            )
+    elif args.parent_dir:
+        raise ContractError(
+            f"stage {args.stage!r} has no parent, but --parent-dir was supplied"
+        )
+
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     proposals, outcomes = build_designs(plan, model, anchors, stage=args.stage)
@@ -293,7 +331,7 @@ def command_prepare(args: argparse.Namespace) -> int:
         ne.WorkUnit(
             stage=args.stage, model=model.model, design_id=p.design_id, seed=int(seed),
             vector_hash=p.vector_hash, kernel=p.kernel, parent_ids=p.parent_ids,
-            params=p.params, parent_manifest_sha256=str(args.parent_manifest_sha256 or ""),
+            params=p.params, parent_manifest_sha256=parent_manifest_sha256,
             code_sha256=code_hash, config_sha256=plan.plan_sha256,
             target_schema=plan.targets.frozen_order,
         )
@@ -324,7 +362,8 @@ def command_prepare(args: argparse.Namespace) -> int:
     ledger.save(out)
     ne.write_stage_manifest(
         out, stage=args.stage, model=model.model, status=nc.STATUS_PREPARED,
-        ledger=ledger, contract=plan.manifest_contract(), parent_manifest=None,
+        ledger=ledger, contract=plan.manifest_contract(),
+        parent_manifest=parent_manifest,
         extra={"n_anchors": len(anchors), "n_proposals": len(proposals)},
     )
     budget = int(plan.require("budget.max_trajectories"))
@@ -553,9 +592,38 @@ def command_merge(args: argparse.Namespace) -> int:
     )
     ne.atomic_write_frame(stage_dir / "seed_results.csv", seed_frame, overwrite_completed=True)
 
-    observed = json.loads(Path(args.observed).read_text()) if args.observed else None
-    base_variance = json.loads(Path(args.base_variance).read_text()) if args.base_variance else None
-    if observed and base_variance:
+    # These are the numerator and denominator of every implausibility, so a
+    # merge that quietly skipped them would publish a COMPLETE, parentable
+    # stage containing no acceptance arithmetic at all. Both are required, and
+    # both are validated against the frozen target contract and hashed into
+    # the manifest.
+    if not (args.observed and args.base_variance):
+        raise ContractError(
+            "--observed and --base-variance are both required: they are the observed "
+            "target values z_i and the frozen non-process variance B_i, i.e. the "
+            "numerator and denominator of every implausibility. Refusing to merge a "
+            "stage with no acceptance arithmetic."
+        )
+    observed = json.loads(Path(args.observed).read_text())
+    base_variance = json.loads(Path(args.base_variance).read_text())
+    plan.targets.assert_order(
+        sorted(observed, key=lambda name: list(plan.targets.frozen_order).index(name))
+        if set(observed) == set(plan.targets.frozen_order) else list(observed),
+        what="--observed",
+    )
+    plan.targets.assert_order(
+        sorted(base_variance, key=lambda name: list(plan.targets.frozen_order).index(name))
+        if set(base_variance) == set(plan.targets.frozen_order) else list(base_variance),
+        what="--base-variance",
+    )
+    bad = sorted(k for k, v in base_variance.items() if not float(v) > 0.0)
+    if bad:
+        raise ContractError(f"--base-variance must be strictly positive; non-positive for {bad}")
+    target_inputs_sha256 = {
+        "observed": ccs.sha256_file(args.observed),
+        "base_variance": ccs.sha256_file(args.base_variance),
+    }
+    if True:
         scores = ne.recompute_candidate_scores(
             seed_frame, targets=plan.targets, observed=observed,
             base_variance=base_variance, cutoff=plan.cutoff,
@@ -569,7 +637,8 @@ def command_merge(args: argparse.Namespace) -> int:
     ne.write_stage_manifest(
         stage_dir, stage=manifest["stage"], model=manifest["model"],
         status=resume.status, ledger=ledger, contract=plan.manifest_contract(),
-        parent_manifest=None, extra={"resume": resume.as_row()},
+        parent_manifest=None,
+        extra={"resume": resume.as_row(), "target_inputs_sha256": target_inputs_sha256},
         overwrite_completed=True,
     )
     print(f"merged {len(seed_frame)} seed-level row(s); stage status {resume.status}")
@@ -655,7 +724,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--anchors", required=True, help="CSV of complete joint confirmed vectors")
     p.add_argument("--model", choices=list(nc.MODELS), default=nc.MODEL_M0)
     p.add_argument("--stage", choices=list(nc.STAGE_ORDER), default=nc.STAGE_DISCOVERY)
-    p.add_argument("--parent-manifest-sha256", default="")
+    p.add_argument("--parent-dir", default="",
+                   help="the COMPLETE parent stage directory; required for any stage "
+                        "after 'prepare'")
+    p.add_argument("--parent-manifest-sha256", default="",
+                   help="optional: assert the validated parent's manifest hash")
     p.set_defaults(func=command_prepare)
 
     p = sub.add_parser("evaluate", help="worker: evaluate frozen rows of one shard")
