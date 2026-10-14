@@ -775,3 +775,81 @@ def test_the_package_records_the_figure_outcome(tmp_path):
     payload = json.loads((tmp_path / "figures.json").read_text())
     assert payload["figure_set"] == list(nrp.FIGURE_SET)
     assert set(payload["results"]) == set(nrp.FIGURE_SET)
+
+
+# ==========================================================================
+# Fail-closed hardening (regressions found by adversarial probing)
+# ==========================================================================
+
+def test_no_module_reads_a_proposal_field_as_a_value():
+    """A ``_proposal`` is a record of what the spec suggested, never an input.
+
+    The one legitimate read is in ``nroy_contract.unsigned_values``, which
+    quotes the proposal back in the fail-closed error message so the sign-off
+    sheet can be filled in. Anything else would be a silent default for an
+    unsigned scientific value.
+    """
+    import re
+    allowed = {"nroy_contract.py"}
+    offenders = []
+    for name in (
+        "nroy_contract.py", "nroy_design.py", "nroy_execution.py",
+        "nroy_graph.py", "nroy_report.py", "run_robust_nroy_freeze.py",
+    ):
+        text = (ROOT / name).read_text()
+        for match in re.finditer(r'(?:require|get)\(\s*f?"[^"]*_proposal"', text):
+            if name in allowed and "unsigned_values" in text[: match.start()][-800:]:
+                continue
+            offenders.append(f"{name}: {match.group(0)}")
+    assert not offenders, f"these read a _proposal as a value: {offenders}"
+
+
+def test_every_required_decision_is_actually_consumed_by_the_code():
+    """A required decision nobody reads is dead weight; one nobody declares is a hole."""
+    text = "".join(
+        (ROOT / name).read_text()
+        for name in (
+            "nroy_contract.py", "nroy_design.py", "nroy_execution.py",
+            "nroy_graph.py", "nroy_report.py", "run_robust_nroy_freeze.py",
+        )
+    )
+    unread = [
+        path for path in nc.REQUIRED_DECISIONS
+        if f'"{path}"' not in text
+    ]
+    assert not unread, f"required decisions never referenced in code: {unread}"
+
+
+@pytest.mark.parametrize("command", ["merge", "report", "resume", "evaluate"])
+def test_subcommands_refuse_an_unprepared_stage_directory(tmp_path, command, capsys):
+    """A missing stage directory is a clean refusal, not a traceback."""
+    plan_path = fx.write_signed_plan(tmp_path)
+    argv = [command, "--plan", str(plan_path), "--stage-dir", str(tmp_path / "never_made")]
+    if command == "evaluate":
+        argv += ["--shard", "0", "--of", "1", "--evaluator", "surrogate"]
+    code = runner.main(argv)
+    assert code == 1
+    assert "CONTRACT ERROR" in capsys.readouterr().err
+
+
+def test_a_directory_without_a_manifest_is_not_a_prepared_stage(tmp_path, capsys):
+    plan_path = fx.write_signed_plan(tmp_path)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    code = runner.main(["resume", "--plan", str(plan_path), "--stage-dir", str(empty)])
+    assert code == 1
+    assert "not a prepared stage" in capsys.readouterr().err
+
+
+def test_the_redraw_budget_must_be_signed(tmp_path):
+    """It decides when a kernel fails preparation, so it cannot have a default."""
+    assert "ambient.max_attempts_per_anchor" in nc.REQUIRED_DECISIONS
+    with pytest.raises(nc.UnsignedConfigError):
+        fx.signed_plan(tmp_path, **{"ambient.max_attempts_per_anchor": "UNSIGNED"})
+
+
+def test_the_p_config_path_must_be_signed(tmp_path):
+    """An unlisted disease-level block is silently discarded by config_reader."""
+    assert "p_parameter.config_path" in nc.REQUIRED_DECISIONS
+    with pytest.raises(nc.UnsignedConfigError):
+        fx.signed_plan(tmp_path, **{"p_parameter.config_path": "UNSIGNED"})

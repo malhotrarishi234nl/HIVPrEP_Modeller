@@ -288,6 +288,10 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "target_contract.frozen_order": "exact frozen target order",
     "target_contract.n_targets": "declared number of targets (contract size)",
     "p_parameter.name": "calibration-space name of the AIDS-symptom diagnosis probability p",
+    "p_parameter.config_path": (
+        "config path that injects p into the model; config_reader silently discards an "
+        "unlisted disease-level block, so a wrong path fails quietly"
+    ),
     "p_parameter.min": "lower end of the p range",
     "p_parameter.max": "upper end of the p range",
     "p_parameter.bins": "predeclared p coverage bins",
@@ -308,6 +312,10 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "ambient.scale_semantics": "whether a scale is a radius or a coordinate-wise bound",
     "ambient.quota_per_scale": "ambient probe quota per scale per anchor",
     "ambient.direction_generator": "declared ambient direction generator",
+    "ambient.max_attempts_per_anchor": (
+        "redraw budget per anchor; it decides when a kernel fails preparation, so it is a "
+        "declared computational choice that must be frozen before simulation"
+    ),
     "archive_following.quota": "correlation-following probe quota per anchor",
     "archive_following.scales": "correlation-following probe scales",
     "archive_following.neighbour_rule": "archive neighbour rule",

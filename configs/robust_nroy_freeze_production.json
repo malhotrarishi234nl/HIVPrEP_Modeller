@@ -95,7 +95,9 @@
   "p_parameter": {
     "name": "UNSIGNED",
     "name_proposal": "aids_symptom_annual_probability",
+    "config_path": "UNSIGNED",
     "config_path_proposal": "transmission_model.disease.diagnosis.stage_structured_diagnosis.aids_symptom_annual_probability",
+    "config_path_note": "config_reader allows 'diagnosis' in its disease-level allowlist, and silently DISCARDS an unlisted disease-level block, so an incorrect path would fail quietly rather than loudly.",
     "min": "UNSIGNED",
     "min_proposal": 0.0,
     "min_note": "Must be exactly 0 so that M1 nests M0 and exact p=0 designs are included.",
@@ -128,7 +130,9 @@
     "quota_per_scale_proposal": 16,
     "direction_generator": "UNSIGNED",
     "direction_generator_proposal": "gaussian_unit_sphere",
-    "max_attempts_per_anchor_proposal": 2000
+    "max_attempts_per_anchor": "UNSIGNED",
+    "max_attempts_per_anchor_proposal": 2000,
+    "max_attempts_per_anchor_note": "Redraw budget per anchor. It decides when a kernel fails preparation rather than filling its quota, so at a boundary anchor it decides between 'unresolved' and a completed design. Neither specification proposes a value; 2000 is this implementation's suggestion only."
   },
 
   "archive_following": {

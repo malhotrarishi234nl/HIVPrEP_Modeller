@@ -44,6 +44,7 @@ TEST_SIGNATURES: dict[str, object] = {
     "target_contract.n_targets": 13,
     "target_contract.frozen_order": list(ccs.FROZEN_TARGET_ORDER),
     "p_parameter.name": P_NAME,
+    "p_parameter.config_path": P_CONFIG_PATH,
     "p_parameter.min": 0.0,
     "p_parameter.max": 0.5,
     "p_parameter.bins": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
@@ -58,6 +59,7 @@ TEST_SIGNATURES: dict[str, object] = {
     "ambient.scale_semantics": "radius",
     "ambient.quota_per_scale": 4,
     "ambient.direction_generator": "gaussian_unit_sphere",
+    "ambient.max_attempts_per_anchor": 2000,
     "archive_following.quota": 4,
     "archive_following.scales": [0.025, 0.05],
     "archive_following.neighbour_rule": "k_nearest_low_J_archive_vectors",
@@ -100,7 +102,6 @@ def signed_plan_dict(**overrides) -> dict:
     for path, value in TEST_SIGNATURES.items():
         _assign(raw, path, value)
     _assign(raw, "models.m0.calib_space", str(M0_CALIB_SPACE.relative_to(ROOT)))
-    _assign(raw, "p_parameter.config_path_proposal", P_CONFIG_PATH)
     raw["sign_off"] = {
         "signed_by": "verification-suite-fixture (NOT a production signature)",
         "signed_date": "2026-10-14",

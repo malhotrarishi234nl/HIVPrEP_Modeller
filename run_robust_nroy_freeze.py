@@ -147,7 +147,7 @@ def _model_spaces(plan: nc.FrozenPlan) -> dict[str, nc.ModelSpace]:
         m1_raw = nc.build_m1_calib_space(
             m0_raw,
             p_name=p_name,
-            p_config_path=str(plan.get("p_parameter.config_path_proposal", "")),
+            p_config_path=str(plan.require("p_parameter.config_path")),
             p_min=p_min,
             p_max=p_max,
         )
@@ -195,7 +195,7 @@ def build_designs(
     semantics = str(plan.require("ambient.scale_semantics"))
     min_anchor = float(plan.require("separation.min_anchor_neighbour"))
     min_neighbour = float(plan.require("separation.min_neighbour_neighbour"))
-    max_attempts = int(plan.get("ambient.max_attempts_per_anchor_proposal", 2000))
+    max_attempts = int(plan.require("ambient.max_attempts_per_anchor"))
 
     proposals: list[nd.Proposal] = []
     outcomes: list[nd.KernelOutcome] = []
@@ -346,6 +346,24 @@ def command_prepare(args: argparse.Namespace) -> int:
 # evaluate (worker)
 # ==========================================================================
 
+def _stage_directory(path: str) -> Path:
+    """Resolve a prepared stage directory, refusing anything unusable.
+
+    A missing directory or manifest is a clear contract error, not a traceback:
+    the caller pointed at something that was never prepared.
+    """
+    stage_dir = Path(path)
+    if not stage_dir.exists():
+        raise ContractError(f"stage directory does not exist: {stage_dir}")
+    manifest = stage_dir / "manifest.json"
+    if not manifest.exists():
+        raise ContractError(
+            f"{stage_dir} has no manifest.json, so it is not a prepared stage. "
+            "Run 'prepare' first."
+        )
+    return stage_dir
+
+
 def surrogate_evaluator(
     unit: ne.WorkUnit, params: Mapping[str, float], targets: Sequence[str]
 ) -> tuple[float, ...]:
@@ -386,10 +404,10 @@ EVALUATORS: dict[str, Callable] = {
 
 
 def command_evaluate(args: argparse.Namespace) -> int:
-    stage_dir = Path(args.stage_dir)
+    stage_dir = _stage_directory(args.stage_dir)
     manifest = json.loads((stage_dir / "manifest.json").read_text())
-    ledger = ne.Ledger.load(stage_dir)
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    ledger = ne.Ledger.load(stage_dir)
     targets = plan.targets
 
     if args.evaluator == "production" and not args.i_have_priced_the_budget:
@@ -488,10 +506,10 @@ def _read_shards(stage_dir: Path, targets: nc.TargetContract) -> list[ne.SeedRes
 
 
 def command_merge(args: argparse.Namespace) -> int:
-    stage_dir = Path(args.stage_dir)
+    stage_dir = _stage_directory(args.stage_dir)
     manifest = json.loads((stage_dir / "manifest.json").read_text())
-    ledger = ne.Ledger.load(stage_dir)
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    ledger = ne.Ledger.load(stage_dir)
 
     results = _read_shards(stage_dir, plan.targets)
     resume = ne.plan_resume(
@@ -536,7 +554,7 @@ def command_merge(args: argparse.Namespace) -> int:
 # ==========================================================================
 
 def command_report(args: argparse.Namespace) -> int:
-    stage_dir = Path(args.stage_dir)
+    stage_dir = _stage_directory(args.stage_dir)
     manifest = json.loads((stage_dir / "manifest.json").read_text())
     plan_path = args.plan or manifest["contract"]["plan_path"]
     raw = json.loads(Path(plan_path).read_text())
@@ -573,10 +591,10 @@ def command_report(args: argparse.Namespace) -> int:
 
 
 def command_resume(args: argparse.Namespace) -> int:
-    stage_dir = Path(args.stage_dir)
+    stage_dir = _stage_directory(args.stage_dir)
     manifest = json.loads((stage_dir / "manifest.json").read_text())
-    ledger = ne.Ledger.load(stage_dir)
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    ledger = ne.Ledger.load(stage_dir)
     decision = ne.plan_resume(
         ledger,
         max_attempts=int(plan.require("budget.max_attempts")),
