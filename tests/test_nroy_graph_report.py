@@ -320,11 +320,14 @@ def sample_tables() -> dict[str, pd.DataFrame]:
          "n_unresolved_boundary_edges": 1, "unresolved_boundary_edges": "A2--B0"},
     ])
     edges = pd.DataFrame([
-        {"edge_id": "A0--A1", "edge_label": nc.EDGE_SAMPLED_PATH_SUPPORTED,
+        {"edge_id": "A0--A1", "left_candidate_id": "A0", "right_candidate_id": "A1",
+         "edge_label": nc.EDGE_SAMPLED_PATH_SUPPORTED,
          "evidence_state": nc.EVIDENCE_CONFIRMED, "n_bridge_probes_confirmed": 3},
-        {"edge_id": "A1--A2", "edge_label": nc.EDGE_SAMPLED_PATH_SUPPORTED,
+        {"edge_id": "A1--A2", "left_candidate_id": "A1", "right_candidate_id": "A2",
+         "edge_label": nc.EDGE_SAMPLED_PATH_SUPPORTED,
          "evidence_state": nc.EVIDENCE_CONFIRMED, "n_bridge_probes_confirmed": 3},
-        {"edge_id": "A2--B0", "edge_label": nc.EDGE_UNRESOLVED,
+        {"edge_id": "A2--B0", "left_candidate_id": "A2", "right_candidate_id": "B0",
+         "edge_label": nc.EDGE_UNRESOLVED,
          "evidence_state": nc.EVIDENCE_UNRESOLVED, "n_bridge_probes_confirmed": 1},
     ])
     representatives = pd.DataFrame([
@@ -727,3 +730,48 @@ def test_artifact_index_hashes_every_written_file(tmp_path):
         path = stage_dir / entry["path"]
         assert path.exists()
         assert ccs.sha256_file(path) == entry["sha256"]
+
+
+# ==========================================================================
+# The fixed figure set (spec sec. 8)
+# ==========================================================================
+
+def test_the_fixed_figure_set_is_produced_or_explains_each_skip(tmp_path):
+    tables = sample_tables()
+    scores = tables["candidate_scores"].copy()
+    for name in TARGETS:
+        scores[f"mean:{name}"] = np.linspace(100.0, 110.0, len(scores))
+    tables["candidate_scores"] = scores
+    parameters = pd.DataFrame([
+        {"candidate_id": c, "x": i * 0.1, "y": 0.5 - i * 0.05, "z": 0.2}
+        for i, c in enumerate(["A0", "A1", "A2", "B0"])
+    ])
+    results = nrp.write_figures(
+        tmp_path, tables, parameter_frame=parameters,
+        parameter_names=["x", "y", "z"], target_order=TARGETS,
+    )
+    assert set(results) == set(nrp.FIGURE_SET), "the figure set must be fixed"
+    for name, value in results.items():
+        if value.startswith("skipped:"):
+            assert len(value) > len("skipped:"), f"{name} skipped without a reason"
+        else:
+            assert Path(value).exists() and Path(value).stat().st_size > 0
+
+
+def test_figures_are_skipped_with_a_reason_when_nothing_ran(tmp_path):
+    """An empty panel must never read as a finding of 'nothing there'."""
+    results = nrp.write_figures(tmp_path, {})
+    assert set(results) == set(nrp.FIGURE_SET)
+    assert all(v.startswith("skipped:") for v in results.values())
+    assert any(nc.EVIDENCE_NOT_RUN in v for v in results.values())
+
+
+def test_the_package_records_the_figure_outcome(tmp_path):
+    tables = sample_tables()
+    facts = nrp.summary_facts(tables, status=nc.STATUS_COMPLETE, model=nc.MODEL_M1)
+    manifest = {"stage": nc.STAGE_REGIONS, "model": nc.MODEL_M1,
+                "status": nc.STATUS_COMPLETE, "parentable": True, "contract": {}}
+    nrp.write_package(tmp_path, tables, facts=facts, manifest=manifest, question="Q")
+    payload = json.loads((tmp_path / "figures.json").read_text())
+    assert payload["figure_set"] == list(nrp.FIGURE_SET)
+    assert set(payload["results"]) == set(nrp.FIGURE_SET)

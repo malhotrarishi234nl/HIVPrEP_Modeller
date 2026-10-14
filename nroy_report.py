@@ -763,7 +763,218 @@ def write_package(
         base / "TABLE_INDEX.md", render_table_index(tables),
         overwrite_completed=overwrite_completed,
     ))
+    figures = write_figures(
+        base / "figures", tables,
+        parameter_frame=parameter_frame, parameter_names=parameter_names,
+        target_order=[
+            c.split(":", 1)[1]
+            for c in (tables.get("candidate_scores", pd.DataFrame()).columns)
+            if str(c).startswith("mean:")
+        ],
+    )
+    written["figures.json"] = str(ne.atomic_write_json(
+        base / "figures.json",
+        {
+            "figure_set": list(FIGURE_SET),
+            "results": figures,
+            "note": (
+                "Figures are a supplement. Every number shown is already in the tidy "
+                "tables; a skipped figure records why it was skipped rather than being "
+                "drawn empty."
+            ),
+        },
+        overwrite_completed=True,
+    ))
     return written
+
+
+#: The fixed figure set required by spec sec. 8.  Fixed, not open-ended: the
+#: package always offers the same five views so runs stay comparable.
+FIGURE_SET = (
+    "region_map",
+    "local_support",
+    "bridge_graph",
+    "p_profile",
+    "target_residual_heatmap",
+)
+
+
+def write_figures(
+    directory: str | Path,
+    tables: Mapping[str, pd.DataFrame],
+    *,
+    parameter_frame: pd.DataFrame | None = None,
+    parameter_names: Sequence[str] = (),
+    target_order: Sequence[str] = (),
+) -> dict[str, str]:
+    """Write the small fixed figure set (spec sec. 8).
+
+    Figures are a *supplement*: every number they show is already in the tidy
+    tables, because the specification forbids reporting a result only in a
+    binary object.  A figure whose inputs are absent is skipped and reported as
+    skipped rather than drawn empty, so an empty panel can never be mistaken
+    for a finding of "nothing there".
+
+    Returns ``{figure_name: path or reason-it-was-skipped}``.
+    """
+    try:
+        import matplotlib  # noqa: PLC0415
+        matplotlib.use("Agg")  # headless; never opens a window on a server
+        import matplotlib.pyplot as plt  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        return {name: f"skipped: matplotlib unavailable ({exc})" for name in FIGURE_SET}
+
+    base = Path(directory)
+    base.mkdir(parents=True, exist_ok=True)
+    out: dict[str, str] = {}
+
+    def save(fig, name: str) -> None:
+        path = base / f"{name}.png"
+        fig.savefig(path, dpi=144, bbox_inches="tight")
+        plt.close(fig)
+        out[name] = str(path)
+
+    support = tables.get("local_support")
+
+    # 1. Normalised region map / projections.
+    if parameter_frame is not None and len(parameter_names) >= 2 and support is not None:
+        labels = dict(zip(
+            support["candidate_id"].astype(str),
+            support["local_support_label"].astype(str),
+        ))
+        fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+        for axis, (xi, yi) in zip(axes, ((0, 1), (0, 2) if len(parameter_names) > 2 else (1, 0))):
+            x_name, y_name = parameter_names[xi], parameter_names[yi]
+            for label in LOCAL_SUPPORT_ORDER:
+                ids = [c for c, lab in labels.items() if lab == label]
+                block = parameter_frame[
+                    parameter_frame["candidate_id"].astype(str).isin(ids)
+                ]
+                if block.empty or x_name not in block or y_name not in block:
+                    continue
+                axis.scatter(
+                    block[x_name].astype(float), block[y_name].astype(float),
+                    label=label, s=28, alpha=0.85,
+                )
+            axis.set_xlabel(x_name)
+            axis.set_ylabel(y_name)
+        axes[0].legend(fontsize=7, loc="best")
+        fig.suptitle("Sampled region map (projections; not a density or a posterior)")
+        save(fig, "region_map")
+    else:
+        out["region_map"] = "skipped: no parameter frame or too few coordinates"
+
+    # 2. Local-support plot.
+    if support is not None and not support.empty:
+        counts = (
+            support["local_support_label"].astype(str)
+            .value_counts()
+            .reindex(LOCAL_SUPPORT_ORDER, fill_value=0)
+        )
+        fig, axis = plt.subplots(figsize=(7, 4))
+        axis.bar(range(len(counts)), counts.to_numpy(), color="#4C72B0")
+        axis.set_xticks(range(len(counts)))
+        axis.set_xticklabels(counts.index, rotation=20, ha="right", fontsize=8)
+        axis.set_ylabel("anchors")
+        axis.set_title(
+            "Local-support labels\n"
+            "'no support detected' describes the declared design, not isolation",
+            fontsize=9,
+        )
+        save(fig, "local_support")
+    else:
+        out["local_support"] = f"skipped: {nc.EVIDENCE_NOT_RUN}"
+
+    # 3. Bridge graph.
+    edges = tables.get("edge_verdicts")
+    edge_columns = {"left_candidate_id", "right_candidate_id", "edge_label"}
+    if edges is not None and not edges.empty and edge_columns <= set(edges.columns):
+        nodes = sorted(
+            set(edges["left_candidate_id"].astype(str))
+            | set(edges["right_candidate_id"].astype(str))
+        )
+        angles = np.linspace(0.0, 2.0 * np.pi, len(nodes), endpoint=False)
+        position = {
+            node: (float(np.cos(a)), float(np.sin(a))) for node, a in zip(nodes, angles)
+        }
+        fig, axis = plt.subplots(figsize=(6, 6))
+        for _, row in edges.iterrows():
+            left = position[str(row["left_candidate_id"])]
+            right = position[str(row["right_candidate_id"])]
+            supported = str(row["edge_label"]) == nc.EDGE_SAMPLED_PATH_SUPPORTED
+            axis.plot(
+                [left[0], right[0]], [left[1], right[1]],
+                color="#2E7D32" if supported else "#BDBDBD",
+                linestyle="-" if supported else "--",
+                linewidth=1.8 if supported else 1.0,
+            )
+        for node, (x, y) in position.items():
+            axis.scatter([x], [y], s=60, color="#333333", zorder=3)
+            axis.annotate(node, (x, y), fontsize=7, xytext=(4, 4),
+                          textcoords="offset points")
+        axis.set_axis_off()
+        axis.set_title(
+            "Bridge graph: solid = sampled-path supported, dashed = unresolved\n"
+            "(unresolved is not disconnection)", fontsize=9,
+        )
+        save(fig, "bridge_graph")
+    elif edges is not None and not edges.empty:
+        out["bridge_graph"] = (
+            "skipped: edge_verdicts lacks the endpoint columns "
+            f"{sorted(edge_columns - set(edges.columns))}"
+        )
+    else:
+        out["bridge_graph"] = f"skipped: {nc.EVIDENCE_NOT_RUN}"
+
+    # 4. p profile.
+    coverage = tables.get("p_coverage")
+    if coverage is not None and not coverage.empty:
+        fig, axis = plt.subplots(figsize=(7, 4))
+        lower = coverage["bin_lower"].astype(float).to_numpy()
+        upper = coverage["bin_upper"].astype(float).to_numpy()
+        axis.bar(
+            lower, coverage["n_confirmed"].astype(int).to_numpy(),
+            width=(upper - lower), align="edge", color="#4C72B0",
+            edgecolor="white", label="confirmed",
+        )
+        axis.bar(
+            lower, coverage["n_evaluated"].astype(int).to_numpy(),
+            width=(upper - lower), align="edge", facecolor="none",
+            edgecolor="#999999", linestyle="--", label="evaluated",
+        )
+        axis.set_xlabel("p (annual AIDS-symptom diagnosis probability)")
+        axis.set_ylabel("candidates")
+        axis.legend(fontsize=8)
+        axis.set_title(
+            "p coverage: descriptive only\n"
+            "a covered bin is not evidence that every value in it is plausible",
+            fontsize=9,
+        )
+        save(fig, "p_profile")
+    else:
+        out["p_profile"] = "skipped: no p coverage table (M0 run, or work not run)"
+
+    # 5. Target-residual heatmap.
+    scores = tables.get("candidate_scores")
+    columns = [f"mean:{name}" for name in target_order]
+    if scores is not None and not scores.empty and all(c in scores for c in columns) and columns:
+        matrix = scores[columns].astype(float).to_numpy()
+        fig, axis = plt.subplots(figsize=(max(6, 0.5 * len(columns)), 4.5))
+        image = axis.imshow(matrix, aspect="auto", cmap="RdBu_r")
+        axis.set_xticks(range(len(target_order)))
+        axis.set_xticklabels(target_order, rotation=90, fontsize=6)
+        axis.set_ylabel("candidate")
+        fig.colorbar(image, ax=axis, label="mean simulated output")
+        axis.set_title("Target outputs by candidate", fontsize=9)
+        save(fig, "target_residual_heatmap")
+    else:
+        out["target_residual_heatmap"] = "skipped: no per-target means in candidate_scores"
+
+    return out
+
+
+#: Stable display order for the local-support labels in figures and tables.
+LOCAL_SUPPORT_ORDER = list(nc.LOCAL_SUPPORT_LABELS)
 
 
 def p_coverage_table(

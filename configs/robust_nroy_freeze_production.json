@@ -240,6 +240,47 @@
     "note": "Secondary and cannot change the primary set in this stage. Requires seed-block bootstrap and leave-one-candidate-out stability before it may be reported; absent justified observation/discrepancy covariance it is explicitly a correlated stochastic-residual diagnostic, not a multivariate acceptance calculation."
   },
 
+  "deferred_decisions": {
+    "_note": [
+      "Decisions the production specification lists as outstanding but which it",
+      "explicitly permits to be frozen LATER than this stage. They are recorded",
+      "here so none of them is silently forgotten. This stage does not read them,",
+      "and they are NOT in nroy_contract.REQUIRED_DECISIONS, so they do not gate",
+      "the freeze stage. They DO gate the stages named below."
+    ],
+    "tier_c_thresholds": {
+      "value": "UNSIGNED",
+      "gates": "scenario and PSA interpretation",
+      "note": "PRODUCTION_LOCKIN_SPEC section 3: a hard Tier C rejection requires a predeclared external bound, a matched definition and a stated consequence; otherwise the result is reported, never used post hoc to tighten acceptance."
+    },
+    "scenario_list": {
+      "value": "UNSIGNED",
+      "proposal": "19 scenarios, 15 seeds",
+      "gates": "run_scenarios.py",
+      "note": "May be frozen after calibration but before any policy result is inspected."
+    },
+    "policy_monte_carlo_extension_rule": {
+      "value": "UNSIGNED",
+      "gates": "run_psa_hta.py",
+      "note": "May be frozen after calibration but before any policy result is inspected."
+    },
+    "n_representative_sets_final": {
+      "value": "UNSIGNED",
+      "gates": "representative freeze",
+      "note": "ROBUST_NROY_FREEZE_SPEC section 4: this stage reports eligible components and their geometry but does not choose the final number of representatives."
+    },
+    "knot_convention": {
+      "value": "2008 primary, 2010 structural sensitivity",
+      "status": "working agreement (decision 5), not signed",
+      "note": "Do not claim the data identify 2008 as superior."
+    },
+    "transmission_conditioning": {
+      "value": "msm_versatility = 0.5; acute and AIDS multipliers at literature point estimates; excluded from ordinary PSA",
+      "status": "working agreement (decision 4), not signed",
+      "note": "Conditioning must be disclosed. The existing PSA artifact cannot be used in text (baseline infections 272 to 109,153 across draws)."
+    }
+  },
+
   "sign_off": {
     "signed_by": "UNSIGNED",
     "signed_date": "UNSIGNED",

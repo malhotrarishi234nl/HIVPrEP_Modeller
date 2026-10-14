@@ -820,3 +820,145 @@ def test_empty_strings_round_trip_as_empty_not_nan(tmp_path):
     restored = ne.read_frame_exact(path)
     assert restored.loc[0, "a"] == ""
     assert str(restored.loc[0, "a"]) != "nan"
+
+
+# ==========================================================================
+# Full stage chain: discovery -> promotion -> confirmation -> bridges -> regions
+# ==========================================================================
+
+def _complete_stage(
+    directory, stage, proposals, seeds, space, vectors, *, parent_manifest=None
+):
+    """Run one stage to COMPLETE and return (ledger, manifest)."""
+    ledger = make_ledger(proposals, seeds, stage=stage)
+    fx.evaluate_units(
+        list(ledger.units), field_for(space), space, TARGETS,
+        vectors=vectors, ledger=ledger,
+    )
+    assert ledger.is_complete()
+    directory.mkdir(parents=True, exist_ok=True)
+    ledger.save(directory)
+    seed_registry = nc.SeedRegistry(
+        discovery=tuple(DISCOVERY_SEEDS),
+        confirmation=tuple(range(910100, 910120)),
+        proposal_rng=910300,
+    )
+    written = ne.write_stage_manifest(
+        directory, stage=stage, model=nc.MODEL_M0, status=nc.STATUS_COMPLETE,
+        ledger=ledger,
+        contract={"target_order": list(TARGETS), "seeds": seed_registry.as_dict()},
+        parent_manifest=parent_manifest,
+    )
+    return ledger, written["manifest_payload"]
+
+
+def test_hashes_and_counts_survive_the_whole_stage_chain(tmp_path):
+    """Spec sec. 9: every parent/child hash and count must survive
+    discovery -> promotion -> confirmation -> bridges -> regions."""
+    space, anchors, proposals, _ = build_design(n_anchors=2, quota=3)
+    vectors = {p.design_id: p.params for p in proposals}
+    confirmation_seeds = list(range(910100, 910105))
+
+    # Discovery on the common five seeds.
+    discovery_dir = tmp_path / "discovery"
+    discovery_ledger, discovery_manifest = _complete_stage(
+        discovery_dir, nc.STAGE_DISCOVERY, proposals, DISCOVERY_SEEDS, space, vectors
+    )
+    assert ne.validate_parent_stage(
+        discovery_dir, expected_stage=nc.STAGE_DISCOVERY, expected_model=nc.MODEL_M0,
+        targets=CONTRACT,
+        seeds=nc.SeedRegistry(
+            discovery=tuple(DISCOVERY_SEEDS),
+            confirmation=tuple(range(910100, 910120)), proposal_rng=910300,
+        ),
+        child_stage=nc.STAGE_PROMOTION,
+    )["parentable"]
+
+    # Promotion carries a subset forward; every survivor keeps its exact hash.
+    promoted = proposals[: max(2, len(proposals) // 2)]
+    promotion_dir = tmp_path / "promotion"
+    promotion_ledger, promotion_manifest = _complete_stage(
+        promotion_dir, nc.STAGE_PROMOTION, promoted, DISCOVERY_SEEDS, space, vectors,
+        parent_manifest=discovery_manifest,
+    )
+    discovery_hashes = {u.vector_hash for u in discovery_ledger.units}
+    promotion_hashes = {u.vector_hash for u in promotion_ledger.units}
+    assert promotion_hashes <= discovery_hashes, "promotion invented a vector"
+    assert len(promotion_hashes) == len(promoted)
+
+    # Confirmation uses the reserved, disjoint block on the promoted set.
+    confirmation_dir = tmp_path / "confirmation"
+    confirmation_ledger, confirmation_manifest = _complete_stage(
+        confirmation_dir, nc.STAGE_CONFIRMATION, promoted, confirmation_seeds,
+        space, vectors, parent_manifest=promotion_manifest,
+    )
+    assert {u.vector_hash for u in confirmation_ledger.units} == promotion_hashes
+    assert not set(confirmation_seeds) & set(DISCOVERY_SEEDS)
+
+    # Bridges between confirmed points; each probe keeps BOTH parents.
+    validator = nd.Validator(space=space.space, model=space)
+    left = nd.Anchor.build("L", vectors[promoted[0].design_id], space)
+    right = nd.Anchor.build("R", vectors[promoted[1].design_id], space)
+    bridge_outcome = nd.bridge_probes(
+        left, right, space, validator, stage=nc.STAGE_BRIDGES,
+        fractions=[0.25, 0.5, 0.75], seed=910300, edge_id="L--R",
+    )
+    bridges = bridge_outcome.accepted
+    assert bridges, "the bridge design produced no probes"
+    bridge_vectors = {p.design_id: p.params for p in bridges}
+    bridges_dir = tmp_path / "bridges"
+    bridge_ledger, bridge_manifest = _complete_stage(
+        bridges_dir, nc.STAGE_BRIDGES, bridges, confirmation_seeds, space,
+        bridge_vectors, parent_manifest=confirmation_manifest,
+    )
+    for unit in bridge_ledger.units:
+        assert unit.parent_ids == ("L", "R")
+    ne.assert_lineage(bridge_ledger.units, known_parent_ids=["L", "R"])
+
+    # Every transition validates against its exact declared parent.
+    for directory, stage, child in (
+        (discovery_dir, nc.STAGE_DISCOVERY, nc.STAGE_PROMOTION),
+        (promotion_dir, nc.STAGE_PROMOTION, nc.STAGE_CONFIRMATION),
+        (confirmation_dir, nc.STAGE_CONFIRMATION, nc.STAGE_BRIDGES),
+        (bridges_dir, nc.STAGE_BRIDGES, nc.STAGE_REGIONS),
+    ):
+        manifest = ne.validate_parent_stage(
+            directory, expected_stage=stage, expected_model=nc.MODEL_M0,
+            targets=CONTRACT,
+            seeds=nc.SeedRegistry(
+                discovery=tuple(DISCOVERY_SEEDS),
+                confirmation=tuple(range(910100, 910120)), proposal_rng=910300,
+            ),
+            child_stage=child,
+        )
+        assert manifest["n_incomplete"] == 0
+        assert manifest["parentable"] is True
+
+    # Count conservation and the recorded parent chain.
+    assert discovery_manifest["n_units"] == len(proposals) * len(DISCOVERY_SEEDS)
+    assert promotion_manifest["n_units"] == len(promoted) * len(DISCOVERY_SEEDS)
+    assert confirmation_manifest["n_units"] == len(promoted) * len(confirmation_seeds)
+    assert bridge_manifest["n_units"] == len(bridges) * len(confirmation_seeds)
+    for child, parent in (
+        (promotion_manifest, discovery_manifest),
+        (confirmation_manifest, promotion_manifest),
+        (bridge_manifest, confirmation_manifest),
+    ):
+        assert child["parent_manifest_sha256"] == ccs.sha256_json(nc.json_safe(parent)), (
+            "a stage does not record the exact hash of its parent manifest"
+        )
+        assert child["parent_stage"] == nc.STAGE_PARENT[child["stage"]]
+
+
+def test_a_stage_cannot_claim_a_parent_it_did_not_descend_from(tmp_path):
+    space, _, proposals, _ = build_design(n_anchors=1, quota=2)
+    vectors = {p.design_id: p.params for p in proposals}
+    _, real_parent = _complete_stage(
+        tmp_path / "discovery", nc.STAGE_DISCOVERY, proposals, DISCOVERY_SEEDS,
+        space, vectors,
+    )
+    _, child = _complete_stage(
+        tmp_path / "promotion", nc.STAGE_PROMOTION, proposals, DISCOVERY_SEEDS,
+        space, vectors, parent_manifest={"stage": "something_else", "n_units": 0},
+    )
+    assert child["parent_manifest_sha256"] != ccs.sha256_json(nc.json_safe(real_parent))
