@@ -41,7 +41,8 @@ value itself is never refused, clipped or snapped.
 | Evaluate and merge bridge work through the same ledger/sharding contracts | bridges `prepare` writes an ordinary `Ledger`; `evaluate` and `merge` are unchanged | `test_bridges_use_the_reserved_confirmation_seed_block`; the whole-chain test runs 2 shards through bridges |
 | Produce edge verdicts and sampled-path-supported components | `command_regions`; `nroy_assess.edge_verdict_table`, `nroy_graph.components` | `test_regions_produces_verdicts_components_and_representatives`; `test_regions_refuses_a_bridges_stage_that_was_not_scored` |
 | Produce `p_coverage.csv` | `command_classify`; `nroy_assess.p_coverage_from_tables` | `test_classify_writes_the_p_coverage_profile_for_m1`; `test_p_coverage_never_counts_work_that_was_not_run` |
-| Wire geometry-only representative selection; produce `representatives.csv` | `command_regions` passes `nroy_assess.node_geometry` (the `u:` columns) and nothing else; `nroy_graph.select_representatives` validates the signed rule | `test_regions_produces_...`; `test_an_ineligible_member_receives_no_representative` |
+| Wire geometry-only representative selection; produce `representatives.csv` | `command_regions` passes `nroy_assess.node_geometry` (the `u:` columns) and nothing else; `nroy_graph.select_representatives` validates the signed rule | `test_regions_produces_...`; `test_a_point_with_neither_local_nor_region_support_gets_no_representative` |
+| Eligibility is "local/**region** support" (spec sec. 1; decision 7) | `nroy_assess.representation_eligibility` — local OR region support, with the ground recorded per candidate in `representation_eligibility.csv`; `node_assessed` keeps the edge verdict off local eligibility so the region route stays reachable | `test_region_support_is_reachable_without_local_support`; `test_eligibility_records_its_ground_rather_than_a_bare_flag`; `test_a_singleton_component_has_no_region_support` |
 | Every signed graph / archive-following / representative decision has a real consumer; `DECISIONS_PENDING_WIRING` reduced, ideally empty | **empty** (`frozenset()`) | `test_every_signed_decision_is_either_consumed_or_declared_unwired`; `test_the_pending_wiring_set_is_empty_and_cannot_rot` |
 
 Decisions that gained a genuine consumer in this pass:
@@ -140,6 +141,33 @@ three of its deliberate-failure guards were red, for exactly that reason.
 
 ---
 
+## 1.9 What the inspection step found in my own work
+
+Recorded because the brief asked for an independent inspection against both
+specifications, and it was worth having.
+
+**A self-sealing error.** Both documents read "demonstrated local/**region**
+support". My first implementation used *local* eligibility twice: to gate
+representative selection, which simply ignored the region half; and to gate the
+**edge verdict**, which made the region half *unreachable*. A point with no
+local support could never acquire region support, because the very edge that
+would establish it was marked unresolved on that point's account. The graph
+existed and could not do the job it exists for. Fixed in section 1.2's last
+row; the failure mode is written into `nroy_assess.node_assessed`'s docstring
+so it cannot be reintroduced quietly.
+
+**A vacuous verification path.** The pipeline tests were structurally green and
+scientifically empty. `surrogate_evaluator` returns about 100–110 per target,
+so with the repository's usual synthetic inputs (`observed = 0`, `B_i = 1`)
+`I_max` is around 100 and **nothing ever confirms**: no `broadly_supported`
+label, no `sampled_path_supported` edge, no representative selected, no region
+support. Every positive path was unexercised through the CLI. This is the same
+shape of mistake as an identity test run on an epidemic that never starts, and
+it was caught the same way — by asking what the numbers actually were rather
+than whether the tests were green.
+
+---
+
 ## 2. Commands and results
 
 ```bash
@@ -202,10 +230,15 @@ Command, in both cases:
 
 | | before | after |
 |---|---|---|
-| passed | 2365 | 2457 |
+| passed | 2365 | 2463 |
 | **failed** | **74** | **71** |
 | skipped | 270 | 270 |
 | errors | 5 | 5 |
+
+The three closed failures are listed below, and the remaining 71 + 5 are
+classified exhaustively, by root cause, in the table after that. The per-file
+breakdown of the "after" run matches that classification exactly, with no
+residue.
 
 Three pre-existing failures are **closed** by this pass, and no new one is
 introduced:
@@ -301,6 +334,17 @@ Stated as gaps, not as work in progress.
 8. **`archive_following.source_pool` with `low_j_archive_vectors` requires an
    archive table** passed to `prepare --archive`, with a `j` column if the
    low-J neighbour rule is signed. No such table has been assembled.
+9. **Nothing checks that a child stage was merged against the same acceptance
+   inputs as its parent.** `merge` records `target_inputs_sha256` in the
+   manifest, and `validate_parent_stage` verifies the target *order* and
+   register hash, but no code compares the observed-value and base-variance
+   hashes across a parent/child pair. A bridges stage merged against different
+   observed values than its confirmation parent would publish edge verdicts on
+   a different acceptance basis, and the merge gate would not notice. The
+   verification suite exploits exactly this to build its negative-local /
+   confirming-bridge fixture, which is how it came to light. Closing it needs a
+   decision about where the check belongs — `merge` does not currently know its
+   parent directory — so it is recorded rather than half-implemented.
 
 ---
 

@@ -297,6 +297,22 @@ def test_classify_produces_local_support_from_a_merged_stage(tmp_path):
     assert "local_support_counts" in manifest["extra"]
 
 
+def test_classify_refuses_to_silently_replace_an_existing_classification(tmp_path):
+    """A classification is a completed artifact a child may already depend on."""
+    harness = Harness(tmp_path)
+    harness.prepare(nc.STAGE_DISCOVERY)
+    harness.evaluate(nc.STAGE_DISCOVERY, 1)
+    harness.merge(nc.STAGE_DISCOVERY)
+    stage_dir = harness.dirs[nc.STAGE_DISCOVERY]
+    argv = ["classify", "--plan", str(harness.plan_path), "--stage-dir", str(stage_dir)]
+    assert runner.main(argv) == 0
+    before = ccs.sha256_file(stage_dir / "local_support.csv")
+    assert runner.main(argv) == 1, "a second classify must be refused"
+    assert ccs.sha256_file(stage_dir / "local_support.csv") == before
+    # ...but it can be replaced deliberately.
+    assert runner.main(argv + ["--reclassify"]) == 0
+
+
 def test_classify_refuses_a_stage_that_was_never_scored(tmp_path):
     harness = Harness(tmp_path)
     harness.prepare(nc.STAGE_DISCOVERY)

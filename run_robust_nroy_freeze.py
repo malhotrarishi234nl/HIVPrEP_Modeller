@@ -1167,6 +1167,18 @@ def command_classify(args: argparse.Namespace) -> int:
             f"{stage_dir} has no candidate_scores.csv, so no acceptance decision exists "
             "to classify. Run 'merge' with --observed and --base-variance first."
         )
+    # A classification is a completed artifact, and a child stage may already
+    # have validated this stage's artifact index against it. Silently
+    # reclassifying would leave that child's recorded parent hash describing a
+    # file that no longer exists, which is the stale-parent case the handoff
+    # contract exists to prevent. Refuse unless the caller says so explicitly.
+    if (stage_dir / "local_support.csv").exists() and not args.reclassify:
+        raise ContractError(
+            f"{stage_dir} already carries local_support.csv. A classification is a "
+            "completed artifact, and a child stage may already have validated this "
+            "stage's artifact index against it. Pass --reclassify to replace it "
+            "deliberately, and re-prepare any stage that already descends from this one."
+        )
     evidence = nas.evidence_by_design(ledger, scores)
     ne.atomic_write_frame(
         stage_dir / "design_evidence.csv", nas.evidence_table(evidence),
@@ -1566,6 +1578,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("classify", help="local-support labels and the p coverage profile")
     p.add_argument("--plan", default=None)
     p.add_argument("--stage-dir", required=True)
+    p.add_argument("--reclassify", action="store_true",
+                   help="deliberately replace an existing classification; any stage "
+                        "already descending from this one must be re-prepared")
     p.set_defaults(func=command_classify)
 
     p = sub.add_parser("regions", help="edge verdicts, components and representatives")

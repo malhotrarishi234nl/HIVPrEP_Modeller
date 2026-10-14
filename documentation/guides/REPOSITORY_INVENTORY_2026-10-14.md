@@ -202,12 +202,52 @@ The failures are dominated by two environmental path problems, not logic:
    expected directory name. Accounts for the
    `test_validation_data_loader.py` errors and some LHS failures.
 
-One substantive pre-existing failure was flagged in the first revision of this
-document and is now **closed**:
+Three pre-existing failures are now **closed**, all in the A-12 family:
 
-- `tests/test_a12_deterministic_allocation_audit.py::test_syntax_candidate_scan_is_nonempty_and_scoped_to_reviewed_files`
-  failed with `untriaged rounding syntax functions: [('run_v3.py', '_step_stage_structured_diagnosis')]`.
+- `test_a12_deterministic_allocation_audit.py::test_syntax_candidate_scan_is_nonempty_and_scoped_to_reviewed_files`
+  — `untriaged rounding syntax functions: [('run_v3.py', '_step_stage_structured_diagnosis')]`.
   See section 8 for the triage.
+- `test_a12_review_guards.py::test_no_new_rounding_call_sites_since_the_audit`
+  — the same function's three `int(np.sum(...))` counters had been new since
+  the call-fingerprint baseline froze. The guard's own message authorises
+  regenerating the baseline **after** classification plus a between-arm
+  materiality judgement on the incremental estimand; `DX-04` records both, so
+  the baseline was regenerated.
+- `test_a12_review_guards.py::test_call_fingerprint_baseline_matches_the_audited_candidate_count`
+  — 266 → 269 call sites, with the reason in the test's docstring.
+
+**Full-suite reconciliation**, before and after, under the no-engine guard:
+
+| | before | after |
+|---|---|---|
+| passed | 2365 | 2463 |
+| **failed** | **74** | **71** |
+| skipped | 270 | 270 |
+| errors | 5 | 5 |
+
+Every remaining failure and error is classified by root cause in
+`NROY_COMPLETION_PASS_2026-10-14.md` section 2a: 39 from the missing
+root-level `1980_test.json`, 6 from the missing `Validation /` directory, 28
+from frozen run artifacts correctly refusing a changed runtime, 1 missing
+`documentation/BACKLOG.md`, 1 missing HTA utility parameter, and 1 cascade.
+The per-file breakdown of the "after" run matches that classification exactly,
+with no residue.
+
+One pre-existing finding there is worth separate attention, because it is the
+same *kind* of question as the M0/M1 identity:
+
+- `tests/test_msm_relative_diagnosis_v13_10.py::TestStepDiagnosisBehavior::test_enabled_with_multiplier_one_matches_baseline`
+  fails with `Multiplier=1.0 should produce identical MSM diagnoses;
+  ref=93601, mult1=86772` — a 7% gap at a parameter value where the path
+  should reduce to the baseline. It is skipped under the no-engine guard, so it
+  surfaces only through the joint-fit runner's validate gate, which already
+  records it as a *tolerated* failure with `"tolerated_failure_still_fails":
+  true`. If the cause is a differently keyed RNG stream on the other branch it
+  is a coupling artefact and the test needs a distributional comparison; if not
+  it is a real discrepancy in the diagnosis path. It should be resolved before
+  the diagnosis mechanism carries production results, and
+  `nroy_identity_gate.check_deliberate_failures` is the pattern for telling
+  the two apart.
 
 ## 6. Implementation status of the robust-NROY stage
 
@@ -291,7 +331,7 @@ they are easy to miss:
 - Reference scan for `fix_thesis` and `__delete_test` across all tracked file
   types: **no remaining references outside the archive**.
 - `git check-ignore` confirms `logs/` is ignored and its files remain on disk.
-- Production-relevant suite (section 3.3): **300 passed** (synthetic; no
+- Production-relevant suite (section 3.3): **319 passed** (synthetic; no
   engine, no trajectories).
 - M0/M1 engine identity suite: **18 passed** (user-run; 14 of them skipped
   under `pytest_no_engine_guard`, which is why the `identity-gate` command
@@ -308,12 +348,18 @@ Only one pre-existing executable file was touched, and by one line:
 | file | change |
 |---|---|
 | `tools/run_a12_deterministic_allocation_audit.py` | +1 line: the `DX-04` inventory row (section 8) |
+| `tools/a12_call_fingerprints.json` | regenerated after that triage, 266 → 269 call sites |
+| `tests/test_a12_review_guards.py` | the matching count, with the reason in its docstring |
 
 Everything else is new (`nroy_*.py`, `run_robust_nroy_freeze.py`, the
 production plan, the test modules, this document), plus `.gitignore` and the
-two spec documents, which the user edited. No existing model, calibration,
-scoring or economics module was modified, so no pre-existing failure is
-attributable to this work.
+two spec documents, which the user edited.
+
+**No existing model, calibration, scoring or economics module was modified.**
+`run_v3.py`, `aids_observation.py`, `calib_extractor.py`,
+`run_coupled_calibration.py` and `run_lhs_calibration.py` — the modules every
+remaining failure points at — have **zero** commits on this branch. No
+pre-existing failure is attributable to this work or to the repository moves.
 
 ## 8. A-12 triage of `_step_stage_structured_diagnosis` (DX-04)
 
