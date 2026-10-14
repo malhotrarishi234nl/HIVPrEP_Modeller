@@ -288,10 +288,7 @@ def command_prepare(args: argparse.Namespace) -> int:
     proposals, outcomes = build_designs(plan, model, anchors, stage=args.stage)
 
     seeds = plan.seeds.seeds_for(args.stage)
-    code_hash = ccs.sha256_json({
-        name: ccs.sha256_file(ROOT / f"{name}.py")
-        for name in ("nroy_contract", "nroy_design", "nroy_execution", "nroy_graph")
-    })
+    code_hash = _code_sha256()
     units = tuple(
         ne.WorkUnit(
             stage=args.stage, model=model.model, design_id=p.design_id, seed=int(seed),
@@ -345,6 +342,17 @@ def command_prepare(args: argparse.Namespace) -> int:
 # ==========================================================================
 # evaluate (worker)
 # ==========================================================================
+
+#: Modules whose content defines the scientific behaviour of a stage.  Hashed
+#: at prepare, re-checked by every worker, and recorded in the manifest.
+CODE_MODULES = ("nroy_contract", "nroy_design", "nroy_execution", "nroy_graph")
+
+
+def _code_sha256() -> str:
+    return ccs.sha256_json({
+        name: ccs.sha256_file(ROOT / f"{name}.py") for name in CODE_MODULES
+    })
+
 
 def _stage_directory(path: str) -> Path:
     """Resolve a prepared stage directory, refusing anything unusable.
@@ -418,6 +426,25 @@ def command_evaluate(args: argparse.Namespace) -> int:
         )
     evaluate = EVALUATORS[args.evaluator]
 
+    # A worker evaluates FROZEN work. If the plan or the code it just loaded is
+    # not the one the ledger was frozen against, the results would carry the
+    # stale frozen hash and the merge would see one uniform, wrong version.
+    # Refuse here rather than launder the hash.
+    frozen_config = {u.config_sha256 for u in ledger.units}
+    if len(frozen_config) == 1 and plan.plan_sha256 not in frozen_config:
+        raise ContractError(
+            f"this worker loaded run plan {plan.plan_sha256}, but the ledger was frozen "
+            f"against {next(iter(frozen_config))}. The plan changed after prepare; "
+            "re-prepare rather than evaluating frozen work against an edited plan."
+        )
+    frozen_code = {u.code_sha256 for u in ledger.units}
+    current_code = _code_sha256()
+    if len(frozen_code) == 1 and current_code not in frozen_code:
+        raise ContractError(
+            f"this worker is running code {current_code}, but the ledger was frozen "
+            f"against {next(iter(frozen_code))}. Re-prepare rather than mixing versions."
+        )
+
     vectors = ne.read_frame_exact(stage_dir / "design_vectors.csv").set_index("design_id")
     assigned = ledger.rows_for_shard(args.shard, args.of)
     done = ledger.completed_keys()
@@ -444,7 +471,8 @@ def command_evaluate(args: argparse.Namespace) -> int:
                 design_id=unit.design_id, seed=unit.seed, stage=unit.stage, model=unit.model,
                 vector_hash=unit.vector_hash, target_order=targets.frozen_order,
                 values=tuple(float(v) for v in values), attempt_id=attempt_id,
-                code_sha256=unit.code_sha256, config_sha256=unit.config_sha256,
+                code_sha256=current_code, config_sha256=plan.plan_sha256,
+                parent_manifest_sha256=unit.parent_manifest_sha256,
             )
             ledger.record_attempt(ne.AttemptRecord(
                 attempt_id=attempt_id, design_id=unit.design_id, seed=unit.seed,
@@ -469,7 +497,9 @@ def command_evaluate(args: argparse.Namespace) -> int:
         shard_dir / f"shard_{args.shard:03d}_of_{args.of:03d}.csv", frame,
         overwrite_completed=True,
     )
-    ledger.save(stage_dir, overwrite_completed=True)
+    # Only this shard's own attempt file. Rewriting the shared ledger here
+    # would clobber the other workers' audit rows (and did).
+    ledger.save_attempts(stage_dir, f"shard_{args.shard:03d}_of_{args.of:03d}")
     print(f"shard {args.shard}/{args.of}: {len(results)} result(s) from "
           f"{len(assigned)} assigned unit(s) [{args.evaluator}]")
     return 0

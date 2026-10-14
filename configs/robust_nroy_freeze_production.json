@@ -87,6 +87,7 @@
     },
     "m1": {
       "calib_space": "UNSIGNED",
+      "calib_space_unsigned_means_generate": "When this is UNSIGNED the runner GENERATES the M1 space from the signed M0 space plus the signed p range, via nroy_contract.build_m1_calib_space. That is deliberate: M1 must be a pure extension of M0, and generating it is what guarantees that. Set it to a path only to pin a pre-generated file.",
       "calib_space_note": "M1 = M0 + p as the LAST coordinate. Generate with nroy_contract.build_m1_calib_space once the p range is signed; do not hand-edit.",
       "n_parameters_proposal": 34
     }

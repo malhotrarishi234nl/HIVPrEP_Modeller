@@ -176,6 +176,7 @@ def summary_facts(
         facts.update({
             "n_anchors": None,
             "evidence_state": nc.EVIDENCE_NOT_RUN,
+            "assessment_ran": False,
             "n_broadly_supported": None,
             "n_ridge_supported": None,
             "n_no_local_support_detected": None,
@@ -188,7 +189,17 @@ def summary_facts(
     else:
         labels = support["local_support_label"].astype(str)
         facts["n_anchors"] = int(len(support))
-        facts["evidence_state"] = nc.EVIDENCE_CONFIRMED
+        # The evidence state describes what the assessment FOUND, not merely
+        # that it ran. Publishing "confirmed_support" for a run whose anchors
+        # are all negative or unresolved would be an overclaim, and it is the
+        # exact conflation sec. 9 forbids.
+        if bool((labels.isin(sorted(nc.ELIGIBLE_LABELS))).any()):
+            facts["evidence_state"] = nc.EVIDENCE_CONFIRMED
+        elif bool((labels == nc.LABEL_UNRESOLVED).any()):
+            facts["evidence_state"] = nc.EVIDENCE_UNRESOLVED
+        else:
+            facts["evidence_state"] = nc.EVIDENCE_NO_SUPPORT
+        facts["assessment_ran"] = True
         for label in nc.LOCAL_SUPPORT_LABELS:
             facts[f"n_{label}"] = int((labels == label).sum())
         facts["n_eligible"] = int(support["eligible_for_representation"].astype(bool).sum())

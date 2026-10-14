@@ -614,14 +614,21 @@ def test_predictive_variance_refuses_a_single_replicate():
 
 def _neighbour(
     design_id, kernel, scale, direction_class, confirmed=True,
-    evidence=None, vector_hash=None,
+    evidence=None, vector_hash=None, direction=None,
 ):
     state = evidence or (nc.EVIDENCE_CONFIRMED if confirmed else nc.EVIDENCE_NO_SUPPORT)
     return nc.NeighbourEvidence(
         design_id=design_id, kernel=kernel, scale=scale,
         direction_class=direction_class, vector_hash=vector_hash or design_id,
-        distance=scale, evidence=state, confirmed=confirmed,
+        distance=scale, evidence=state, confirmed=confirmed, direction=direction,
     )
+
+
+#: Mutually orthogonal directions, so a ridge test asserts real geometric
+#: independence rather than two different label strings.
+_E1 = (1.0, 0.0, 0.0)
+_E2 = (0.0, 1.0, 0.0)
+_E3 = (0.0, 0.0, 1.0)
 
 
 def test_broad_basin_is_broadly_supported():
@@ -654,8 +661,10 @@ def test_broad_support_requires_an_ambient_neighbour_at_the_smaller_scale():
 def test_thin_ridge_is_ridge_supported_not_broadly_supported():
     neighbours = [
         _neighbour("a1", nc.KERNEL_AMBIENT, 0.025, nd.DIRCLASS_AMBIENT, confirmed=False),
-        _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference"),
-        _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:diagnosis+contacts_mixing"),
+        _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference",
+                   direction=_E1),
+        _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:diagnosis+contacts_mixing",
+                   direction=_E2),
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
@@ -665,11 +674,74 @@ def test_thin_ridge_is_ridge_supported_not_broadly_supported():
     assert support.eligible
 
 
+def test_ridge_support_requires_geometric_not_label_independence():
+    """Different labels on nearly collinear moves must not buy ridge support.
+
+    The specification asks for independent direction classes "rather than
+    duplicate or nearly collinear moves", which is a claim about geometry that
+    a label string cannot establish.
+    """
+    nearly_collinear = [
+        _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference",
+                   direction=(1.0, 0.0, 0.0)),
+        _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:a+b",
+                   direction=(1.0, 1e-6, 0.0)),
+    ]
+    support = nc.classify_local_support(
+        nearly_collinear, smaller_ambient_scale=0.025, min_confirming=2,
+        min_direction_classes=2, designed_neighbours=2, feasible_direction_coverage=1.0,
+    )
+    assert support.label == nc.LABEL_UNRESOLVED
+    assert support.n_direction_classes == 1
+    assert not support.eligible
+
+
+def test_ridge_support_is_withheld_when_directions_are_not_supplied():
+    """Independence cannot be verified without the move geometry."""
+    support = nc.classify_local_support(
+        [
+            _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference"),
+            _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:a+b"),
+        ],
+        smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        designed_neighbours=2, feasible_direction_coverage=1.0,
+    )
+    assert support.label == nc.LABEL_UNRESOLVED
+    assert "geometric independence cannot be verified" in support.reason
+
+
+def test_a_retried_failure_does_not_change_the_label_by_row_order():
+    """Dedup is by evidence precedence, not arrival order."""
+    failure = _neighbour(
+        "f", nc.KERNEL_AMBIENT, 0.025, nd.DIRCLASS_AMBIENT, confirmed=False,
+        evidence=nc.EVIDENCE_EXECUTION_FAILURE, vector_hash="SAME",
+    )
+    retry = _neighbour("s", nc.KERNEL_AMBIENT, 0.025, nd.DIRCLASS_AMBIENT,
+                       vector_hash="SAME")
+    other = _neighbour("o", nc.KERNEL_AMBIENT, 0.025, nd.DIRCLASS_AMBIENT,
+                       vector_hash="OTHER")
+    results = [
+        nc.classify_local_support(
+            order, smaller_ambient_scale=0.025, min_confirming=2,
+            min_direction_classes=2, designed_neighbours=2,
+            feasible_direction_coverage=1.0,
+        )
+        for order in ([failure, retry, other], [retry, failure, other])
+    ]
+    assert results[0].label == results[1].label
+    assert results[0].n_failed == results[1].n_failed == 0
+    # The superseded failure stays visible rather than vanishing.
+    assert results[0].n_superseded_failures == 1
+    assert results[1].n_superseded_failures == 1
+
+
 def test_ridge_support_needs_independent_direction_classes():
     """Two confirmations along one direction are not two independent classes."""
     neighbours = [
-        _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "same_direction"),
-        _neighbour("r2", nc.KERNEL_ARCHIVE_FOLLOWING, 0.05, "same_direction"),
+        _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "same_direction",
+                   direction=_E1),
+        _neighbour("r2", nc.KERNEL_ARCHIVE_FOLLOWING, 0.05, "same_direction",
+                   direction=_E1),
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,

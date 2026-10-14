@@ -284,6 +284,10 @@ class UnsignedConfigError(ContractError):
 #: the fail-closed guard, which is the point of the module.
 REQUIRED_DECISIONS: dict[str, str] = {
     # ---- production lock-in spec, section 3 ----
+    "models.m0.calib_space": (
+        "M0 calibration space: every parameter name, bound and constraint; the most "
+        "load-bearing scientific input in the stage"
+    ),
     "target_contract.register_path": "production target register path",
     "target_contract.frozen_order": "exact frozen target order",
     "target_contract.n_targets": "declared number of targets (contract size)",
@@ -1049,9 +1053,31 @@ def promotion_decision(
     )
 
 
+#: Precedence used to reduce several attempts on the SAME vector to one
+#: scientific outcome, best first.  A retry that succeeds after a failure is
+#: explicitly blessed by the specification (sec. 5 "Crash/resume"), so a later
+#: success must win over an earlier failure -- but the failure stays visible in
+#: the audit counts.  Reducing by precedence rather than by arrival order is
+#: what makes the classification independent of row order.
+EVIDENCE_PRECEDENCE = (
+    EVIDENCE_CONFIRMED,
+    EVIDENCE_NO_SUPPORT,
+    EVIDENCE_UNRESOLVED,
+    EVIDENCE_EXECUTION_FAILURE,
+    EVIDENCE_NOT_RUN,
+)
+
+
 @dataclass(frozen=True)
 class NeighbourEvidence:
-    """One evaluated neighbour of an anchor, as it bears on local support."""
+    """One evaluated neighbour of an anchor, as it bears on local support.
+
+    ``direction`` is the probe's move direction in the normalised metric.  It
+    is required of any neighbour that is to count towards *ridge* support,
+    because the specification demands independent direction classes "rather
+    than duplicate or nearly collinear moves" (sec. 3) -- a statement about
+    geometry that a label string cannot establish.
+    """
 
     design_id: str
     kernel: str
@@ -1061,6 +1087,7 @@ class NeighbourEvidence:
     distance: float
     evidence: str
     confirmed: bool
+    direction: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.evidence not in EVIDENCE_STATES:
@@ -1072,6 +1099,10 @@ class NeighbourEvidence:
                 f"neighbour {self.design_id} is marked confirmed but its evidence state "
                 f"is {self.evidence!r}"
             )
+
+    @property
+    def precedence(self) -> int:
+        return EVIDENCE_PRECEDENCE.index(self.evidence)
 
 
 @dataclass(frozen=True)
@@ -1089,6 +1120,7 @@ class LocalSupport:
     n_not_run: int
     feasible_direction_coverage: float | None = None
     redraw_exhausted: bool = False
+    n_superseded_failures: int = 0
 
     def __post_init__(self) -> None:
         if self.label not in LOCAL_SUPPORT_LABELS:
@@ -1113,6 +1145,7 @@ class LocalSupport:
             "n_neighbours_not_run": self.n_not_run,
             "feasible_direction_coverage": self.feasible_direction_coverage,
             "redraw_exhausted": bool(self.redraw_exhausted),
+            "n_superseded_failures": self.n_superseded_failures,
         }
 
 
@@ -1142,14 +1175,28 @@ def classify_local_support(
        **unresolved** instead.  A negative label is reserved for a design that
        genuinely had the opportunity to find support.
     """
+    # Only unique vector hashes count as neighbours (spec sec. 3).  Several
+    # rows may share a hash when an attempt was retried, so reduce by evidence
+    # PRECEDENCE, not by arrival order: taking "first wins" made the label
+    # depend on row order and let a superseded failure hide a later success
+    # (or vice versa).
     unique: dict[str, NeighbourEvidence] = {}
     for item in neighbours:
-        # Only unique vector hashes count as neighbours (spec sec. 3).
-        unique.setdefault(item.vector_hash, item)
+        incumbent = unique.get(item.vector_hash)
+        if incumbent is None or item.precedence < incumbent.precedence:
+            unique[item.vector_hash] = item
     evidence = list(unique.values())
 
+    # Failures are counted on the RESOLVED state of each vector, so a failure
+    # that a retry superseded no longer forces the anchor to unresolved -- but
+    # it is still reported separately rather than disappearing.
     n_failed = sum(1 for n in evidence if n.evidence == EVIDENCE_EXECUTION_FAILURE)
     n_not_run = sum(1 for n in evidence if n.evidence == EVIDENCE_NOT_RUN)
+    n_superseded_failures = sum(
+        1 for item in neighbours
+        if item.evidence == EVIDENCE_EXECUTION_FAILURE
+        and unique[item.vector_hash].evidence != EVIDENCE_EXECUTION_FAILURE
+    )
     confirmed = [n for n in evidence if n.confirmed]
 
     ambient = [n for n in confirmed if n.kernel == KERNEL_AMBIENT]
@@ -1158,18 +1205,36 @@ def classify_local_support(
         n for n in confirmed
         if n.kernel in (KERNEL_ARCHIVE_FOLLOWING, KERNEL_CROSS_BLOCK)
     ]
-    direction_classes = {n.direction_class for n in correlation}
+    # Independent direction classes must be established GEOMETRICALLY.  Two
+    # moves carrying different labels can still be the same direction, and the
+    # specification asks for independence "rather than duplicate or nearly
+    # collinear moves".  When a correlation-following neighbour arrives without
+    # its direction we cannot verify independence, so ridge support is withheld
+    # and the anchor is reported as directionally unverified rather than
+    # credited on an unchecked label.
+    directions = [n.direction for n in correlation]
+    directions_available = bool(correlation) and all(d is not None for d in directions)
+    if directions_available:
+        import nroy_design  # noqa: PLC0415 - avoids a module-level import cycle
+
+        n_direction_classes = nroy_design.direction_classes(
+            [np.asarray(d, dtype=float) for d in directions]
+        )
+    else:
+        n_direction_classes = 0
+    label_classes = {n.direction_class for n in correlation}
 
     counts = {
         "n_confirmed_ambient_small": len(ambient_small),
         "n_confirmed_ambient": len(ambient),
         "n_confirmed_correlation": len(correlation),
-        "n_direction_classes": len(direction_classes),
+        "n_direction_classes": n_direction_classes,
         "n_evaluated": len(evidence) - n_not_run,
         "n_failed": n_failed,
         "n_not_run": n_not_run,
         "feasible_direction_coverage": feasible_direction_coverage,
         "redraw_exhausted": redraw_exhausted,
+        "n_superseded_failures": n_superseded_failures,
     }
 
     incomplete = n_failed > 0 or n_not_run > 0 or len(evidence) < int(designed_neighbours)
@@ -1187,14 +1252,15 @@ def classify_local_support(
         )
     if (
         len(correlation) >= int(min_confirming)
-        and len(direction_classes) >= int(min_direction_classes)
+        and directions_available
+        and n_direction_classes >= int(min_direction_classes)
     ):
         return LocalSupport(
             label=LABEL_RIDGE_SUPPORTED,
             reason=(
                 f"{len(correlation)} correlation-following neighbours confirmed across "
-                f"{len(direction_classes)} independent direction classes; no qualifying "
-                "ambient support"
+                f"{n_direction_classes} geometrically independent direction classes "
+                f"(labels present: {len(label_classes)}); no qualifying ambient support"
             ),
             **counts,
         )
@@ -1225,11 +1291,22 @@ def classify_local_support(
             ),
             **counts,
         )
-    if len(correlation) > 0 and len(direction_classes) < int(min_direction_classes):
+    if correlation and not directions_available:
         return LocalSupport(
             label=LABEL_UNRESOLVED,
             reason=(
-                f"correlation-following confirmations span only {len(direction_classes)} "
+                f"{len(correlation)} correlation-following neighbour(s) confirmed but their "
+                "move directions were not supplied, so geometric independence cannot be "
+                "verified; a direction-class label alone does not establish that two moves "
+                "are not nearly collinear"
+            ),
+            **counts,
+        )
+    if len(correlation) > 0 and n_direction_classes < int(min_direction_classes):
+        return LocalSupport(
+            label=LABEL_UNRESOLVED,
+            reason=(
+                f"correlation-following confirmations span only {n_direction_classes} "
                 f"direction class(es), fewer than the required {int(min_direction_classes)}; "
                 "the design is directionally inadequate rather than negative"
             ),

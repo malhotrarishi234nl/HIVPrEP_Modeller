@@ -419,6 +419,7 @@ def test_the_package_distinguishes_no_support_from_no_simulation():
     """'nothing found' and 'nothing run' must never be the same number."""
     nothing_run = nrp.summary_facts({}, status=nc.STATUS_PREPARED, model=nc.MODEL_M0)
     assert nothing_run["evidence_state"] == nc.EVIDENCE_NOT_RUN
+    assert nothing_run["assessment_ran"] is False
     assert nothing_run[f"n_{nc.LABEL_NO_LOCAL_SUPPORT}"] is None
     # None, never 0: "nothing ran" must not render as "we found none".
     for key in (
@@ -434,11 +435,32 @@ def test_the_package_distinguishes_no_support_from_no_simulation():
         }])},
         status=nc.STATUS_COMPLETE, model=nc.MODEL_M0,
     )
-    assert ran_and_found_nothing["evidence_state"] == nc.EVIDENCE_CONFIRMED
+    # The assessment ran, but it confirmed nothing. Reporting
+    # "confirmed_support" here would be an overclaim.
+    assert ran_and_found_nothing["assessment_ran"] is True
+    assert ran_and_found_nothing["evidence_state"] == nc.EVIDENCE_NO_SUPPORT
     assert ran_and_found_nothing[f"n_{nc.LABEL_NO_LOCAL_SUPPORT}"] == 1
 
     summary = nrp.render_executive_summary(nothing_run, question="Q")
     assert "not run" in summary
+
+
+def test_evidence_state_reflects_findings_not_merely_that_the_run_happened():
+    """Three runs that all 'ran' but found different things."""
+    def facts_for(label):
+        return nrp.summary_facts(
+            {"local_support": pd.DataFrame([{
+                "candidate_id": "A0", "local_support_label": label,
+                "eligible_for_representation": label in nc.ELIGIBLE_LABELS,
+            }])},
+            status=nc.STATUS_COMPLETE, model=nc.MODEL_M0,
+        )
+    assert facts_for(nc.LABEL_BROADLY_SUPPORTED)["evidence_state"] == nc.EVIDENCE_CONFIRMED
+    assert facts_for(nc.LABEL_RIDGE_SUPPORTED)["evidence_state"] == nc.EVIDENCE_CONFIRMED
+    assert facts_for(nc.LABEL_UNRESOLVED)["evidence_state"] == nc.EVIDENCE_UNRESOLVED
+    assert facts_for(nc.LABEL_NO_LOCAL_SUPPORT)["evidence_state"] == nc.EVIDENCE_NO_SUPPORT
+    for label in nc.LOCAL_SUPPORT_LABELS:
+        assert facts_for(label)["assessment_ran"] is True
 
 
 def test_all_five_evidence_states_are_documented_in_the_package():

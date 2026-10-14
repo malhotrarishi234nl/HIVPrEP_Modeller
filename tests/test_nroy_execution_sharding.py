@@ -298,17 +298,28 @@ def test_duplicate_rows_are_refused_even_when_values_agree():
         ne.merge_seed_results(ledger, results + [results[0]], targets=CONTRACT)
 
 
-def test_mixed_code_or_config_versions_are_refused():
+def test_stale_code_or_config_hashes_are_refused_against_the_ledger():
+    """Each row is checked against its FROZEN LEDGER ROW, not just against the
+    other shards. Checking only that the shards agree with each other would
+    accept a uniformly stale run, which spec sec. 9 requires to fail closed.
+    This subsumes the weaker cross-shard "mixed versions" check: if every row
+    must equal the ledger, no two rows can disagree."""
     space, _, proposals, _ = build_design(n_anchors=1, quota=2)
     ledger = make_ledger(proposals)
     vectors = {p.design_id: p.params for p in proposals}
     results = evaluate(ledger, list(ledger.units), space, vectors)
-    for field, message in (("code_sha256", "mixed code"), ("config_sha256", "mixed config")):
-        tampered = [
-            ne.SeedResult(**{**results[0].__dict__, field: "OTHER"})
-        ] + results[1:]
+    for field, message in (
+        ("code_sha256", "stale code hash"),
+        ("config_sha256", "stale config hash"),
+        ("parent_manifest_sha256", "parent-manifest hash mismatch"),
+    ):
+        # A single tampered row, and a UNIFORMLY tampered run, must both fail.
+        one = [ne.SeedResult(**{**results[0].__dict__, field: "OTHER"})] + results[1:]
         with pytest.raises(ne.MergeRefused, match=message):
-            ne.merge_seed_results(ledger, tampered, targets=CONTRACT)
+            ne.merge_seed_results(ledger, one, targets=CONTRACT)
+        uniform = [ne.SeedResult(**{**r.__dict__, field: "OTHER"}) for r in results]
+        with pytest.raises(ne.MergeRefused, match=message):
+            ne.merge_seed_results(ledger, uniform, targets=CONTRACT)
 
 
 def test_a_failed_attempt_cannot_masquerade_as_a_result():
@@ -962,3 +973,84 @@ def test_a_stage_cannot_claim_a_parent_it_did_not_descend_from(tmp_path):
         space, vectors, parent_manifest={"stage": "something_else", "n_units": 0},
     )
     assert child["parent_manifest_sha256"] != ccs.sha256_json(nc.json_safe(real_parent))
+
+
+# ==========================================================================
+# Genuinely concurrent workers (separate processes, shared filesystem)
+# ==========================================================================
+
+def test_concurrent_workers_do_not_destroy_the_attempt_audit(tmp_path):
+    """Spec sec. 5 opens: distributed execution must be scientifically
+    identical to a single-process run.
+
+    Every other sharding test here drives shards sequentially inside ONE
+    process, which cannot catch a shared-file race. This runs real concurrent
+    subprocesses. Previously each worker rewrote one shared
+    ``ledger_attempts.csv`` from its own stale in-memory copy, so 96 of 160
+    attempt rows were silently destroyed and the merge then refused every
+    orphaned result -- failing closed, but making distributed execution
+    unusable. Attempts are now one append-only file per shard.
+    """
+    import subprocess
+    import sys as _sys
+
+    plan_path = fx.write_signed_plan(tmp_path)
+    space = fx.m0_space()
+    anchors = tmp_path / "anchors.csv"
+    pd.DataFrame([
+        {"candidate_id": f"A{i}", **v}
+        for i, v in enumerate(fx.valid_interior_vectors(space, 2, seed=11))
+    ]).to_csv(anchors, index=False)
+
+    stage_dir = tmp_path / "stage"
+    import run_robust_nroy_freeze as _runner
+    assert _runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(stage_dir),
+        "--anchors", str(anchors),
+    ]) == 0
+    n_units = len(ne.Ledger.load(stage_dir).units)
+
+    n_shards = 3
+    processes = [
+        subprocess.Popen(
+            [_sys.executable, str(fx.ROOT / "run_robust_nroy_freeze.py"), "evaluate",
+             "--plan", str(plan_path), "--stage-dir", str(stage_dir),
+             "--shard", str(shard), "--of", str(n_shards), "--evaluator", "surrogate"],
+            cwd=str(fx.ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+        for shard in range(n_shards)
+    ]
+    for process in processes:
+        _, err = process.communicate(timeout=600)
+        assert process.returncode == 0, err.decode()[-2000:]
+
+    restored = ne.Ledger.load(stage_dir)
+    assert len(restored.attempts) == n_units, (
+        f"{n_units - len(restored.attempts)} attempt row(s) lost to concurrency"
+    )
+    assert len(restored.completed_keys()) == n_units
+    assert restored.is_complete()
+
+    # Each shard wrote its own file; none overwrote another's.
+    shard_files = sorted((stage_dir / ne.Ledger.ATTEMPTS_DIR).glob("*.csv"))
+    assert len(shard_files) == n_shards
+    counts = [len(pd.read_csv(f)) for f in shard_files]
+    assert sum(counts) == n_units, f"per-shard attempt counts {counts} do not sum to {n_units}"
+
+    # And the consolidated scientific table still merges cleanly.
+    results = []
+    for path in sorted((stage_dir / "shards").glob("*.csv")):
+        frame = ne.read_frame_exact(path)
+        for _, row in frame.iterrows():
+            results.append(ne.SeedResult(
+                design_id=str(row["design_id"]), seed=int(row["seed"]),
+                stage=str(row["stage"]), model=str(row["model"]),
+                vector_hash=str(row["vector_hash"]), target_order=TARGETS,
+                values=tuple(float(row[f"target:{t}"]) for t in TARGETS),
+                attempt_id=str(row["attempt_id"]),
+                code_sha256=str(row["code_sha256"]),
+                config_sha256=str(row["config_sha256"]),
+                parent_manifest_sha256=str(row.get("parent_manifest_sha256", "") or ""),
+            ))
+    merged = ne.merge_seed_results(restored, results, targets=CONTRACT)
+    assert len(merged) == n_units

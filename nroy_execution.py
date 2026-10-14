@@ -290,6 +290,9 @@ class Ledger:
     attempts: list[AttemptRecord] = field(default_factory=list)
     frozen_sha256: str = ""
     design_rng_state: dict = field(default_factory=dict)
+    #: Attempts recorded by THIS process, as opposed to those restored from
+    #: disk.  Only these are written to this worker's own attempt file.
+    recorded_this_process: list[AttemptRecord] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         seen: dict[tuple[str, str, str, int], WorkUnit] = {}
@@ -402,6 +405,7 @@ class Ledger:
                     f"result ({already[0].attempt_id}); a completed unit is never rerun"
                 )
         self.attempts.append(attempt)
+        self.recorded_this_process.append(attempt)
         return attempt
 
     def completed_keys(self) -> set[tuple[str, str, str, int]]:
@@ -428,6 +432,29 @@ class Ledger:
 
     # ---- persistence -------------------------------------------------
 
+    #: Subdirectory holding one append-only attempt file per shard.
+    ATTEMPTS_DIR = "attempts"
+
+    def save_attempts(self, directory: str | Path, shard_label: str) -> Path:
+        """Write THIS worker's attempts to its own file.
+
+        Concurrent workers must never share one attempt file. Each loads the
+        ledger, appends in memory, and a single shared ``ledger_attempts.csv``
+        would then be overwritten from whichever stale copy saved last --
+        silently destroying the other shards' audit rows. One file per shard is
+        lock-free and append-only in the only sense that matters here: no
+        worker ever rewrites another's rows.
+        """
+        base = Path(directory) / self.ATTEMPTS_DIR
+        base.mkdir(parents=True, exist_ok=True)
+        mine = list(self.recorded_this_process)
+        frame = (
+            pd.DataFrame([a.as_row() for a in mine]) if mine else self.attempt_frame().iloc[0:0]
+        )
+        return atomic_write_frame(
+            base / f"{shard_label}.csv", frame, overwrite_completed=True
+        )
+
     def save(self, directory: str | Path, *, overwrite_completed: bool = False) -> dict:
         base = Path(directory)
         paths = {
@@ -436,7 +463,7 @@ class Ledger:
                 overwrite_completed=overwrite_completed),
             "ledger_attempts": atomic_write_frame(
                 base / "ledger_attempts.csv", self.attempt_frame(),
-                overwrite_completed=True),  # the audit trail is append-only
+                overwrite_completed=True),  # single-process view only
             "ledger_meta": atomic_write_json(
                 base / "ledger_meta.json",
                 {
@@ -479,12 +506,23 @@ class Ledger:
                 target_schema=schema,
             ))
         attempts: list[AttemptRecord] = []
-        attempts_path = base / "ledger_attempts.csv"
-        if attempts_path.exists():
+        seen_ids: set[str] = set()
+        # The shared file is the single-process view; attempts/*.csv are the
+        # per-shard trails. Union them, de-duplicating by attempt_id, so a
+        # distributed run reconstructs the COMPLETE audit history.
+        sources = [base / "ledger_attempts.csv"]
+        sources += sorted((base / cls.ATTEMPTS_DIR).glob("*.csv")) \
+            if (base / cls.ATTEMPTS_DIR).exists() else []
+        for attempts_path in sources:
+            if not attempts_path.exists():
+                continue
             frame = read_frame_exact(attempts_path)
             for _, row in frame.iterrows():
                 if not str(row.get("attempt_id", "")):
                     continue
+                if str(row["attempt_id"]) in seen_ids:
+                    continue
+                seen_ids.add(str(row["attempt_id"]))
                 attempts.append(AttemptRecord(
                     attempt_id=str(row["attempt_id"]),
                     design_id=str(row["design_id"]),
@@ -552,6 +590,7 @@ class SeedResult:
     attempt_id: str
     code_sha256: str
     config_sha256: str
+    parent_manifest_sha256: str = ""
 
     def __post_init__(self) -> None:
         if len(self.values) != len(self.target_order):
@@ -580,6 +619,7 @@ class SeedResult:
             "result_hash": self.result_hash,
             "code_sha256": self.code_sha256,
             "config_sha256": self.config_sha256,
+            "parent_manifest_sha256": self.parent_manifest_sha256,
         }
         for name, value in zip(self.target_order, self.values):
             row[f"target:{name}"] = float(value)
@@ -644,6 +684,30 @@ def merge_seed_results(
                 f"{key}: non-finite outputs presented as a scientific result"
             )
             continue
+        # Stale-hash rows must fail closed (spec sec. 9). Checking only that
+        # the shards agree with EACH OTHER would accept a uniformly stale run,
+        # so each row is compared against its own frozen ledger row.
+        if result.code_sha256 != unit.code_sha256:
+            problems.append(
+                f"{key}: stale code hash (result {result.code_sha256}, "
+                f"ledger {unit.code_sha256})"
+            )
+            continue
+        if result.config_sha256 != unit.config_sha256:
+            problems.append(
+                f"{key}: stale config hash (result {result.config_sha256}, "
+                f"ledger {unit.config_sha256})"
+            )
+            continue
+        if (
+            result.parent_manifest_sha256
+            and result.parent_manifest_sha256 != unit.parent_manifest_sha256
+        ):
+            problems.append(
+                f"{key}: parent-manifest hash mismatch (result "
+                f"{result.parent_manifest_sha256}, ledger {unit.parent_manifest_sha256})"
+            )
+            continue
         code_versions.add(result.code_sha256)
         config_versions.add(result.config_sha256)
         collected[key] = result
@@ -682,7 +746,7 @@ def merge_seed_results(
     # Deterministic column order: identity columns, then targets in frozen order.
     identity = [
         "design_id", "seed", "stage", "model", "vector_hash", "attempt_id",
-        "result_hash", "code_sha256", "config_sha256",
+        "result_hash", "code_sha256", "config_sha256", "parent_manifest_sha256",
     ]
     ordered = identity + [f"target:{name}" for name in targets.frozen_order]
     return frame.reindex(columns=ordered).sort_values(["design_id", "seed"]).reset_index(drop=True)

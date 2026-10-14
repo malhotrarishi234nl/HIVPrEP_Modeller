@@ -40,6 +40,7 @@ P_CONFIG_PATH = (
 #: fixtures, not signed production decisions: the shipped production plan
 #: deliberately leaves every one of these unsigned.
 TEST_SIGNATURES: dict[str, object] = {
+    "models.m0.calib_space": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
     "target_contract.register_path": "configs/hm_target_register_focused_20260916.json",
     "target_contract.n_targets": 13,
     "target_contract.frozen_order": list(ccs.FROZEN_TARGET_ORDER),
