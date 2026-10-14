@@ -230,15 +230,19 @@ Command, in both cases:
 
 | | before | after |
 |---|---|---|
-| passed | 2365 | 2459 |
+| passed | 2365 | 2462 |
 | **failed** | **74** | **71** |
 | skipped | 270 | 270 |
 | errors | 5 | 5 |
 
+Measured, not inferred: the "after" figures are from a run at commit
+`b3ed35a`, and the failure figures were confirmed by **three** independent
+runs with byte-identical per-file breakdowns.
+
 The three closed failures are listed below, and the remaining 71 + 5 are
-classified exhaustively, by root cause, in the table after that. The per-file
-breakdown of the "after" run matches that classification exactly, with no
-residue.
+classified exhaustively, by root cause, in the table after that. The
+classification sums to exactly 76 against the observed per-file breakdown,
+with no residue.
 
 Three pre-existing failures are **closed** by this pass, and no new one is
 introduced:

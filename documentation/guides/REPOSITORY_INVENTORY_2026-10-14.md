@@ -220,7 +220,7 @@ Three pre-existing failures are now **closed**, all in the A-12 family:
 
 | | before | after |
 |---|---|---|
-| passed | 2365 | 2459 |
+| passed | 2365 | 2462 |
 | **failed** | **74** | **71** |
 | skipped | 270 | 270 |
 | errors | 5 | 5 |
