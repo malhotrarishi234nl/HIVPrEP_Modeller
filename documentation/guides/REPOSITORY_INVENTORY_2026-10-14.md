@@ -220,7 +220,7 @@ Three pre-existing failures are now **closed**, all in the A-12 family:
 
 | | before | after |
 |---|---|---|
-| passed | 2365 | 2463 |
+| passed | 2365 | 2459 |
 | **failed** | **74** | **71** |
 | skipped | 270 | 270 |
 | errors | 5 | 5 |
@@ -331,7 +331,7 @@ they are easy to miss:
 - Reference scan for `fix_thesis` and `__delete_test` across all tracked file
   types: **no remaining references outside the archive**.
 - `git check-ignore` confirms `logs/` is ignored and its files remain on disk.
-- Production-relevant suite (section 3.3): **319 passed** (synthetic; no
+- Production-relevant suite (section 3.3): **322 passed** (synthetic; no
   engine, no trajectories).
 - M0/M1 engine identity suite: **18 passed** (user-run; 14 of them skipped
   under `pytest_no_engine_guard`, which is why the `identity-gate` command
@@ -381,7 +381,7 @@ genuine fragmentation of a rate block, which the A-12 audit treats as a defect
 unless it is bounded and justified.
 
 **Measured, not assumed** (`tests/test_a12_stage_structured_diagnosis_allocation.py`,
-35 tests, no engine):
+30 tests, no engine):
 
 | property | result |
 |---|---|

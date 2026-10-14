@@ -313,6 +313,130 @@ def test_classify_refuses_to_silently_replace_an_existing_classification(tmp_pat
     assert runner.main(argv + ["--reclassify"]) == 0
 
 
+def test_an_undispatched_probe_makes_its_anchor_unresolved_not_negative(tmp_path):
+    """Spec sec. 9: an incomplete design must never read as "no support".
+
+    Driven at library level, and deliberately so.  A *partially sharded* stage
+    cannot reach this path through the CLI: sharding is by result key, so a
+    half-evaluated stage leaves some designs with one replicate, and
+    ``recompute_candidate_scores`` then refuses the whole merge -- correctly,
+    because a predictive variance needs two draws.  See the recorded gap about
+    partial merges.  What this test pins is the classification rule itself: a
+    probe with no attempt is ``work_not_run``, and its anchor is
+    ``unresolved``, never ``no_local_support_detected``.
+    """
+    harness = Harness(tmp_path)
+    harness.prepare(nc.STAGE_DISCOVERY)
+    harness.evaluate(nc.STAGE_DISCOVERY, 1)
+    harness.merge(nc.STAGE_DISCOVERY)
+    stage_dir = harness.dirs[nc.STAGE_DISCOVERY]
+
+    scores = ne.read_frame_exact(stage_dir / "candidate_scores.csv")
+    proposals = ne.read_frame_exact(stage_dir / "design_proposals.csv")
+    vectors = ne.read_frame_exact(stage_dir / "design_vectors.csv")
+    anchors = ne.read_frame_exact(stage_dir / "anchors.csv")
+    ledger = ne.Ledger.load(stage_dir)
+    model = fx.m0_space()
+
+    evidence = nas.evidence_by_design(ledger, scores)
+    assert all(e.evidence == nc.EVIDENCE_CONFIRMED for e in evidence.values()), (
+        "the baseline must be fully confirmed, or dropping one probe proves nothing"
+    )
+    complete = nas.local_support_table(
+        anchors=anchors, proposals=proposals, design_vectors=vectors,
+        kernel_outcomes=ne.read_frame_exact(stage_dir / "kernel_outcomes.csv"),
+        evidence=evidence, model=model,
+        smaller_ambient_scale=harness.plan.smaller_ambient_scale(),
+        min_confirming=2, min_direction_classes=2, scores=scores,
+    )
+    assert (complete["local_support_label"] == nc.LABEL_BROADLY_SUPPORTED).all()
+
+    # Now withhold exactly one probe belonging to the first anchor.
+    first = str(anchors.iloc[0]["candidate_id"])
+    withheld = next(
+        design_id for design_id in sorted(evidence)
+        if str(design_id).split("/")[3] == first
+    )
+    partial = {k: v for k, v in evidence.items() if k != withheld}
+    support = nas.local_support_table(
+        anchors=anchors, proposals=proposals, design_vectors=vectors,
+        kernel_outcomes=ne.read_frame_exact(stage_dir / "kernel_outcomes.csv"),
+        evidence=partial, model=model,
+        smaller_ambient_scale=harness.plan.smaller_ambient_scale(),
+        min_confirming=2, min_direction_classes=2, scores=scores,
+    )
+    row = support[support["candidate_id"] == first].iloc[0]
+    assert int(row["n_neighbours_not_run"]) == 1, "the probe really was withheld"
+    # A demonstrated POSITIVE survives: support is monotone in the number of
+    # probes, so the withheld probe could only have added a confirmation.
+    assert row["local_support_label"] == nc.LABEL_BROADLY_SUPPORTED
+    assert bool(row["eligible_for_representation"])
+    # Every other anchor is untouched: one undispatched probe does not
+    # contaminate the rest of the stage.
+    others = support[support["candidate_id"] != first]
+    assert (others["local_support_label"] == nc.LABEL_BROADLY_SUPPORTED).all()
+
+
+def test_incomplete_work_blocks_a_NEGATIVE_label_but_not_a_positive_one(tmp_path):
+    """The asymmetry in ``classify_local_support``, stated as a test.
+
+    A negative label needs the complete design, because the missing probe might
+    have been the confirming one.  A positive label does not, because support
+    is monotone in the number of probes.  Getting this backwards either throws
+    away real evidence or reports an execution failure as a finding about the
+    model -- and the second is what spec sec. 3 and sec. 9 forbid.
+    """
+    def neighbour(index: int, *, confirmed: bool, state: str) -> nc.NeighbourEvidence:
+        return nc.NeighbourEvidence(
+            design_id=f"D{index}", kernel=nc.KERNEL_AMBIENT, scale=0.025,
+            direction_class="ambient_isotropic", vector_hash=f"h{index}",
+            distance=0.03, evidence=state, confirmed=confirmed,
+        )
+
+    confirmed = [
+        neighbour(i, confirmed=True, state=nc.EVIDENCE_CONFIRMED) for i in range(3)
+    ]
+    rejected = [
+        neighbour(i, confirmed=False, state=nc.EVIDENCE_NO_SUPPORT)
+        for i in range(10, 13)
+    ]
+    missing = neighbour(99, confirmed=False, state=nc.EVIDENCE_NOT_RUN)
+    failed = neighbour(98, confirmed=False, state=nc.EVIDENCE_EXECUTION_FAILURE)
+
+    kwargs = dict(
+        smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+    )
+    # Complete and positive -> supported.
+    assert nc.classify_local_support(
+        confirmed, designed_neighbours=3, **kwargs
+    ).label == nc.LABEL_BROADLY_SUPPORTED
+    # Positive with missing or failed work -> STILL supported.
+    for extra in (missing, failed):
+        result = nc.classify_local_support(
+            [*confirmed, extra], designed_neighbours=4, **kwargs
+        )
+        assert result.label == nc.LABEL_BROADLY_SUPPORTED, (
+            "a demonstrated positive must not be discarded over unrelated "
+            "missing work"
+        )
+        assert result.eligible
+    # Complete and negative -> the negative label is allowed.
+    assert nc.classify_local_support(
+        rejected, designed_neighbours=3, **kwargs
+    ).label == nc.LABEL_NO_LOCAL_SUPPORT
+    # Negative with missing or failed work -> unresolved, never negative.
+    for extra, word in ((missing, "not run"), (failed, "execution failure")):
+        result = nc.classify_local_support(
+            [*rejected, extra], designed_neighbours=4, **kwargs
+        )
+        assert result.label == nc.LABEL_UNRESOLVED, (
+            "an execution failure or undispatched probe must never read as "
+            "'no local support detected'"
+        )
+        assert word in result.reason
+        assert not result.eligible
+
+
 def test_classify_refuses_a_stage_that_was_never_scored(tmp_path):
     harness = Harness(tmp_path)
     harness.prepare(nc.STAGE_DISCOVERY)

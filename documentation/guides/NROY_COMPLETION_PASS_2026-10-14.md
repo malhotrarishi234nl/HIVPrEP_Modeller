@@ -119,7 +119,7 @@ has been recorded, because no stage has been run.
 | Fragmentation sensitivity | measured at **≤ 1 person per population per step**, both signs, occurring in ~21% of a random sweep, and provably unable to change the total | `test_splitting_the_shared_rate_block_costs_at_most_one_person_per_population` (10 cases); `test_the_fragmentation_is_real_and_both_signs_occur`; `test_the_fragmentation_can_never_change_the_total` |
 | Document why acceptable, or fix it | documented: the stage-resolved diagnosis counters are model **outputs**, so the allocation must be resolved by stage; merging would mean splitting a merged total by pool weights, a different estimator. Both options are in the inventory row with which is which | `REPOSITORY_INVENTORY_2026-10-14.md` section 8 |
 
-The 35 tests drive the **real method** with a minimal stand-in object rather
+The 30 tests drive the **real method** with a minimal stand-in object rather
 than reimplementing its partition, so they cannot drift from the code they
 certify, and a non-vacuity gate requires the fragmentation to actually occur.
 
@@ -192,7 +192,7 @@ No production simulation may start.
 ```
 
 ```
-300 passed
+322 passed
 ```
 
 ```bash
@@ -230,7 +230,7 @@ Command, in both cases:
 
 | | before | after |
 |---|---|---|
-| passed | 2365 | 2463 |
+| passed | 2365 | 2459 |
 | **failed** | **74** | **71** |
 | skipped | 270 | 270 |
 | errors | 5 | 5 |

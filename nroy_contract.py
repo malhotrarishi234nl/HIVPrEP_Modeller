@@ -1312,18 +1312,30 @@ def classify_local_support(
 ) -> LocalSupport:
     """Classify an anchor's local support (spec sec. 3).
 
-    The ordering of the checks matters and is itself part of the contract:
+    The ordering of the checks matters and is itself part of the contract.  It
+    is **deliberately asymmetric**, because the two kinds of conclusion do not
+    need the same evidence:
 
-    1. If the declared design did not actually complete -- any probe failed to
-       execute or was never run -- the result is **unresolved**.  An execution
-       failure must never read as "no support".
-    2. If support is found, label it ``broadly_supported`` (requires an ambient
-       neighbour at the smaller scale) or ``ridge_supported``.
-    3. Only if the complete design ran and found nothing do we reach
-       ``no_local_support_detected``; and even then, a design that was
-       directionally inadequate, bound-limited or variance-unstable is
-       **unresolved** instead.  A negative label is reserved for a design that
-       genuinely had the opportunity to find support.
+    1. **A positive finding is checked first and survives an incomplete
+       design.**  Support is monotone in the number of probes: a probe that was
+       never dispatched could only have added a confirmation, never removed
+       one.  So an anchor with enough confirmed neighbours is
+       ``broadly_supported`` (which requires an ambient neighbour at the
+       smaller scale) or ``ridge_supported``, even if some probe failed or was
+       withheld.  Downgrading a demonstrated positive to ``unresolved`` over
+       missing work would discard real evidence.
+    2. **A negative finding requires the complete design.**  Only if every
+       declared probe ran and none qualified do we reach
+       ``no_local_support_detected``.  Here the missing probe matters: it might
+       have been the confirming one.  Any execution failure, undispatched work,
+       exhausted redraw budget, directional inadequacy, bound limitation or
+       variance instability therefore yields ``unresolved`` instead.  A
+       negative label is reserved for a design that genuinely had the
+       opportunity to find support.
+
+    An execution failure can consequently never read as "no support", which is
+    the property spec sec. 3 and sec. 9 both insist on -- while a genuine
+    positive is not thrown away by unrelated missing work.
     """
     # Only unique vector hashes count as neighbours (spec sec. 3).  Several
     # rows may share a hash when an attempt was retried, so reduce by evidence
