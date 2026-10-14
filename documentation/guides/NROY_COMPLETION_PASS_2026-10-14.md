@@ -237,7 +237,7 @@ No production simulation may start.
 ```
 
 ```
-334 passed in 38.56s
+335 passed in 72.05s
 ```
 
 Measured at the commit this revision records. The previous revision of this
@@ -260,6 +260,12 @@ above is the one that produces the number above.
 GATE PASSED (4/4 checks) in 23.1s
 ```
 
+Measured earlier in this pass and **not** re-run for this revision, because it
+does not need to be: the gate's staleness check fingerprints `run_v3.py`,
+`stage_structured_diagnosis.py` and `counter_based_rng.py`, and this branch has
+**zero** commits touching any of the three. No gate artifact is on disk, so a
+fresh `prepare --model M1` would still demand one.
+
 ```bash
 # 4. The same checks as pytests (14 of 18 skipped under the no-engine guard).
 .venv/bin/python -m pytest tests/test_nroy_m0_m1_engine_identity.py -q
@@ -281,14 +287,17 @@ Command, in both cases:
 
 | | before | after |
 |---|---|---|
-| passed | 2365 | 2462 |
+| passed | 2365 | 2475 |
 | **failed** | **74** | **71** |
 | skipped | 270 | 270 |
 | errors | 5 | 5 |
 
-Measured, not inferred: the "after" figures are from a run at commit
-`b3ed35a`, and the failure figures were confirmed by **three** independent
-runs with byte-identical per-file breakdowns.
+Measured, not inferred: the "after" figures are from a run at commit `fa47f65`.
+The pass count rose by exactly the 13 tests this revision adds, and the
+failure, skip and error counts did not move at all — so nothing here broke a
+test and nothing accidentally fixed one. The per-file failure breakdown was
+re-measured at `fa47f65` and is identical to the one recorded at `b3ed35a`
+below, which was itself confirmed by three independent runs.
 
 The three closed failures are listed below, and the remaining 71 + 5 are
 classified exhaustively, by root cause, in the table after that. The
@@ -401,6 +410,12 @@ Stated as gaps, not as work in progress.
 8. **`archive_following.source_pool` with `low_j_archive_vectors` requires an
    archive table** passed to `prepare --archive`, with a `j` column if the
    low-J neighbour rule is signed. No such table has been assembled.
+9. **The MSM-relative-diagnosis multiplier identity at `1.0` does not hold.**
+   Pre-existing, untouched by this pass, and now an explicit pre-calibration
+   **blocker** in `PRODUCTION_LOCKIN_SPEC_2026-10-13.md` section 4 with the
+   exact failing test and a required four-way diagnostic. See section 3,
+   cluster F.
+
 **Not a gap — deliberate production behaviour.** A partially sharded stage
 cannot be merged into a scored table, and that is the intended rule rather than
 an unfinished implementation. Sharding is by *result key*, which includes the
@@ -437,3 +452,7 @@ scenario or PSA stage was dispatched, and `outputs/` holds no run directory
 from this work. The production run plan is deliberately unsigned and fails
 closed, so no subcommand below `validate` can load it. This work is **not** a
 claim that the stage is ready to run.
+
+For this final revision specifically: no engine ran at all. The only commands
+executed were `validate` (which dispatches nothing by construction) and pytest.
+`outputs/` contains no nroy run directory and no identity-gate artifact.
