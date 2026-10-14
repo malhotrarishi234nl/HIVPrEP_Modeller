@@ -166,10 +166,44 @@ One substantive pre-existing failure worth flagging:
   in the A-12 audit coverage of the new M1 code path and should be triaged
   before M1 is used for production results.
 
-## 6. Checks run after the moves
+## 6. Implementation status of the robust-NROY stage
+
+Recorded here because the distinction matters for what may be claimed.
+
+**Wired and runnable end to end** (`prepare -> evaluate -> merge -> report`,
+plus `validate` and `resume`): the fail-closed plan loader, the design kernels
+with their quotas and lineage, the frozen ledger, deterministic sharding,
+atomic writes, the merge gate, independent score recomputation from seed-level
+rows, the attempt/resume audit, parent-stage validation, and the reporting
+package.
+
+**Implemented and unit-tested as library functions, but NOT reachable from any
+subcommand:** local-support classification, the candidate-edge graph, the
+minimal audited edge set, bridge verdicts, components, and geometry-only
+representative selection (`nroy_graph.py`, `nroy_contract.classify_local_support`).
+Consequently no pipeline yet produces `local_support.csv`,
+`candidate_edges.csv`, `edge_verdicts.csv`, `components.csv`,
+`representatives.csv` or `p_coverage.csv`; `report` reads them if present and
+otherwise reports `work_not_run`.
+
+Nine signed decisions therefore have no consumer yet. They are listed
+explicitly in `nroy_contract.DECISIONS_PENDING_WIRING`, and three tests keep
+that list honest. **Signing them does not mean they are being honoured.**
+
+Also not implemented: the wall-clock cap (`budget.wall_time_cap_seconds` is
+required-signed but read by no code), the correlated-output diagnostic of
+NROY spec section 7 (disabled in the config with its rationale), and the
+emulator of section 6 (correctly absent — it is triggered only by a recorded
+unresolved geometry question, and none exists).
+
+## 7. Checks run after the moves
 
 - Reference scan for `fix_thesis` and `__delete_test` across all tracked file
   types: **no remaining references outside the archive**.
 - `git check-ignore` confirms `logs/` is ignored and its files remain on disk.
-- Robust-NROY verification suite: **181 passed**.
-- Full suite: unchanged relative to the pre-move run (same 74 failures).
+- Robust-NROY verification suite: **207 passed** (synthetic; no engine, no
+  trajectories).
+- M0/M1 engine identity suite: **17 passed** (user-run; skipped under
+  `pytest_no_engine_guard`).
+- Full suite: unchanged relative to the pre-move run (same 74 pre-existing
+  failures, 2365 passed).
