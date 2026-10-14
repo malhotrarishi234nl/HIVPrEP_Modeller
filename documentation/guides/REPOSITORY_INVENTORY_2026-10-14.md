@@ -62,6 +62,9 @@ outputs, so they were left in place.
 
 ### 3.2 Supporting library modules (imported, not invoked)
 
+`nroy_identity_gate.py` is listed separately below: it is the only module in
+this stage that constructs an engine.
+
 `hm_implausibility.py` (acceptance arithmetic, `I_max`, cutoff 3.0),
 `hm_target_register.py` (target register), `hm_variance_budget.py` (variance
 budget), `calib_scorer.py`, `calib_distance.py`, `counter_based_rng.py`
@@ -69,17 +72,59 @@ budget), `calib_scorer.py`, `calib_distance.py`, `counter_based_rng.py`
 (parameter space, blocks, canonical hashes, seeds, `ContractError`),
 `economics.py`, `transmission_corrected.py`, `demography.py`.
 
-New in this pass: `nroy_contract.py`, `nroy_design.py`, `nroy_execution.py`,
-`nroy_graph.py`, `nroy_report.py`.
+New: `nroy_contract.py`, `nroy_design.py`, `nroy_execution.py`,
+`nroy_graph.py`, `nroy_assess.py`, `nroy_report.py` and
+`nroy_identity_gate.py`.
+
+`nroy_assess.py` is the step from merged rows to labels: evidence states,
+local support, `p` coverage, graph glue and the correlated-output diagnostic.
+
+`nroy_identity_gate.py` owns the M0/M1-at-`p=0` identity, including its engine
+runs. It is the **only** module in this stage that builds an engine.
+
+### 3.2a The stage's subcommands
+
+| command | runs the engine? | produces |
+|---|---|---|
+| `validate` | no | the unsigned-decision report; exits non-zero while any remain |
+| `prepare` | no | the frozen design, ledger and (for `bridges`) the graph |
+| `evaluate` | only with `--evaluator production` | one shard's seed-level results |
+| `merge` | no | `seed_results.csv`, `candidate_scores.csv`, stage status |
+| `classify` | no | `design_evidence.csv`, `local_support.csv`, `p_coverage.csv` |
+| `regions` | no | `edge_verdicts.csv`, `components.csv`, `representatives.csv` |
+| `diagnose` | no | the secondary correlated-output diagnostic |
+| `report` | no | the human-readable package and figures |
+| `resume` | no | what a resume may relaunch |
+| **`identity-gate`** | **yes, deliberately** | the M0/M1 identity gate artifact |
+
+`identity-gate` is the one command that runs the engine. Its runs are short
+truncated trajectories (about a second each) and nothing is written to
+`outputs/`. `prepare --model M1` requires its passing artifact.
 
 ### 3.3 Verification entry points
 
 ```bash
-# The robust-NROY verification suite (no engine, no trajectories)
-.venv/bin/python -m pytest tests/test_nroy_contract_design.py \
-    tests/test_nroy_execution_sharding.py tests/test_nroy_graph_report.py -q
+# Production-relevant suite: everything this stage is responsible for.
+# No engine, no trajectories.
+.venv/bin/python -m pytest \
+    tests/test_nroy_contract_design.py \
+    tests/test_nroy_execution_sharding.py \
+    tests/test_nroy_graph_report.py \
+    tests/test_nroy_pipeline_stages.py \
+    tests/test_a12_stage_structured_diagnosis_allocation.py \
+    tests/test_a12_deterministic_allocation_audit.py -q
+```
 
-# The M0/M1 engine identity test — MUST be run by the user before M1 launches
+```bash
+# The M0/M1 identity, as a pre-production COMMAND rather than a test.
+# This one runs the engine on purpose and cannot be skipped by a pytest
+# plugin. prepare --model M1 refuses to run without its passing artifact.
+.venv/bin/python run_robust_nroy_freeze.py identity-gate --out outputs/identity_gate
+```
+
+```bash
+# The same checks as pytests. SKIPPED under the no-engine guard, which is why
+# the command above exists: a green full suite does not establish the identity.
 .venv/bin/python -m pytest tests/test_nroy_m0_m1_engine_identity.py -q
 
 # The execution boundary: skips anything that builds a real engine
@@ -157,53 +202,163 @@ The failures are dominated by two environmental path problems, not logic:
    expected directory name. Accounts for the
    `test_validation_data_loader.py` errors and some LHS failures.
 
-One substantive pre-existing failure worth flagging:
+One substantive pre-existing failure was flagged in the first revision of this
+document and is now **closed**:
 
 - `tests/test_a12_deterministic_allocation_audit.py::test_syntax_candidate_scan_is_nonempty_and_scoped_to_reviewed_files`
-  fails with `untriaged rounding syntax functions: [('run_v3.py', '_step_stage_structured_diagnosis')]`.
-  The stage-structured diagnosis step (the M1 mechanism) performs allocation
-  rounding and has not been added to the A-12 triage list. This is a real gap
-  in the A-12 audit coverage of the new M1 code path and should be triaged
-  before M1 is used for production results.
+  failed with `untriaged rounding syntax functions: [('run_v3.py', '_step_stage_structured_diagnosis')]`.
+  See section 8 for the triage.
 
 ## 6. Implementation status of the robust-NROY stage
 
 Recorded here because the distinction matters for what may be claimed.
 
-**Wired and runnable end to end** (`prepare -> evaluate -> merge -> report`,
-plus `validate` and `resume`): the fail-closed plan loader, the design kernels
-with their quotas and lineage, the frozen ledger, deterministic sharding,
-atomic writes, the merge gate, independent score recomputation from seed-level
-rows, the attempt/resume audit, parent-stage validation, and the reporting
-package.
+### 6.1 Wired and reachable from a subcommand
 
-**Implemented and unit-tested as library functions, but NOT reachable from any
-subcommand:** local-support classification, the candidate-edge graph, the
-minimal audited edge set, bridge verdicts, components, and geometry-only
-representative selection (`nroy_graph.py`, `nroy_contract.classify_local_support`).
-Consequently no pipeline yet produces `local_support.csv`,
-`candidate_edges.csv`, `edge_verdicts.csv`, `components.csv`,
-`representatives.csv` or `p_coverage.csv`; `report` reads them if present and
-otherwise reports `work_not_run`.
+The whole chain runs, for one model, through the real CLI:
 
-Nine signed decisions therefore have no consumer yet. They are listed
-explicitly in `nroy_contract.DECISIONS_PENDING_WIRING`, and three tests keep
-that list honest. **Signing them does not mean they are being honoured.**
+```
+prepare --stage discovery    -> evaluate -> merge -> classify
+prepare --stage promotion    -> evaluate -> merge -> classify   (parent: discovery)
+prepare --stage confirmation -> evaluate -> merge -> classify   (parent: promotion)
+prepare --stage bridges      -> evaluate -> merge               (parent: confirmation)
+regions                                                         (parent: bridges)
+```
 
-Also not implemented: the wall-clock cap (`budget.wall_time_cap_seconds` is
-required-signed but read by no code), the correlated-output diagnostic of
-NROY spec section 7 (disabled in the config with its rationale), and the
-emulator of section 6 (correctly absent — it is triggered only by a recorded
-unresolved geometry question, and none exists).
+That covers the fail-closed plan loader; the design kernels with their quotas
+and lineage; the frozen ledger; deterministic sharding; atomic writes; the
+merge gate; independent score recomputation from seed-level rows; the
+attempt/resume audit; parent-stage validation; the five evidence states;
+local-support classification; the `p` coverage profile; the candidate-edge
+graph; the frozen minimal audited edge set; bridge probes; edge verdicts;
+components; geometry-only representative selection; the wall-clock cap; the
+secondary correlated-output diagnostic; and the reporting package.
+
+Every one of these tables is now produced by a command rather than only by a
+library function: `design_evidence.csv`, `local_support.csv`, `p_coverage.csv`,
+`graph_nodes.csv`, `candidate_edges.csv`, `edge_verdicts.csv`,
+`components.csv`, `representatives.csv` and
+`unresolved_blocking_edges.json`.
+
+`nroy_contract.DECISIONS_PENDING_WIRING` is **empty**, and a test asserts
+that it is: every required decision of the base stage has a real consumer.
+Two tests keep the set honest if an entry is ever added back.
+
+### 6.2 Conditionally required, off by default
+
+The correlated-output diagnostic of NROY spec section 7 is implemented
+(`nroy_assess.correlated_output_diagnostic`, `diagnose`) and disabled in the
+plan. Its five numerical decisions are required **exactly when** it is
+enabled (`nroy_contract.CONDITIONAL_DECISIONS`), so it cannot run on defaults
+and does not gate the base stage. It is stability-gated on seed-block
+bootstrap and leave-one-candidate-out refits, treats shared CRN seeds as
+blocks, and carries no field through which it could change acceptance.
+
+### 6.3 Deliberately absent
+
+The emulator of section 6 is correctly absent. It is triggered only by a
+recorded unresolved geometry question, and the only thing that counts as one
+is an unresolved edge that would change which groups receive representatives.
+`regions` now writes exactly that list to `unresolved_blocking_edges.json`, so
+the trigger is evidence-driven rather than discretionary. No such question has
+been recorded, because no stage has been run.
+
+### 6.4 What a signed plan still would not establish
+
+A fully signed plan would still not be a launch authorisation. The production
+specification additionally requires a measured pilot, a priced trajectory
+budget, `CONFIG_REGISTRY.md` with frozen candidate identities, and a
+confirmation that the production seed block is disjoint from earlier runs.
+None of those exists. `validate` says so even when every value is signed.
+
+Two further prerequisites are specific to M1 and are recorded here because
+they are easy to miss:
+
+1. The **identity gate** must be run (section 3.3). It is a command, not a
+   test, because every pytest that checks the identity is skipped under the
+   no-engine guard.
+2. The **frozen production base config must carry the
+   `disease.diagnosis.stage_structured_diagnosis` block.** The config
+   currently proposed for `models.base_config`
+   (`coupled_calibration_search.BASE_CONFIG_PATH`) does not. Injection fails
+   loudly in that case rather than silently discarding `p`, which is the
+   behaviour we want — but it means M1 cannot be launched against that config
+   as it stands. `tests/test_nroy_pipeline_stages.py::test_m1_injection_fails_loudly_if_the_config_lacks_the_p_block`
+   pins this.
 
 ## 7. Checks run after the moves
 
 - Reference scan for `fix_thesis` and `__delete_test` across all tracked file
   types: **no remaining references outside the archive**.
 - `git check-ignore` confirms `logs/` is ignored and its files remain on disk.
-- Robust-NROY verification suite: **207 passed** (synthetic; no engine, no
-  trajectories).
-- M0/M1 engine identity suite: **17 passed** (user-run; skipped under
-  `pytest_no_engine_guard`).
-- Full suite: unchanged relative to the pre-move run (same 74 pre-existing
-  failures, 2365 passed).
+- Production-relevant suite (section 3.3): **300 passed** (synthetic; no
+  engine, no trajectories).
+- M0/M1 engine identity suite: **18 passed** (user-run; 14 of them skipped
+  under `pytest_no_engine_guard`, which is why the `identity-gate` command
+  exists).
+- `identity-gate` run live: **4/4 checks passed** in 23s, with 1154 MSM
+  infections and an undiagnosed AIDS pool of 1496 — so the identity was proved
+  on a fixture where the mechanism can actually fire.
+- Full suite: see section 5 for the before/after reconciliation.
+
+### 7.1 Source files this work modified
+
+Only one pre-existing executable file was touched, and by one line:
+
+| file | change |
+|---|---|
+| `tools/run_a12_deterministic_allocation_audit.py` | +1 line: the `DX-04` inventory row (section 8) |
+
+Everything else is new (`nroy_*.py`, `run_robust_nroy_freeze.py`, the
+production plan, the test modules, this document), plus `.gitignore` and the
+two spec documents, which the user edited. No existing model, calibration,
+scoring or economics module was modified, so no pre-existing failure is
+attributable to this work.
+
+## 8. A-12 triage of `_step_stage_structured_diagnosis` (DX-04)
+
+The production specification (section 4) requires this site to be classified,
+its six-pool allocation and conservation behaviour tested, and the finding
+closed or explicitly documented before M1 production use. It was the only
+untriaged rounding site in the A-12 inventory, and it is the M1 mechanism.
+
+**What the code does.** It partitions the undiagnosed tensor into six disjoint
+pools — non-MSM and MSM, each by acute / chronic / AIDS — and allocates each
+separately through the shared aggregate-preserving allocator
+`stochastic_allocation.deterministic_allocate_events`.
+
+**The finding.** `stage_step_probability` depends on the stage only through
+`aids_stage`, so acute and chronic share **one** step probability within a
+population. The six pools therefore span only **four** distinct rate blocks,
+and the shared non-AIDS block is split into two separate allocations. That is a
+genuine fragmentation of a rate block, which the A-12 audit treats as a defect
+unless it is bounded and justified.
+
+**Measured, not assumed** (`tests/test_a12_stage_structured_diagnosis_allocation.py`,
+35 tests, no engine):
+
+| property | result |
+|---|---|
+| partition disjoint and exhaustive | yes, asserted against the real tensor |
+| total diagnoses conserved | **exactly**; tensor total unchanged, no negative cell |
+| stage counters sum to the total | yes (the function also asserts this itself) |
+| effect of the extra split | **≤ 1 person per population per step**, both signs, in ~21% of a random sweep |
+| effect on the total | **none** — the split moves people between stages only |
+| per-pool allocator itself | not fragmentation-sensitive (that is `ALLOC-01`) |
+
+**Classification:** `rate_stratified_aggregate`, `fragmentation_sensitive =
+True`, differential 1 person. Not `cellwise`: each pool is allocated
+aggregate-preservingly over many cells.
+
+**Disposition.** The split is **retained**, because the stage-resolved
+diagnosis counters (`hiv_diagnoses_in_acute_stage` and friends) are model
+*outputs*, so the allocation has to be resolved by stage. Merging the pools
+would mean splitting a merged total by pool weights — a different estimator,
+and therefore a modelling decision rather than a refactor. The inventory row
+records both options and says which is which.
+
+**Current activity.** Dormant in the production base case: that config carries
+no `stage_structured_diagnosis` block, so the profile loads disabled and
+`_step_diagnosis` never takes this branch. It becomes active only for M1, and
+at exact `p=0` with `routine_hazard_scale=1.0` the identity dispatch sends M1
+back to the legacy path — so even M1 reaches this code only for `p > 0`.
