@@ -74,10 +74,25 @@ PROFILE_PATH = ("transmission_model", "disease", "diagnosis", "stage_structured_
 SEEDS = (9182, 20260101, 777003)
 
 
+#: End year for the identity runs.
+#:
+#: This value is load-bearing and must not be lowered. ``1980_test.json``
+#: natively runs to 2025; truncating it to 1982 produces an epidemic that never
+#: takes off (peak prevalence 0.00%, zero diagnoses), under which M0 and M1
+#: agree for *any* ``p`` and *any* routine hazard scale. The identity would
+#: then be trivially true and this whole module would prove nothing.
+#:
+#: At 1990 the run is ~1s and produces a few hundred diagnoses, which is enough
+#: for the AIDS-symptom mechanism to bite: p=0.35 and rho=0.8 both change the
+#: output, while p=0 stays bit-identical.
+#: ``test_the_identity_fixture_is_not_vacuous`` enforces this.
+IDENTITY_END_YEAR = 1990
+
+
 def _short_config() -> dict:
     """A short stochastic run.  Stochastic mode is the case that can break."""
     config = json.loads((ROOT / "configs/1980_test.json").read_text())
-    config["run_control"]["end_year"] = {"value": 1982}
+    config["run_control"]["end_year"] = {"value": IDENTITY_END_YEAR}
     config["run_control"]["deterministic_mode"] = {"value": False}
     return config
 
@@ -197,6 +212,56 @@ def test_the_raw_config_helpers_write_the_block_the_reader_translates():
 # ==========================================================================
 # Engine identity (skipped under the no-engine guard; user-run)
 # ==========================================================================
+
+def test_the_identity_fixture_is_not_vacuous():
+    """The identity is only meaningful if the mechanism can actually fire.
+
+    This is the guard that matters most in this module. An identity test run on
+    a configuration where the epidemic never takes off passes for the wrong
+    reason: M0 and M1 then agree for *any* ``p``, every other test here is
+    green, and the module proves nothing.
+
+    Rather than matching column names loosely, this asserts the two concrete
+    preconditions of the AIDS-symptom mechanism: that infections occur at all,
+    and that there is a non-empty **undiagnosed AIDS-stage** pool for the
+    symptom hazard to act on.
+    """
+    summary = _run(_without_stage_block(_short_config()), SEEDS[0])["summary"]
+
+    required = ("new_infections_msm", "aids_undiagnosed_start", "msm_undiagnosed_hiv_pos")
+    missing = [c for c in required if c not in summary.columns]
+    assert not missing, (
+        f"the summary no longer carries {missing}; this guard needs updating "
+        f"against the current schema: {list(summary.columns)[:40]}"
+    )
+
+    infections = float(summary["new_infections_msm"].sum())
+    assert infections > 0, (
+        f"the identity fixture produced {infections} MSM infections, so the "
+        "epidemic never took off and M0 == M1 holds trivially for any p; "
+        "raise IDENTITY_END_YEAR"
+    )
+
+    aids_pool = float(summary["aids_undiagnosed_start"].sum())
+    assert aids_pool > 0, (
+        f"the undiagnosed AIDS-stage pool is {aids_pool}, so the AIDS-symptom "
+        "hazard has nothing to act on and the identity is vacuous; "
+        "raise IDENTITY_END_YEAR"
+    )
+
+
+def test_a_positive_p_is_detectable_at_this_horizon():
+    """Pair to the vacuity gate: the mechanism must be observable here.
+
+    If this fails, the horizon is too short for the AIDS-symptom hazard to
+    change anything and the identity tests are vacuous even though they pass.
+    """
+    base = _short_config()
+    m0 = _run(_without_stage_block(base), SEEDS[0])
+    active = _run(_with_stage_block(base, rho=1.0, p=0.35), SEEDS[0])
+    with pytest.raises(AssertionError):
+        _assert_identical(m0, active, what="p = 0.35 must be detectable")
+
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_no_block_m0_equals_enabled_p_zero_m1_across_seeds(seed):
