@@ -174,7 +174,7 @@ def summary_facts(
     support = tables.get("local_support")
     if support is None or support.empty:
         facts.update({
-            "n_anchors": 0,
+            "n_anchors": None,
             "evidence_state": nc.EVIDENCE_NOT_RUN,
             "n_broadly_supported": None,
             "n_ridge_supported": None,
@@ -203,7 +203,10 @@ def summary_facts(
 
     scores = tables.get("candidate_scores")
     if scores is None or scores.empty:
-        facts.update({"n_candidates_scored": 0, "n_nominal_pass": None, "n_promoted": None})
+        facts.update({
+            "n_candidates_scored": None, "n_nominal_pass": None, "n_promoted": None,
+            "n_variance_unstable": None,
+        })
     else:
         facts["n_candidates_scored"] = int(len(scores))
         facts["n_nominal_pass"] = (
@@ -220,7 +223,7 @@ def summary_facts(
     edges = tables.get("edge_verdicts")
     if edges is None or edges.empty:
         facts.update({
-            "n_edges_evaluated": 0,
+            "n_edges_evaluated": None,
             "n_edges_sampled_path_supported": None,
             "n_edges_unresolved": None,
         })
@@ -234,7 +237,14 @@ def summary_facts(
 
     comps = tables.get("components")
     if comps is None or comps.empty:
-        facts.update({"n_components": 0, "component_ids": []})
+        # None, not 0: no component table means the connectivity stage did not
+        # run. Printing "0 components" would read as "we looked and found no
+        # supported region", which is a different claim entirely.
+        facts.update({
+            "n_components": None,
+            "component_ids": [],
+            "n_components_with_unresolved_boundary": None,
+        })
     else:
         facts["n_components"] = int(len(comps))
         facts["component_ids"] = sorted(comps["component_id"].astype(str).tolist())
@@ -244,7 +254,11 @@ def summary_facts(
 
     reps = tables.get("representatives")
     if reps is None or reps.empty:
-        facts.update({"n_representatives": 0, "n_components_without_representative": None})
+        # None, not 0, for the same reason as components above.
+        facts.update({
+            "n_representatives": None,
+            "n_components_without_representative": None,
+        })
     else:
         has_id = reps["candidate_id"].notna()
         facts["n_representatives"] = int(has_id.sum())
@@ -252,7 +266,10 @@ def summary_facts(
 
     attempts = tables.get("ledger_attempts")
     if attempts is None or attempts.empty:
-        facts.update({"n_attempts": 0, "n_failed_attempts": None, "n_lost_attempts": None})
+        facts.update({
+            "n_attempts": None, "n_successful_attempts": None,
+            "n_failed_attempts": None, "n_lost_attempts": None,
+        })
     else:
         status_series = attempts["status"].astype(str)
         facts["n_attempts"] = int(len(attempts))
@@ -360,8 +377,8 @@ def render_executive_summary(
         "",
         "## Supported regions",
         "",
-        f"- sampled-path-supported components: {count('n_components')} "
-        f"({', '.join(f.get('component_ids') or []) or 'none'})",
+        f"- sampled-path-supported components: {count('n_components')}"
+        + (f" ({', '.join(f['component_ids'])})" if f.get("component_ids") else ""),
         f"- representatives selected: {count('n_representatives')}",
         f"- components receiving no representative: "
         f"{count('n_components_without_representative')}",

@@ -420,7 +420,12 @@ def test_the_package_distinguishes_no_support_from_no_simulation():
     nothing_run = nrp.summary_facts({}, status=nc.STATUS_PREPARED, model=nc.MODEL_M0)
     assert nothing_run["evidence_state"] == nc.EVIDENCE_NOT_RUN
     assert nothing_run[f"n_{nc.LABEL_NO_LOCAL_SUPPORT}"] is None
-    assert nothing_run["n_anchors"] == 0
+    # None, never 0: "nothing ran" must not render as "we found none".
+    for key in (
+        "n_anchors", "n_components", "n_representatives", "n_edges_evaluated",
+        "n_candidates_scored", "n_attempts",
+    ):
+        assert nothing_run[key] is None, f"{key} must be None when nothing ran"
 
     ran_and_found_nothing = nrp.summary_facts(
         {"local_support": pd.DataFrame([{
