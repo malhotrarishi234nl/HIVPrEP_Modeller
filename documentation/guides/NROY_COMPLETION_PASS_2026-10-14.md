@@ -192,6 +192,81 @@ GATE PASSED (4/4 checks) in 23.1s
 
 ---
 
+## 2a. Full-suite reconciliation
+
+Command, in both cases:
+
+```bash
+.venv/bin/python -m pytest -p pytest_no_engine_guard tests/ -q
+```
+
+| | before | after |
+|---|---|---|
+| passed | 2365 | 2457 |
+| **failed** | **74** | **71** |
+| skipped | 270 | 270 |
+| errors | 5 | 5 |
+
+Three pre-existing failures are **closed** by this pass, and no new one is
+introduced:
+
+| test | why it failed | how it closed |
+|---|---|---|
+| `test_a12_deterministic_allocation_audit.py::test_syntax_candidate_scan_is_nonempty_and_scoped_to_reviewed_files` | `untriaged rounding syntax functions: [('run_v3.py', '_step_stage_structured_diagnosis')]` | `DX-04` triaged into `INVENTORY` |
+| `test_a12_review_guards.py::test_no_new_rounding_call_sites_since_the_audit` | the same function's three `int(np.sum(...))` counters were new since the fingerprint baseline froze | baseline regenerated, which the guard's own message authorises only **after** classification and a between-arm materiality judgement — both now recorded |
+| `test_a12_review_guards.py::test_call_fingerprint_baseline_matches_the_audited_candidate_count` | baseline said 266 call sites, the code has 269 | count updated to 269 with the reason in the docstring |
+
+### Classification of every remaining failure and error
+
+All 76 are environmental or pre-existing. **None is attributable to the new
+implementation or to the repository moves**, and the evidence is structural:
+this work modified exactly one pre-existing executable file, by one line (the
+`DX-04` inventory row), plus the regenerated fingerprint baseline and the
+updated count in its guard. `run_v3.py`, `aids_observation.py`,
+`calib_extractor.py`, `run_coupled_calibration.py` and `run_lhs_calibration.py`
+— the modules every failure below points at — have **zero** commits on this
+branch.
+
+| cluster | root cause | count | files |
+|---|---|---|---|
+| **A** | **Missing root-level `1980_test.json`.** These tests resolve `ROOT / "1980_test.json"`; the file lives at `configs/1980_test.json`. | 39 | `test_orientation_seed_stage_distribution.py` (22), `test_lhs_calibration.py` (12), `test_non_msm_diagnosis_pipeline_audit.py` (5) |
+| **B** | **Missing `Validation /` data directory** (note the trailing space in the expected name). | 6 | `test_validation_data_loader.py` (5 **errors**), `test_lhs_calibration.py` (1) |
+| **C** | **Frozen run artifacts refuse a changed runtime**: `ContractError: code changed since the search: ['aids_observation.py', 'calib_extractor.py', 'run_coupled_calibration.py', 'run_v3.py']`. These audits replay a frozen coupled-search or LHS run and correctly refuse when the runtime differs. The drift predates this work. | 28 | `test_temporal_diagnosis_shape_audit.py` (7), `test_art_interpolation_shape_audit.py` (6), `test_recent_mechanism_audit.py` (4), `test_forecast_readiness_confirmation.py` (4), `test_msm_beta_response_audit.py` (3), `test_post2019_diagnosis_disruption_audit.py` (2), `test_post2015_stock_flow_decomposition.py` (1), `test_historical_transmission_probe.py` (1) |
+| **D** | **Missing `documentation/BACKLOG.md`.** | 1 | `test_scenario_b_expansion.py` |
+| **E** | **`utilities.aids_on_art` absent from the HTA parameter set.** A genuine pre-existing content gap, not a path problem. | 1 | `test_hta_sampler.py` |
+| **F** | **Cascade from a real pre-existing engine failure** — see below. | 1 | `test_joint_fit_comparison_runner_20260917.py` |
+
+### Cluster F, and one pre-existing finding worth your attention
+
+`test_joint_fit_comparison_runner_20260917.py::test_validate_only_starts_no_simulation`
+expects the runner's validate gate to exit 0. It exits 2, because the gate
+shells out to `pytest` on two diagnosis test files — and that subprocess does
+**not** inherit the no-engine guard, so it runs a test the guarded suite skips:
+
+```
+tests/test_msm_relative_diagnosis_v13_10.py::TestStepDiagnosisBehavior
+    ::test_enabled_with_multiplier_one_matches_baseline
+AssertionError: Multiplier=1.0 should produce identical MSM diagnoses;
+    ref=93601, mult1=86772
+```
+
+The runner's own gate already records this as a *tolerated* failure with
+`"tolerated_failure_still_fails": true`, so it is a known, logged issue rather
+than a discovery. It is pre-existing and outside this brief.
+
+It is worth flagging anyway, because it is the **same shape of question** as
+the M0/M1 identity this pass just put behind a gate: an identity at a neutral
+parameter value that does not hold. At `multiplier = 1.0` the MSM-relative
+diagnosis path should reduce to the baseline, and it differs by 7%. If that is
+the same class of cause — a different branch drawing from differently keyed
+RNG streams rather than an arithmetic error — then it is a coupling artefact
+and the test needs a distributional comparison. If it is not, it is a real
+discrepancy in the diagnosis path. Either way it should be resolved before the
+diagnosis mechanism carries production results, and the M0/M1 gate's
+`check_deliberate_failures` is the pattern for telling the two apart.
+
+---
+
 ## 3. Remaining gaps
 
 Stated as gaps, not as work in progress.

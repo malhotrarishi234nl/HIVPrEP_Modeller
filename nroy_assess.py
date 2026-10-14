@@ -489,6 +489,84 @@ def minimal_edges_from_table(edges: pd.DataFrame) -> list[ng.CandidateEdge]:
     return edges_from_table(selected)
 
 
+def node_assessed(nodes: pd.DataFrame) -> dict[str, bool]:
+    """Whether each node is a confirmed point with a completed local assessment.
+
+    This -- not local eligibility -- is what "both endpoints confirm" means in
+    spec sec. 4.  Every graph node is a confirmed point by construction, and
+    :func:`graph_nodes_table` refuses to build the table unless each one also
+    carries a local-support row, so the assessment is complete for all of them.
+
+    Gating an edge on local *eligibility* instead would be self-sealing and
+    wrong: a point with no local support could then never acquire **region**
+    support, because the very edge that would establish it would be marked
+    unresolved on that point's account.  Spec sec. 1 and production decision 7
+    both say "local/region support", so the region half has to remain
+    reachable.
+    """
+    labels = {
+        str(row["candidate_id"]): str(row["local_support_label"])
+        for _, row in nodes.iterrows()
+    }
+    unknown = sorted(
+        node for node, label in labels.items() if label not in nc.LOCAL_SUPPORT_LABELS
+    )
+    if unknown:
+        raise ContractError(
+            f"these graph nodes carry no recognised local-support label: {unknown}"
+        )
+    return {node: True for node in labels}
+
+
+def region_support(
+    nodes: pd.DataFrame,
+    components_now: Sequence[ng.Component],
+) -> dict[str, bool]:
+    """Which nodes have **region** support: the other half of decision 7.
+
+    A point has region support when it sits in a component that at least one
+    sampled-path-supported edge holds together.  A singleton component has no
+    supporting edge, so a point on its own has no region support -- which is
+    correct: its only route into the ensemble is its own local support.
+    """
+    out = {str(row["candidate_id"]): False for _, row in nodes.iterrows()}
+    for component in components_now:
+        if component.supporting_edges:
+            for member in component.members:
+                if member in out:
+                    out[member] = True
+    return out
+
+
+def representation_eligibility(
+    nodes: pd.DataFrame,
+    components_now: Sequence[ng.Component],
+) -> tuple[dict[str, bool], dict[str, str]]:
+    """``local OR region`` support, with the ground recorded per candidate.
+
+    Spec sec. 1 and production decision 7 both read "demonstrated local/region
+    support".  Returning the ground alongside the flag means a reader can see
+    *why* each representative was admissible, rather than taking a boolean on
+    trust.
+    """
+    local = node_eligibility(nodes)
+    region = region_support(nodes, components_now)
+    eligible: dict[str, bool] = {}
+    ground: dict[str, str] = {}
+    for node in sorted(local):
+        has_local, has_region = bool(local[node]), bool(region.get(node, False))
+        eligible[node] = has_local or has_region
+        if has_local and has_region:
+            ground[node] = "local_and_region_support"
+        elif has_local:
+            ground[node] = "local_support"
+        elif has_region:
+            ground[node] = "region_support_via_sampled_path"
+        else:
+            ground[node] = "no_local_or_region_support_detected"
+    return eligible, ground
+
+
 def edge_verdict_table(
     *,
     edges: Sequence[ng.CandidateEdge],
@@ -500,12 +578,12 @@ def edge_verdict_table(
 ) -> list[ng.EdgeVerdict]:
     """One verdict per frozen minimal edge, from its bridge probes' evidence.
 
-    Endpoint confirmation is the *local* question: an endpoint counts as
-    confirmed only if its local assessment found support, because an edge
-    between two points that are not themselves eligible cannot make either one
-    eligible.
+    "Both endpoints confirm" is :func:`node_assessed`: a confirmed point with a
+    completed local assessment.  It is deliberately **not** local eligibility
+    -- see :func:`node_assessed` for why that would make region support
+    unreachable.
     """
-    eligible = node_eligibility(nodes)
+    eligible = node_assessed(nodes)
     by_edge: dict[str, list[str]] = {}
     for _, row in proposals.iterrows():
         if str(row["kernel_id"]) != nc.KERNEL_BRIDGE:

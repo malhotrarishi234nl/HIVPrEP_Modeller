@@ -60,10 +60,31 @@ def _write_anchors(path: Path, space, count=3, seed=77) -> Path:
     return path
 
 
-def _acceptance_inputs(tmp_path: Path) -> tuple[Path, Path]:
-    observed, base_variance = fx.observed_and_variance(TARGETS)
-    observed_path = tmp_path / "observed.json"
-    variance_path = tmp_path / "variance.json"
+def _acceptance_inputs(tmp_path: Path, *, confirming: bool) -> tuple[Path, Path]:
+    """Acceptance inputs that make the surrogate either pass or fail everything.
+
+    This matters more than it looks.  ``surrogate_evaluator`` returns values
+    around 100-110 for every target, so the repository's usual synthetic
+    inputs (``observed = 0``, ``B_i = 1``) give ``I_max`` around 100 and
+    **nothing ever confirms**.  A chain driven that way exercises every
+    structure and not one positive finding: no ``broadly_supported`` label, no
+    ``sampled_path_supported`` edge, no representative actually selected and no
+    region support.  That is the same shape of mistake as an identity test run
+    on an epidemic that never starts.
+
+    ``confirming=True`` centres the observed values inside the surrogate's own
+    range with a wide frozen variance, so every candidate clears the cutoff and
+    the positive paths are genuinely driven.  ``confirming=False`` keeps the
+    everything-fails case, which is what the negative labels need.
+    """
+    if confirming:
+        observed = {name: 105.0 for name in TARGETS}
+        base_variance = {name: 10000.0 for name in TARGETS}
+    else:
+        observed, base_variance = fx.observed_and_variance(TARGETS)
+    suffix = "pass" if confirming else "fail"
+    observed_path = tmp_path / f"observed_{suffix}.json"
+    variance_path = tmp_path / f"variance_{suffix}.json"
     observed_path.write_text(json.dumps(observed))
     variance_path.write_text(json.dumps(base_variance))
     return observed_path, variance_path
@@ -77,14 +98,24 @@ class Harness:
     library call would not demonstrate.
     """
 
-    def __init__(self, tmp_path: Path, *, model: str = nc.MODEL_M0, **overrides):
+    def __init__(
+        self,
+        tmp_path: Path,
+        *,
+        model: str = nc.MODEL_M0,
+        confirming: bool = True,
+        **overrides,
+    ):
         self.tmp_path = tmp_path
         self.model = model
+        self.confirming = bool(confirming)
         self.plan_path = fx.write_signed_plan(tmp_path, **overrides)
         self.plan = nc.FrozenPlan.load(self.plan_path, root=ROOT)
         self.space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
         self.anchors = _write_anchors(tmp_path / "anchors.csv", self.space)
-        self.observed, self.variance = _acceptance_inputs(tmp_path)
+        self.observed, self.variance = _acceptance_inputs(
+            tmp_path, confirming=self.confirming
+        )
         self.dirs: dict[str, Path] = {}
 
     def prepare(self, stage: str, *, parent: str | None = None, extra=()) -> Path:
@@ -112,10 +143,21 @@ class Harness:
                 "--of", str(n_shards), "--evaluator", "surrogate", *extra,
             ]) == 0
 
-    def merge(self, stage: str) -> None:
+    def merge(self, stage: str, *, confirming: bool | None = None) -> None:
+        """Merge one stage, optionally against the other acceptance inputs.
+
+        The per-stage override is a **fixture device**, used only to build the
+        "no local support but a supported bridge" case that region support
+        needs.  A real run uses one frozen contract for every stage; see the
+        recorded gap about cross-stage acceptance-input hashes.
+        """
+        observed, variance = (
+            (self.observed, self.variance) if confirming is None
+            else _acceptance_inputs(self.tmp_path, confirming=confirming)
+        )
         assert runner.main([
             "merge", "--plan", str(self.plan_path), "--stage-dir", str(self.dirs[stage]),
-            "--observed", str(self.observed), "--base-variance", str(self.variance),
+            "--observed", str(observed), "--base-variance", str(variance),
         ]) == 0
 
     def classify(self, stage: str) -> pd.DataFrame:
@@ -440,21 +482,125 @@ def test_regions_refuses_a_bridges_stage_that_was_not_scored(tmp_path):
     assert code == 1
 
 
-def test_an_ineligible_member_receives_no_representative(tmp_path):
-    """Decision 7: no local support means no entry to the forecast ensemble."""
+def _chain_with_negative_local_support(tmp_path: Path) -> Harness:
+    """Local assessment negative, bridges confirming.
+
+    Built legitimately rather than by editing a completed artifact: the
+    confirmation stage is merged against the everything-fails acceptance
+    inputs, so every anchor is ``no_local_support_detected``, and the bridges
+    stage is merged against the everything-confirms inputs, so every bridge
+    probe confirms.  Editing ``graph_nodes.csv`` instead is correctly refused
+    by the artifact-index hash check.
+    """
+    harness = Harness(tmp_path, confirming=False)
+    harness.full_local_stage(nc.STAGE_DISCOVERY)
+    harness.full_local_stage(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
+    harness.full_local_stage(nc.STAGE_CONFIRMATION, parent=nc.STAGE_PROMOTION)
+    harness.prepare(nc.STAGE_BRIDGES, parent=nc.STAGE_CONFIRMATION)
+    harness.evaluate(nc.STAGE_BRIDGES)
+    harness.merge(nc.STAGE_BRIDGES, confirming=True)
+    return harness
+
+
+def test_a_point_with_neither_local_nor_region_support_gets_no_representative(tmp_path):
+    """Decision 7, both halves: no local AND no region support means no entry."""
+    harness = Harness(tmp_path, confirming=False)
+    harness.chain_to_bridges()
+    out = harness.regions()
+    eligibility = ne.read_frame_exact(out / "representation_eligibility.csv")
+    representatives = ne.read_frame_exact(out / "representatives.csv")
+
+    assert not eligibility["has_local_support"].astype(bool).any()
+    assert not eligibility["has_region_support"].astype(bool).any()
+    assert not eligibility["eligible_for_representation"].astype(bool).any()
+    assert set(eligibility["eligibility_ground"]) == {
+        "no_local_or_region_support_detected"
+    }
+    assert representatives["candidate_id"].replace("", np.nan).isna().all()
+    assert representatives["note"].str.contains("no member has demonstrated").all()
+
+
+def test_region_support_is_reachable_without_local_support(tmp_path):
+    """The half of decision 7 that an eligibility-gated edge would destroy.
+
+    An earlier revision of this stage gated the **edge verdict** on local
+    eligibility.  That made region support unobtainable: the very edge that
+    would establish it was marked unresolved on the unsupported point's
+    account.  Both specifications read "local/region support", so this asserts
+    the region route is live -- and asserts it on a case where local support is
+    genuinely absent, so it cannot pass for the wrong reason.
+    """
+    harness = _chain_with_negative_local_support(tmp_path)
+    out = harness.regions()
+    verdicts = ne.read_frame_exact(out / "edge_verdicts.csv")
+    eligibility = ne.read_frame_exact(out / "representation_eligibility.csv")
+    representatives = ne.read_frame_exact(out / "representatives.csv")
+
+    # No edge may be unresolved *because of its endpoints*: every node is a
+    # confirmed point with a completed local assessment, which is what spec
+    # sec. 4's "both endpoints confirm" means.
+    assert not verdicts["reason"].str.contains("not confirmed").any(), (
+        "an edge was refused on its endpoints, which makes region support "
+        "unreachable and contradicts spec sec. 1"
+    )
+    assert (verdicts["edge_label"] == nc.EDGE_SAMPLED_PATH_SUPPORTED).any(), (
+        "this fixture must produce at least one supported bridge, or the region "
+        "route is untested"
+    )
+    assert not eligibility["has_local_support"].astype(bool).any(), (
+        "this fixture must have NO local support, or region support is not what "
+        "is being tested"
+    )
+    by_region = eligibility[eligibility["has_region_support"].astype(bool)]
+    assert not by_region.empty, "nobody gained eligibility from the graph"
+    assert (by_region["eligibility_ground"] == "region_support_via_sampled_path").all()
+    assert by_region["eligible_for_representation"].astype(bool).all()
+    # And such a point really does receive a representative.
+    chosen = representatives[representatives["candidate_id"].notna()]
+    assert not chosen.empty
+    assert set(chosen["eligibility_ground"]) == {"region_support_via_sampled_path"}
+
+
+def test_eligibility_records_its_ground_rather_than_a_bare_flag(tmp_path):
     harness = Harness(tmp_path)
     harness.chain_to_bridges()
-    bridges = harness.dirs[nc.STAGE_BRIDGES]
-    nodes = ne.read_frame_exact(bridges / "graph_nodes.csv")
-    nodes["eligible_for_representation"] = False
-    nodes["local_support_label"] = nc.LABEL_NO_LOCAL_SUPPORT
-    nodes.to_csv(bridges / "graph_nodes.csv", index=False)
     out = harness.regions()
-    representatives = ne.read_frame_exact(out / "representatives.csv")
-    assert representatives["candidate_id"].replace("", np.nan).isna().all(), (
-        "a component with no supported member must yield no representative"
+    eligibility = ne.read_frame_exact(out / "representation_eligibility.csv")
+    assert set(eligibility["eligibility_ground"]) <= {
+        "local_support", "region_support_via_sampled_path",
+        "local_and_region_support", "no_local_or_region_support_detected",
+    }
+    for _, row in eligibility.iterrows():
+        has_local = bool(row["has_local_support"])
+        has_region = bool(row["has_region_support"])
+        assert bool(row["eligible_for_representation"]) == (has_local or has_region)
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert "local/region support" in manifest["extra"]["eligibility_rule"]
+
+
+def test_a_singleton_component_has_no_region_support(tmp_path):
+    """Region support needs a supporting edge, and a singleton has none."""
+    nodes = pd.DataFrame([
+        {"candidate_id": "A", "local_support_label": nc.LABEL_NO_LOCAL_SUPPORT,
+         "eligible_for_representation": False, "u:x": 0.1},
+        {"candidate_id": "B", "local_support_label": nc.LABEL_NO_LOCAL_SUPPORT,
+         "eligible_for_representation": False, "u:x": 0.9},
+    ])
+    lonely = ng.Component(
+        component_id="R001", members=("A",), supporting_edges=(),
+        unresolved_edges=("A--B",),
     )
-    assert representatives["note"].str.contains("no member has demonstrated").all()
+    joined = ng.Component(
+        component_id="R002", members=("B",), supporting_edges=("B--C",),
+        unresolved_edges=(),
+    )
+    support = nas.region_support(nodes, [lonely, joined])
+    assert support["A"] is False
+    assert support["B"] is True
+    eligible, ground = nas.representation_eligibility(nodes, [lonely, joined])
+    assert eligible == {"A": False, "B": True}
+    assert ground["A"] == "no_local_or_region_support_detected"
+    assert ground["B"] == "region_support_via_sampled_path"
 
 
 def test_the_declared_bridge_pass_rule_is_checked_not_assumed():

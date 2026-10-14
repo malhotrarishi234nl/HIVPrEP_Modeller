@@ -1273,12 +1273,39 @@ def command_regions(args: argparse.Namespace) -> int:
     )
     node_ids = sorted(str(value) for value in nodes["candidate_id"])
     groups = ng.components(node_ids, verdicts)
+    # Decision 7 and spec sec. 1 both read "local/REGION support". Region
+    # support is what the graph exists to establish, so eligibility is
+    # local-OR-region and the ground is recorded per candidate rather than
+    # collapsed into a bare flag.
+    eligible, ground = nas.representation_eligibility(nodes, groups)
     representatives = ng.select_representatives(
         groups, nas.node_geometry(nodes),
         n_per_component=int(plan.require("representative_selection.n_per_component")),
         rule=str(plan.require("representative_selection.rule")),
-        eligible=nas.node_eligibility(nodes),
+        eligible=eligible,
     )
+    if not representatives.empty:
+        representatives["eligibility_ground"] = [
+            ground.get(str(value), "") if pd.notna(value) else ""
+            for value in representatives["candidate_id"]
+        ]
+    local_only = nas.node_eligibility(nodes)
+    region_only = nas.region_support(nodes, groups)
+    labels = {
+        str(row["candidate_id"]): str(row["local_support_label"])
+        for _, row in nodes.iterrows()
+    }
+    eligibility = pd.DataFrame([
+        {
+            "candidate_id": node,
+            "local_support_label": labels[node],
+            "has_local_support": bool(local_only.get(node, False)),
+            "has_region_support": bool(region_only.get(node, False)),
+            "eligible_for_representation": bool(eligible[node]),
+            "eligibility_ground": ground[node],
+        }
+        for node in sorted(eligible)
+    ])
     blocking = ng.unresolved_changes_representation(groups, verdicts)
 
     out = Path(args.out)
@@ -1288,6 +1315,7 @@ def command_regions(args: argparse.Namespace) -> int:
     ne.atomic_write_frame(out / "edge_verdicts.csv", tables["edge_verdicts"])
     ne.atomic_write_frame(out / "components.csv", tables["components"])
     ne.atomic_write_frame(out / "representatives.csv", representatives)
+    ne.atomic_write_frame(out / "representation_eligibility.csv", eligibility)
     ne.atomic_write_frame(out / "graph_nodes.csv", nodes)
     # Carried forward unchanged, not rebuilt: the regions package must report
     # the same local assessment the graph was built from.
@@ -1326,6 +1354,16 @@ def command_regions(args: argparse.Namespace) -> int:
             "n_components": len(groups),
             "n_representatives": int(representatives["candidate_id"].notna().sum())
             if not representatives.empty else 0,
+            "eligibility_grounds": {
+                ground_name: int((eligibility["eligibility_ground"] == ground_name).sum())
+                for ground_name in sorted(set(eligibility["eligibility_ground"]))
+            },
+            "eligibility_rule": (
+                "local OR region support, as production decision 7 and spec sec. 1 both "
+                "state ('local/region support'). Region support means membership of a "
+                "component held together by at least one sampled-path-supported edge; a "
+                "singleton has none, so its only route is its own local support."
+            ),
             "unresolved_edges_that_would_change_representation": blocking,
             "limitation": (
                 "'sampled-path supported' is discrete evidence at the declared "

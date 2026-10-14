@@ -294,7 +294,24 @@ def test_call_fingerprint_baseline_matches_the_audited_candidate_count():
     text still says 258 and is stale by exactly those seven call sites. A-29
     (2026-09-14) added one net integerization call while replacing TX-01's
     global block with independently conserved orientation blocks; TX-01 is
-    reclassified in INVENTORY and the baseline now contains 266 calls.
+    reclassified in INVENTORY and the baseline contained 266 calls.
+
+    **269 from 2026-10-14.** The M1 mechanism
+    ``SimulationEngineV3._step_stage_structured_diagnosis`` had been adding
+    three call sites that this guard had been reporting as untriaged ever since
+    it was written: ``int(np.sum(diagnosed))`` twice and
+    ``int(np.sum(diagnosed[:, msm_idx, ...]))`` once. All three are output
+    scalar conversions of an already-integer array -- counters, not
+    allocations; the allocation itself goes through ``_draw_events_for``.
+
+    The function is now triaged as ``DX-04`` in ``INVENTORY``, with its
+    between-arm materiality judgement on the incremental estimand recorded
+    (the ENG-01 lesson): dormant in the production base case, which carries no
+    ``stage_structured_diagnosis`` block, and bounded at one person per
+    population per step with no effect on total diagnoses. That is the
+    documented precondition for regenerating the baseline, so the baseline was
+    regenerated. See ``tests/test_a12_stage_structured_diagnosis_allocation.py``
+    and ``documentation/guides/REPOSITORY_INVENTORY_2026-10-14.md`` section 8.
     """
     from tools.run_a12_deterministic_allocation_audit import (  # noqa: PLC0415
         call_site_fingerprints,
@@ -302,8 +319,8 @@ def test_call_fingerprint_baseline_matches_the_audited_candidate_count():
         syntax_candidates,
     )
 
-    assert sum(call_site_fingerprints().values()) == len(syntax_candidates()) == 266
-    assert sum(load_call_fingerprint_baseline().values()) == 266
+    assert sum(call_site_fingerprints().values()) == len(syntax_candidates()) == 269
+    assert sum(load_call_fingerprint_baseline().values()) == 269
 
 
 def test_fingerprints_ignore_formatting_but_not_new_calls():
