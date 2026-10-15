@@ -28,8 +28,7 @@ import stage_structured_diagnosis as ssd
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = ROOT / "configs" / (
-    "V13.22_20260604_nearfit_rank001_basecase_onart_two_era_"
-    "stochastic_m0_m1_20261015.json"
+    "V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
 )
 
 

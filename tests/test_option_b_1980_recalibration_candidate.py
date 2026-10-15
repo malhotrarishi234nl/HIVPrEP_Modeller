@@ -36,6 +36,11 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _source_path(value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
+
+
 def _pointer(parts: tuple[str | int, ...]) -> str:
     return "/" + "/".join(
         str(part).replace("~", "~0").replace("/", "~1") for part in parts
@@ -89,6 +94,21 @@ def test_derivation_manifest_is_an_exact_complete_scalar_diff():
         for change in manifest["changed_json_paths"]
     )
     assert all(change["rationale"] for change in manifest["changed_json_paths"])
+    for change in manifest["changed_json_paths"]:
+        source = _source_path(change["source_path"])
+        if source.is_file():
+            assert _sha256(source) == change["source_sha256"]
+    for source_record in manifest["authoritative_sources"]:
+        source = _source_path(source_record["path"])
+        if source.is_file():
+            assert _sha256(source) == source_record["sha256"]
+
+    frozen_review = next(
+        source for source in manifest["authoritative_sources"]
+        if source["role"] == "pre_decision_backbone_reconciliation"
+    )
+    assert "PRE_OPTION_B" in frozen_review["path"]
+    assert _source_path(frozen_review["path"]).is_file()
 
     allowed_prefixes = (
         "/_readme",

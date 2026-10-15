@@ -17,10 +17,8 @@ import stage_structured_diagnosis as ssd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json"
 SHARED = ROOT / (
-    "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_"
-    "stochastic_m0_m1_20261015.json"
+    "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
 )
 
 
@@ -54,33 +52,19 @@ def _write_approved_canonical(tmp_path: Path) -> Path:
     return path
 
 
-def test_shared_config_is_a_minimal_declared_derivative():
-    source = json.loads(SOURCE.read_text())
+def test_operator_canonical_is_the_selected_option_b_candidate():
     shared = json.loads(SHARED.read_text())
-    profile = shared["transmission_model"]["disease"]["diagnosis"].pop(
+    assert run_model.DEFAULT_CONFIG.resolve() == SHARED.resolve()
+    assert "OPTION B 1980 CALIBRATION CANDIDATE" in shared["_readme"]
+    assert shared["run_control"]["start_year"]["value"] == 1980
+    assert shared["population"]["epidemic_seed"]["seed_year"]["value"] == 1980.0
+    profile = shared["transmission_model"]["disease"]["diagnosis"][
         "stage_structured_diagnosis"
-    )
+    ]
     assert profile["enabled"]["value"] is False
     assert profile["routine_hazard_scale"]["value"] == 1.0
     assert profile["aids_symptom_annual_probability"]["value"] == 0.0
     assert profile["symptom_start_year"]["value"] == 1985
-
-    # Normalise the explicitly documented metadata and mode changes; every
-    # scientific parameter and all remaining config content must then match.
-    for path in (
-        ("_readme",),
-        ("meta", "version", "value"),
-        ("meta", "version", "notes"),
-        ("meta", "model_notes", "calibration_status"),
-        ("run_control", "deterministic_mode", "value"),
-        ("run_control", "deterministic_mode", "notes"),
-    ):
-        left = shared
-        right = source
-        for key in path[:-1]:
-            left, right = left[key], right[key]
-        left[path[-1]] = right[path[-1]]
-    assert shared == source
 
 
 def test_shared_config_loads_as_safe_standalone_m0_without_an_engine():

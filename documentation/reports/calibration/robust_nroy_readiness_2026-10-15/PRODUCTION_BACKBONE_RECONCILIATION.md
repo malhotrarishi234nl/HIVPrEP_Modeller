@@ -28,7 +28,11 @@ It is explicitly **REQUIRES_RECALIBRATION**, not fitted, not validated, and not
 production eligible. Its derivation manifest is
 `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json`
 (SHA-256
-`70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d`).
+`b8bdd42899f6630db995ccb01e60946000e1526ef2d9a01303e4234b3ae0cb57`).
+The manifest's status-metadata rationale is bound to the immutable pre-decision
+snapshot `PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md`
+(`680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666`),
+not to this living report.
 The plan records this path only as `base_config_proposal`; `base_config` remains
 `UNSIGNED` and no config-registry entry promotes it.
 
@@ -41,7 +45,7 @@ The plan records this path only as `base_config_proposal`; `base_config` remains
 | Direct source | `configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json` | `c7aaec0f3ae36929ff3266f7305c128952e08714575363436d273e73dbd53187` | Starts in 1975; deterministic; identifies itself as `13.14-diagnostic`; calibration metadata has `overall_accept=false`. |
 | Prepared shared derivative | `configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json` | `fd50dd1a98965c9ea6b946c634060b0bd8ddac9334eb62ffc8d9cac67a63e7cf` | Mechanical derivative only: descriptive metadata, stochastic mode, and a complete disabled M1 block. |
 | Option B recalibration candidate | `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json` | `49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30` | Retains the V13.22 mechanisms/shared route and replaces only four documented 1980 initialization objects plus explicit status metadata. Requires a new calibration. |
-| Option B derivation manifest | `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json` | `70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d` | Machine-readable 56-scalar-leaf diff with old/new value, source path/hash and rationale for every change. |
+| Option B derivation manifest | `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json` | `b8bdd42899f6630db995ccb01e60946000e1526ef2d9a01303e4234b3ae0cb57` | Machine-readable 56-scalar-leaf diff with old/new value, source path/hash and rationale for every change; status metadata points to an immutable pre-decision report snapshot. |
 | Current proposed M0 space | `configs/calib_space_v13_25_unordered_orientation_20260921.json` | `82970c6d542ea7319ba9cc807ea221bb43f4558afdc5d8abb37e96d649649a12` | Contains 33 parameters and identifies itself as a diagnostic space combining later model layers. |
 
 The 1975 source states all of the following in its own metadata:

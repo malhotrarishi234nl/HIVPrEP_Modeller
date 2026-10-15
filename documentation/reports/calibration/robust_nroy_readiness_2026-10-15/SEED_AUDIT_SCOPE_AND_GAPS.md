@@ -11,9 +11,9 @@ directory. It is deliberately
 `UNRESOLVED` for both owner scope and source coverage. The deterministic output
 is `evidence/robust_nroy_seed_audit_20261015.json`.
 
-The current mounted snapshot inventories 74,281 output files plus 150 tracked
-configuration/documentation files. It content-scans 2,898 files, records 920
-distinct parsed RNG integers, 75,556 ambiguous references, and 43 unparseable
+The current mounted snapshot inventories 74,281 output files plus 154 tracked
+configuration/documentation files. It content-scans 2,903 files, records 920
+distinct parsed RNG integers, 75,592 ambiguous references, and 43 unparseable
 references. Another 71,531 output files are inventoried without content
 scanning under the proposed rules. These counts describe this mounted snapshot;
 they are not evidence that the source scope is exhaustive.

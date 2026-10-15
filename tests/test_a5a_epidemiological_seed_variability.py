@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -87,7 +88,7 @@ def test_summary_and_validation_cover_all_metrics_and_years():
 
 
 def test_real_register_resolves_expected_92_tier1_and_222_a5a_targets():
-    register = json.loads(open("configs/hm_target_register.json", encoding="utf-8").read())
+    register = json.loads(Path("configs/hm_target_register.json").read_text(encoding="utf-8"))
     years = target_years_from_register(register)
     assert sum(map(len, years.values())) == 222
     assert len(years["new_diagnoses"]) == 35

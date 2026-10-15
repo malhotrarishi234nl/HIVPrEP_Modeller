@@ -1,15 +1,20 @@
 {
   "ambiguous_references": {
-    "count": 75566,
+    "count": 75592,
     "examples": [
       {
         "detail": "textual seed reference requires owner interpretation: copied config, plus seed, M0/M1 selection, M1 `p`, and output directory via",
-        "location": "line:54",
+        "location": "line:67",
         "source": "configs/README.md"
       },
       {
         "detail": "textual seed reference requires owner interpretation: identity, reserved seeds, and signed plan fields.",
-        "location": "line:59",
+        "location": "line:72",
+        "source": "configs/README.md"
+      },
+      {
+        "detail": "textual seed reference requires owner interpretation: runs require an explicit command-line seed, an exact protected production",
+        "location": "line:89",
         "source": "configs/README.md"
       },
       {
@@ -51,6 +56,46 @@
         "detail": "seed-like field has no declared RNG semantics: \"particle_seed = base_seed + particle_id\"",
         "location": "/calibration_metadata/abc_smc_calibration/seed_policy",
         "source": "configs/V13.18_20260601_basecase.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 0.03893728911110599",
+        "location": "/calibration_metadata/abc_smc_calibration/parameters/seed_msm_aids_share",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 0.031198655638464676",
+        "location": "/calibration_metadata/abc_smc_calibration/parameters/seed_msm_chronic_share",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 0.908036194548106",
+        "location": "/calibration_metadata/abc_smc_calibration/parameters/seed_msm_fraction",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 0.16",
+        "location": "/calibration_metadata/abc_smc_calibration/parameters/seed_non_msm_aids_share",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 0.22567834531425238",
+        "location": "/calibration_metadata/abc_smc_calibration/parameters/seed_non_msm_chronic_share",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 0.0007115110257749852",
+        "location": "/calibration_metadata/abc_smc_calibration/parameters/seed_prevalence",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: 12243",
+        "location": "/calibration_metadata/abc_smc_calibration/particle_seed",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+      },
+      {
+        "detail": "seed-like field has no declared RNG semantics: \"particle_seed = base_seed + particle_id\"",
+        "location": "/calibration_metadata/abc_smc_calibration/seed_policy",
+        "source": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
       },
       {
         "detail": "seed-like field has no declared RNG semantics: 0.03893728911110599",
@@ -418,6 +463,11 @@
         "source": "configs/robust_nroy_freeze_production.json"
       },
       {
+        "detail": "seed-like field has no declared RNG semantics: \"evidence/robust_nroy/seed_audit.json\"",
+        "location": "/production_prerequisites/seed_disjointness_audit",
+        "source": "configs/robust_nroy_freeze_production.json"
+      },
+      {
         "detail": "seed-like field has no declared RNG semantics: \"Reuses the 200600-200609 paired structural-audit seeds; this audit is not independent confirmation.\"",
         "location": "/seed_overlap",
         "source": "configs/stage_structured_diagnosis_audit_20260922.json"
@@ -466,6 +516,11 @@
         "detail": "seed-like field has no declared RNG semantics: \"fresh common random numbers paired across the two declared case designs; equal replicate counts and equal search budgets\"",
         "location": "/comparison/seed_policy",
         "source": "configs/suites/examples/on_art_break_year_2008_vs_2010.json"
+      },
+      {
+        "detail": "textual seed reference requires owner interpretation: artifact:hta_results:a16_stochastic_headline_20260914_100232_post_c1,outputs/hta_results/a16_stochastic_headline_20260914_100232_post_c1,hta_results,a16_stochastic_headline_2026091",
+        "location": "line:98",
+        "source": "documentation/artifact_catalog/artifact_catalog.csv"
       },
       {
         "detail": "textual seed reference requires owner interpretation: - the seeds;",
@@ -1196,66 +1251,11 @@
         "detail": "textual seed reference requires owner interpretation: Wave 2's `evaluated.csv`. They are not random seeds. Both parameter vectors were",
         "location": "line:10",
         "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: originally simulated with the common seeds 91000, 91001, and 91002. They were",
-        "location": "line:11",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: under 50 fresh seeds (191000 through 191049). This separates a stable expected",
-        "location": "line:16",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: trajectory from a three-seed mean that may have looked favorable by chance.",
-        "location": "line:17",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: - `raw_replicates.csv`: one row for every parameter-vector/seed simulation.",
-        "location": "line:22",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: - `confirmed_means.csv`: 50-seed means and within-vector sample variances.",
-        "location": "line:23",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: - `original_vs_confirmed.csv`: original three-seed versus new 50-seed target means, including a",
-        "location": "line:24",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: --simulation-seed 191000 \\",
-        "location": "line:51",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: --simulation-seed 191000 \\",
-        "location": "line:72",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: Because each seed is dispatched independently, all eight workers can be used.",
-        "location": "line:77",
-        "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: | `configs/stage_structured_diagnosis_focused_calibration_20260922.json` | New frozen plan: backbones, focused coordinates and ranges, grids, seeds, budgets, time caps, predeclared",
-        "location": "line:18",
-        "source": "documentation/reports/calibration/IMPLEMENTATION_NOTE_STAGE_STRUCTURED_DIAGNOSIS_FOCUSED_CALIBRATION_2026-09-22.md"
-      },
-      {
-        "detail": "textual seed reference requires owner interpretation: - **Stage A**: 6 rho \u00d7 5 symptom values \u00d7 2 backbones \u00d7 seeds 201010\u2013201014 = 300 trajectories. Only the stage block differs from the backbone.",
-        "location": "line:32",
-        "source": "documentation/reports/calibration/IMPLEMENTATION_NOTE_STAGE_STRUCTURED_DIAGNOSIS_FOCUSED_CALIBRATION_2026-09-22.md"
       }
     ],
-    "examples_truncated": 75316
+    "examples_truncated": 75342
   },
-  "artifact_sha256": "2afba763adeaaa43005e055ed212662bdf60277f928fe29c47ca269fc5e0ce75",
+  "artifact_sha256": "7d9f6ecf7ddbb3dd78fd144e3ebf17bea6c596105a63348bb7a33f07387701e5",
   "candidate_blocks": {
     "confirmation": [],
     "discovery": [],
@@ -1565,22 +1565,22 @@
       ]
     },
     {
-      "occurrences": 8,
+      "occurrences": 10,
       "roles": [
         "other_rng",
         "simulation"
       ],
       "seed": 1324,
-      "source_count_truncated": 0,
+      "source_count_truncated": 2,
       "sources": [
+        "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json#/calibration_metadata/abc_smc_calibration/base_seed",
+        "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json#/calibration_metadata/abc_smc_calibration/seed",
         "configs/V13.22_20260604.json#/calibration_metadata/abc_smc_calibration/base_seed",
         "configs/V13.22_20260604.json#/calibration_metadata/abc_smc_calibration/seed",
         "configs/V13.22_20260604_nearfit_rank001_basecase.json#/calibration_metadata/abc_smc_calibration/base_seed",
         "configs/V13.22_20260604_nearfit_rank001_basecase.json#/calibration_metadata/abc_smc_calibration/seed",
         "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json#/calibration_metadata/abc_smc_calibration/base_seed",
-        "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json#/calibration_metadata/abc_smc_calibration/seed",
-        "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json#/calibration_metadata/abc_smc_calibration/base_seed",
-        "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json#/calibration_metadata/abc_smc_calibration/seed"
+        "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json#/calibration_metadata/abc_smc_calibration/seed"
       ]
     },
     {
@@ -17080,13 +17080,13 @@
       "output:text": 1219,
       "tracked:csv_text": 5,
       "tracked:excluded": 1,
-      "tracked:json": 79,
+      "tracked:json": 82,
       "tracked:text": 66
     },
     "excluded_output_files": 71531,
-    "inventory_sha256": "dc3dfd286c445fc017d870a3de331187f33b9c5e7fcf677a98bdc3565fd5c4a6",
-    "scanned_content_index_sha256": "ed38814c561c885e774f28a07646e46aaa92a521eaead9b0ec240ebddb0d74b7",
-    "scanned_files": 2900
+    "inventory_sha256": "5d91d8661c910242800f973e4a8dbf53dcd0aab287370e1d5b1baca384b24939",
+    "scanned_content_index_sha256": "1bb6a7d6b0597b698692853d308f9daad83ec5cd2082849948135485c0370158",
+    "scanned_files": 2903
   },
   "status": "INCOMPLETE",
   "unparseable_references": {
@@ -17313,7 +17313,7 @@
   "unresolved": [
     "owner has not approved the complete seed-source scope",
     "source coverage remains declared UNRESOLVED",
-    "75566 ambiguous seed-like references require review",
+    "75592 ambiguous seed-like references require review",
     "43 selected or tracked references were unparseable",
     "71531 mounted-output files were inventoried but not content-scanned under the declared rules",
     "candidate seed blocks were not supplied; disjointness is not evaluated",

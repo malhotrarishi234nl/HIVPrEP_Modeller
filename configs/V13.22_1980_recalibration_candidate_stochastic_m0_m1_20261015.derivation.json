@@ -28,7 +28,7 @@
     },
     {
       "role": "pre_decision_backbone_reconciliation",
-      "path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md",
       "sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666"
     }
   ],
@@ -38,7 +38,7 @@
       "json_path": "/_readme",
       "old_value": "Robust-NROY shared M0/M1 configuration candidate, derived from V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json. Scientific parameter values are unchanged. This derivative switches the model to stochastic execution and adds a disabled-by-default stage-structured diagnosis block. It is not production evidence until the separately authorized identity gate and pilot pass.",
       "new_value": "OPTION B 1980 CALIBRATION CANDIDATE. REQUIRES_RECALIBRATION. NOT FITTED, NOT VALIDATED, AND NOT PRODUCTION ELIGIBLE. Retains the existing V13.22 mechanisms and safe disabled-by-default shared M0/M1 route. Only the traceable 1980 initialization/backbone fields enumerated in the adjacent derivation manifest replace the inherited diagnostic 1975 fields. All other inherited fitted values remain unchanged solely as starting values for a new calibration and must not be interpreted as a 1980 fit.",
-      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md",
       "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
       "source_json_path": null,
       "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
@@ -47,7 +47,7 @@
       "json_path": "/meta/model_notes/calibration_status",
       "old_value": "ROBUST-NROY CONFIG CANDIDATE. NOT PRODUCTION READY: code-route verification does not replace the separately authorized M0/M1 identity gate, measured pilot, signed plan, and scientific acceptance.",
       "new_value": "REQUIRES_RECALIBRATION. OPTION B 1980 CALIBRATION CANDIDATE ONLY. NOT FITTED, NOT VALIDATED, NOT PRODUCTION ELIGIBLE, AND NOT AUTHORIZED FOR ROBUST-NROY PRODUCTION. Inherited 1975-fit values and calibration_metadata are historical starting provenance, not evidence of a 1980 fit.",
-      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md",
       "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
       "source_json_path": null,
       "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
@@ -56,7 +56,7 @@
       "json_path": "/meta/version/notes",
       "old_value": "2026-10-15 derivative: stochastic execution plus a disabled-by-default stage-structured diagnosis block for explicit M0/M1 runtime routing. All calibrated scientific parameter values are inherited unchanged from V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json.",
       "new_value": "2026-10-15 Option B derivative of the shared V13.22 stochastic M0/M1 candidate. Exact 1980 initialization substitutions and their evidence are recorded in V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json.",
-      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md",
       "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
       "source_json_path": null,
       "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
@@ -65,7 +65,7 @@
       "json_path": "/meta/version/value",
       "old_value": "13.25-robust-nroy-config-candidate",
       "new_value": "13.25-option-b-1980-recalibration-candidate",
-      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md",
       "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
       "source_json_path": null,
       "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."

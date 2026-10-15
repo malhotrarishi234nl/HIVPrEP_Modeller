@@ -45,7 +45,7 @@ The unsigned plan now proposes this calibration candidate:
 - candidate SHA-256: `49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30`
 - derivation manifest:
   `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json`
-- manifest SHA-256: `70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d`
+- manifest SHA-256: `b8bdd42899f6630db995ccb01e60946000e1526ef2d9a01303e4234b3ae0cb57`
 
 The manifest proves the exact 56-scalar-leaf diff. Apart from four status
 metadata leaves, changes are confined to the complete 1980 `start_year`,
