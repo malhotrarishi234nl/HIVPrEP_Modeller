@@ -89,6 +89,46 @@ def test_missing_signature_block_is_refused(tmp_path):
         nc.FrozenPlan.load(path, root=ROOT)
 
 
+def _load_raw_plan(tmp_path, raw):
+    path = tmp_path / "raw_plan.json"
+    path.write_text(json.dumps(raw))
+    return nc.FrozenPlan.load(path, root=ROOT)
+
+
+@pytest.mark.parametrize("bad", [123, True, [], {}, "   "])
+def test_signer_identity_must_be_a_nonblank_string(tmp_path, bad):
+    raw = fx.signed_plan_dict(**{"sign_off.signed_by": bad})
+    with pytest.raises(ContractError):
+        _load_raw_plan(tmp_path, raw)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [123, True, [], {}, "2026-02-30", "2026-1-2", "2026-10-14T00:00:00Z"],
+)
+def test_signed_date_must_be_an_exact_valid_iso_calendar_date(tmp_path, bad):
+    raw = fx.signed_plan_dict(**{"sign_off.signed_date": bad})
+    with pytest.raises(ContractError, match="sign_off block is incomplete|ISO calendar date"):
+        _load_raw_plan(tmp_path, raw)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [123, True, [], {}, "ROBUST_NROY_FREEZE_SPEC_2026-10-13", "reviewed-v1"],
+)
+def test_spec_version_must_exactly_name_the_current_governing_spec(tmp_path, bad):
+    raw = fx.signed_plan_dict(**{"sign_off.spec_version": bad})
+    with pytest.raises(ContractError, match="sign_off block is incomplete|spec_version"):
+        _load_raw_plan(tmp_path, raw)
+
+
+def test_coordinated_arbitrary_spec_and_version_edit_cannot_bypass_gate(tmp_path):
+    raw = fx.signed_plan_dict(**{"sign_off.spec_version": "ARBITRARY_REVIEW"})
+    raw["design"]["spec"] = "documentation/reports/calibration/ARBITRARY_REVIEW.md"
+    with pytest.raises(ContractError, match="design.spec"):
+        _load_raw_plan(tmp_path, raw)
+
+
 @pytest.mark.parametrize(
     "override, message",
     [
@@ -101,12 +141,12 @@ def test_missing_signature_block_is_refused(tmp_path):
         ({"promotion.variance_alpha": 1.5}, "must be in"),
         ({"p_parameter.routine_hazard_scale_identity_value": 0.8}, "routine_hazard_scale == 1.0"),
         ({"separation.min_anchor_neighbour": 0.5}, "not smaller than the smallest ambient scale"),
-        ({"separation.min_neighbour_neighbour": float("nan")}, "must be positive"),
-        ({"budget.wall_time_cap_seconds": float("inf")}, "finite and positive"),
+        ({"separation.min_neighbour_neighbour": float("nan")}, "finite native JSON number"),
+        ({"budget.wall_time_cap_seconds": float("inf")}, "finite native JSON number"),
         ({"ambient.max_attempts_per_anchor": 0}, "must be positive"),
         ({"archive_following.quota": 0}, "must be positive"),
         ({"archive_following.max_directions": 0}, "must be positive"),
-        ({"archive_following.scales": [0.025, float("nan")]}, "finite positive"),
+        ({"archive_following.scales": [0.025, float("nan")]}, "finite native JSON number"),
         ({"cross_block.quota": 5}, "complete direction x scale x sign"),
     ],
 )
@@ -172,6 +212,95 @@ def _correlated_output_decisions(**overrides):
 def test_conditional_integer_decisions_reject_coercion(tmp_path, path, bad):
     with pytest.raises(ContractError, match="native JSON integer"):
         fx.signed_plan(tmp_path, **_correlated_output_decisions(**{path: bad}))
+
+
+@pytest.mark.parametrize(
+    "path,valid",
+    [
+        ("acceptance.cutoff", 3.0),
+        ("acceptance.discrepancy", 0.1),
+        ("p_parameter.min", 0.0),
+        ("p_parameter.max", 0.5),
+        ("p_parameter.routine_hazard_scale_identity_value", 1.0),
+        ("budget.wall_time_cap_seconds", 3600),
+        ("separation.min_anchor_neighbour", 1e-4),
+        ("separation.min_neighbour_neighbour", 1e-4),
+        ("promotion.variance_alpha", 0.05),
+    ],
+)
+@pytest.mark.parametrize("bad_kind", ["string", "boolean", "nonfinite"])
+def test_all_scalar_numeric_contract_values_reject_coercion_and_nonfinite(
+    tmp_path, path, valid, bad_kind,
+):
+    bad = {
+        "string": str(valid),
+        "boolean": True,
+        "nonfinite": float("nan"),
+    }[bad_kind]
+    raw = fx.signed_plan_dict(**{path: bad})
+    with pytest.raises(ContractError, match="native JSON number"):
+        _load_raw_plan(tmp_path, raw)
+
+
+def test_native_integer_too_large_for_downstream_float_is_rejected(tmp_path):
+    raw = fx.signed_plan_dict(**{"budget.wall_time_cap_seconds": 10**400})
+    with pytest.raises(ContractError, match="finite native JSON number"):
+        _load_raw_plan(tmp_path, raw)
+
+
+@pytest.mark.parametrize(
+    "path,valid",
+    [
+        ("p_parameter.bins", [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]),
+        ("ambient.scales", [0.025, 0.05]),
+        ("archive_following.scales", [0.025, 0.05]),
+        ("cross_block.scales", [0.025, 0.05]),
+        ("graph.bridge_fractions", [0.25, 0.5, 0.75]),
+        ("p_parameter.extra_probe_values", [0.15]),
+    ],
+)
+@pytest.mark.parametrize("bad", ["0.025", True, float("inf")])
+def test_all_numeric_array_categories_reject_non_native_or_nonfinite_elements(
+    tmp_path, path, valid, bad,
+):
+    malformed = list(valid)
+    malformed[0] = bad
+    raw = fx.signed_plan_dict(**{path: malformed})
+    with pytest.raises(ContractError, match="native JSON number"):
+        _load_raw_plan(tmp_path, raw)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "correlated_output.shrinkage",
+        "correlated_output.stability_rank_tolerance",
+        "correlated_output.stability_direction_cosine",
+    ],
+)
+@pytest.mark.parametrize("bad", ["0.1", True, float("inf")])
+def test_all_conditional_float_decisions_reject_coercion_and_nonfinite(
+    tmp_path, path, bad,
+):
+    raw = fx.signed_plan_dict(**_correlated_output_decisions(**{path: bad}))
+    with pytest.raises(ContractError, match="native JSON number"):
+        _load_raw_plan(tmp_path, raw)
+
+
+@pytest.mark.parametrize(
+    "path,bad,message",
+    [
+        ("correlated_output.shrinkage", -0.1, r"in \[0, 1\]"),
+        ("correlated_output.shrinkage", 1.1, r"in \[0, 1\]"),
+        ("correlated_output.stability_rank_tolerance", -1.0, "non-negative"),
+        ("correlated_output.stability_direction_cosine", -0.1, r"in \[0, 1\]"),
+        ("correlated_output.stability_direction_cosine", 1.1, r"in \[0, 1\]"),
+    ],
+)
+def test_conditional_float_decisions_enforce_declared_domains(tmp_path, path, bad, message):
+    raw = fx.signed_plan_dict(**_correlated_output_decisions(**{path: bad}))
+    with pytest.raises(ContractError, match=message):
+        _load_raw_plan(tmp_path, raw)
 
 
 @pytest.mark.parametrize("bad", [1.5, "1", True])

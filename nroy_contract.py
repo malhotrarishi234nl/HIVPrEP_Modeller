@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -56,6 +57,16 @@ UNSIGNED_TOKENS = frozenset({
 })
 
 CONTRACT_VERSION = "robust_nroy_freeze/1.0.0"
+
+# The sign-off names the human-readable governing specification, while
+# ``CONTRACT_VERSION`` versions machine identities such as vector hashes.  Keep
+# those roles separate and derive the required sign-off spelling from the exact
+# governing path so an arbitrary non-placeholder string cannot pass as a
+# reviewed specification version.
+CURRENT_SPEC_PATH = (
+    "documentation/reports/calibration/ROBUST_NROY_FREEZE_SPEC_2026-10-14.md"
+)
+CURRENT_SPEC_VERSION = Path(CURRENT_SPEC_PATH).stem
 
 
 # ==========================================================================
@@ -205,6 +216,41 @@ def require_native_integer(
     if maximum is not None and value > maximum:
         raise ContractError(f"{what} must be <= {maximum}; got {value}")
     return value
+
+
+def require_native_number(value: Any, *, what: str) -> float:
+    """Return one finite signed JSON number without coercion.
+
+    JSON has distinct number, string and Boolean types.  Accept Python's exact
+    built-in ``int`` and ``float`` representations of JSON numbers, but reject
+    Booleans, numeric strings and third-party scalar types before conversion.
+    This prevents a hand-edited decision from acquiring a different meaning at
+    the first downstream ``float(...)`` call.
+    """
+    if type(value) not in (int, float):
+        raise ContractError(
+            f"{what} must be a native JSON number (not Boolean or string); "
+            f"got {value!r} ({type(value).__name__})"
+        )
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise ContractError(
+            f"{what} must be a finite native JSON number; got {value!r}"
+        ) from exc
+    if not np.isfinite(number):
+        raise ContractError(f"{what} must be a finite native JSON number; got {value!r}")
+    return number
+
+
+def require_native_number_list(value: Any, *, what: str) -> list[float]:
+    """Return a non-empty JSON number array, validating every element first."""
+    if type(value) is not list or not value:
+        raise ContractError(f"{what} must be a non-empty JSON array of native numbers")
+    return [
+        require_native_number(item, what=f"{what}[{index}]")
+        for index, item in enumerate(value)
+    ]
 
 
 def require_rng_seed(value: Any, *, what: str) -> int:
@@ -532,6 +578,38 @@ def signature_block(plan: Mapping) -> dict:
                if is_unsigned(block.get(key))]
     if missing:
         raise ContractError(f"sign_off block is incomplete: {missing}")
+
+    signed_by = block.get("signed_by")
+    if type(signed_by) is not str or not signed_by.strip():
+        raise ContractError("sign_off.signed_by must be a non-blank string")
+
+    signed_date = block.get("signed_date")
+    if type(signed_date) is not str:
+        raise ContractError("sign_off.signed_date must be an ISO calendar date (YYYY-MM-DD)")
+    try:
+        parsed_date = date.fromisoformat(signed_date)
+    except ValueError as exc:
+        raise ContractError(
+            "sign_off.signed_date must be a valid ISO calendar date (YYYY-MM-DD)"
+        ) from exc
+    if parsed_date.isoformat() != signed_date:
+        raise ContractError(
+            "sign_off.signed_date must use the exact ISO calendar-date form YYYY-MM-DD"
+        )
+
+    design = plan.get("design")
+    if not isinstance(design, Mapping) or design.get("spec") != CURRENT_SPEC_PATH:
+        actual = design.get("spec") if isinstance(design, Mapping) else None
+        raise ContractError(
+            f"design.spec must identify the current governing specification "
+            f"{CURRENT_SPEC_PATH!r}; got {actual!r}"
+        )
+    spec_version = block.get("spec_version")
+    if type(spec_version) is not str or spec_version != CURRENT_SPEC_VERSION:
+        raise ContractError(
+            f"sign_off.spec_version must exactly match the current governing "
+            f"specification {CURRENT_SPEC_VERSION!r}; got {spec_version!r}"
+        )
     return dict(block)
 
 
@@ -1775,14 +1853,20 @@ class FrozenPlan:
         seeds = SeedRegistry.from_plan(raw)
 
         acceptance = raw.get("acceptance") or {}
-        cutoff = float(acceptance.get("cutoff", ccs.IMPLAUSIBILITY_CUTOFF))
+        cutoff = require_native_number(
+            acceptance.get("cutoff", ccs.IMPLAUSIBILITY_CUTOFF),
+            what="acceptance.cutoff",
+        )
         if cutoff != ccs.IMPLAUSIBILITY_CUTOFF:
             raise ContractError(
                 f"this stage may not change the primary acceptance cutoff: plan says {cutoff}, "
                 f"the frozen rule is {ccs.IMPLAUSIBILITY_CUTOFF}"
             )
-        discrepancy = float(acceptance.get("discrepancy", ccs.PRIMARY_DISCREPANCY))
-        if not np.isfinite(discrepancy) or discrepancy != ccs.PRIMARY_DISCREPANCY:
+        discrepancy = require_native_number(
+            acceptance.get("discrepancy", ccs.PRIMARY_DISCREPANCY),
+            what="acceptance.discrepancy",
+        )
+        if discrepancy != ccs.PRIMARY_DISCREPANCY:
             raise ContractError(
                 "this stage may not change the primary model-discrepancy rule: "
                 f"plan says {discrepancy!r}, the frozen rule is "
@@ -1824,17 +1908,18 @@ class FrozenPlan:
 
     def validate(self) -> None:
         """Cross-field checks that a per-field signature cannot catch."""
-        p_min = float(self.require("p_parameter.min"))
-        p_max = float(self.require("p_parameter.max"))
-        if not np.isfinite(p_min) or not np.isfinite(p_max):
-            raise ContractError(f"the p range must be finite; got [{p_min}, {p_max}]")
+        p_min = require_native_number(self.require("p_parameter.min"), what="p_parameter.min")
+        p_max = require_native_number(self.require("p_parameter.max"), what="p_parameter.max")
         if p_min != 0.0:
             raise ContractError(
                 f"the p range must start at exact 0 so that M1 nests M0; got {p_min!r}"
             )
         if not (p_max > p_min):
             raise ContractError(f"empty p range [{p_min}, {p_max}]")
-        rho = float(self.require("p_parameter.routine_hazard_scale_identity_value"))
+        rho = require_native_number(
+            self.require("p_parameter.routine_hazard_scale_identity_value"),
+            what="p_parameter.routine_hazard_scale_identity_value",
+        )
         if rho != 1.0:
             raise ContractError(
                 "the engine's p=0 identity dispatch requires routine_hazard_scale == 1.0; "
@@ -1852,9 +1937,9 @@ class FrozenPlan:
                 "Remove the field from the plan."
             )
 
-        bins = [float(b) for b in self.require("p_parameter.bins")]
-        if not bins or not np.all(np.isfinite(bins)):
-            raise ContractError(f"p coverage bins must be non-empty and finite: {bins}")
+        bins = require_native_number_list(
+            self.require("p_parameter.bins"), what="p_parameter.bins"
+        )
         if sorted(bins) != bins or len(set(bins)) != len(bins):
             raise ContractError(f"p coverage bins must be ascending and distinct: {bins}")
         if bins[0] < p_min or bins[-1] > p_max:
@@ -1862,9 +1947,24 @@ class FrozenPlan:
                 f"p coverage bins {bins} fall outside the declared range [{p_min}, {p_max}]"
             )
 
-        scales = [float(s) for s in self.require("ambient.scales")]
-        if not np.all(np.isfinite(scales)):
-            raise ContractError(f"ambient scales must be finite: {scales}")
+        extra_probe_values = self.get("p_parameter.extra_probe_values", [])
+        if type(extra_probe_values) is not list:
+            raise ContractError(
+                "p_parameter.extra_probe_values must be a JSON array of native numbers"
+            )
+        extra_probes = [
+            require_native_number(value, what=f"p_parameter.extra_probe_values[{index}]")
+            for index, value in enumerate(extra_probe_values)
+        ]
+        if any(not (p_min < value <= p_max) for value in extra_probes):
+            raise ContractError(
+                "p_parameter.extra_probe_values must be positive values within the signed "
+                f"p range ({p_min}, {p_max}]; got {extra_probes}"
+            )
+
+        scales = require_native_number_list(
+            self.require("ambient.scales"), what="ambient.scales"
+        )
         if len(scales) < 2:
             raise ContractError(f"the spec requires at least two ambient scales; got {scales}")
         if sorted(scales) != scales or len(set(scales)) != len(scales):
@@ -1879,15 +1979,17 @@ class FrozenPlan:
                 f"(the spec forbids inferring it); got {semantics!r}"
             )
 
-        fractions = [float(f) for f in self.require("graph.bridge_fractions")]
-        if not fractions or not np.all(np.isfinite(fractions)):
-            raise ContractError(f"bridge fractions must be non-empty and finite: {fractions}")
+        fractions = require_native_number_list(
+            self.require("graph.bridge_fractions"), what="graph.bridge_fractions"
+        )
         if sorted(fractions) != fractions or len(set(fractions)) != len(fractions):
             raise ContractError(f"bridge fractions must be ascending and distinct: {fractions}")
         if any(not (0.0 < f < 1.0) for f in fractions):
             raise ContractError(f"bridge fractions must lie strictly in (0, 1): {fractions}")
 
-        alpha = float(self.require("promotion.variance_alpha"))
+        alpha = require_native_number(
+            self.require("promotion.variance_alpha"), what="promotion.variance_alpha"
+        )
         if not (0.0 < alpha < 1.0):
             raise ContractError(f"promotion.variance_alpha must be in (0, 1); got {alpha}")
 
@@ -1900,11 +2002,17 @@ class FrozenPlan:
             what="separation.min_direction_classes", minimum=1,
         )
 
-        min_an = float(self.require("separation.min_anchor_neighbour"))
-        min_nn = float(self.require("separation.min_neighbour_neighbour"))
-        if not np.isfinite(min_an) or min_an <= 0.0:
+        min_an = require_native_number(
+            self.require("separation.min_anchor_neighbour"),
+            what="separation.min_anchor_neighbour",
+        )
+        min_nn = require_native_number(
+            self.require("separation.min_neighbour_neighbour"),
+            what="separation.min_neighbour_neighbour",
+        )
+        if min_an <= 0.0:
             raise ContractError("separation.min_anchor_neighbour must be positive")
-        if not np.isfinite(min_nn) or min_nn <= 0.0:
+        if min_nn <= 0.0:
             raise ContractError("separation.min_neighbour_neighbour must be positive")
         if min_an >= min(scales):
             raise ContractError(
@@ -1920,8 +2028,11 @@ class FrozenPlan:
             self.require("budget.max_attempts"),
             what="budget.max_attempts", minimum=1,
         )
-        wall_cap = float(self.require("budget.wall_time_cap_seconds"))
-        if not np.isfinite(wall_cap) or wall_cap <= 0.0:
+        wall_cap = require_native_number(
+            self.require("budget.wall_time_cap_seconds"),
+            what="budget.wall_time_cap_seconds",
+        )
+        if wall_cap <= 0.0:
             raise ContractError("budget.wall_time_cap_seconds must be finite and positive")
 
         positive_integer_paths = (
@@ -1935,8 +2046,8 @@ class FrozenPlan:
             require_native_integer(self.require(path), what=path, minimum=1)
 
         for path in ("archive_following.scales", "cross_block.scales"):
-            values = [float(value) for value in self.require(path)]
-            if not values or not np.all(np.isfinite(values)) or any(value <= 0.0 for value in values):
+            values = require_native_number_list(self.require(path), what=path)
+            if any(value <= 0.0 for value in values):
                 raise ContractError(f"{path} must contain finite positive values: {values}")
             if sorted(values) != values or len(set(values)) != len(values):
                 raise ContractError(f"{path} must be ascending and distinct: {values}")
@@ -1945,7 +2056,9 @@ class FrozenPlan:
             self.require("archive_following.quota"),
             what="archive_following.quota", minimum=1,
         )
-        cross_scales = [float(value) for value in self.require("cross_block.scales")]
+        cross_scales = require_native_number_list(
+            self.require("cross_block.scales"), what="cross_block.scales"
+        )
         cross_quota = require_native_integer(
             self.require("cross_block.quota"),
             what="cross_block.quota", minimum=0,
@@ -1959,6 +2072,12 @@ class FrozenPlan:
             )
 
         if bool(self.get("correlated_output_diagnostic.enabled", False)):
+            shrinkage = require_native_number(
+                self.require("correlated_output.shrinkage"),
+                what="correlated_output.shrinkage",
+            )
+            if not 0.0 <= shrinkage <= 1.0:
+                raise ContractError("correlated_output.shrinkage must be in [0, 1]")
             require_native_integer(
                 self.require("correlated_output.n_seed_block_bootstrap"),
                 what="correlated_output.n_seed_block_bootstrap", minimum=1,
@@ -1970,6 +2089,22 @@ class FrozenPlan:
             if bootstrap_seed in set(self.seeds.discovery) | set(self.seeds.confirmation):
                 raise ContractError(
                     "correlated_output.bootstrap_seed must not be a simulation seed"
+                )
+            rank_tolerance = require_native_number(
+                self.require("correlated_output.stability_rank_tolerance"),
+                what="correlated_output.stability_rank_tolerance",
+            )
+            if rank_tolerance < 0.0:
+                raise ContractError(
+                    "correlated_output.stability_rank_tolerance must be non-negative"
+                )
+            direction_cosine = require_native_number(
+                self.require("correlated_output.stability_direction_cosine"),
+                what="correlated_output.stability_direction_cosine",
+            )
+            if not 0.0 <= direction_cosine <= 1.0:
+                raise ContractError(
+                    "correlated_output.stability_direction_cosine must be in [0, 1]"
                 )
 
         quotas = self.kernel_quotas()
