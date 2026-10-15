@@ -2142,23 +2142,34 @@ def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
 
 
 def diagnosis_test_gate() -> dict:
-    """Existing diagnosis integration gate, with the known exception disclosed.
+    """Run the diagnosis integration gate and disclose its observed status.
 
-    The deterministic multiplier-one neutrality test STILL FAILS and its assertion
-    is unchanged (tests/KNOWN_TEST_EXCEPTIONS.md E-2026-09-17-01).  This search
-    runs only the stochastic enabled MSM path, and the paired smoke check is what
-    establishes that path.  The suite is not claimed to be fully passing.
+    The historical deterministic multiplier-one exception is reported only when
+    the gate actually exercises it.  A fully passing suite must not retain a stale
+    statement that the named test failed.
     """
     from run_joint_fit_comparison_20260917 import run_diagnosis_test_gate  # noqa: PLC0415
 
     result = run_diagnosis_test_gate()
     if not result["ok"]:
         raise ContractError(f"diagnosis integration test gate failed: {json.dumps(result)}")
-    result["disclosure"] = (
-        "The deterministic MSM multiplier-one neutrality test still fails "
-        "(KNOWN_TEST_EXCEPTIONS E-2026-09-17-01). The suite is NOT fully passing. Every "
-        "evaluation in this search is stochastic on the enabled MSM path."
-    )
+    if result.get("suite_fully_passing"):
+        result["disclosure"] = (
+            f"The diagnosis integration suite fully passed ({result.get('n_passed', 0)} passed; "
+            "0 failed, errors, or skipped). Historical exception E-2026-09-17-01 was not "
+            "exercised. Every evaluation in this search is stochastic on the enabled MSM path."
+        )
+    elif result.get("tolerated_failure_still_fails"):
+        result["disclosure"] = (
+            "The deterministic MSM multiplier-one neutrality test still fails "
+            "(KNOWN_TEST_EXCEPTIONS E-2026-09-17-01). The suite is NOT fully passing. Every "
+            "evaluation in this search is stochastic on the enabled MSM path."
+        )
+    else:
+        raise ContractError(
+            "diagnosis integration gate returned ok=true without either a fully passing suite "
+            "or the declared tolerated failure"
+        )
     return result
 
 

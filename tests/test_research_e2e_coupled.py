@@ -78,6 +78,41 @@ def test_research_seed_preflight_describes_only_active_own_manifest_rules(tmp_pa
     assert "design='option_b_1980_research_e2e_20261015'" in report["limitation"]
 
 
+def test_diagnosis_gate_disclosure_reports_a_fully_passing_suite(monkeypatch):
+    import run_joint_fit_comparison_20260917 as comparison
+
+    monkeypatch.setattr(comparison, "run_diagnosis_test_gate", lambda: {
+        "ok": True,
+        "n_passed": 39,
+        "n_failed": 0,
+        "n_errors": 0,
+        "n_skipped": 0,
+        "tolerated_failure_still_fails": False,
+        "suite_fully_passing": True,
+    })
+    result = rcc.diagnosis_test_gate()
+    assert "fully passed (39 passed" in result["disclosure"]
+    assert "was not exercised" in result["disclosure"]
+    assert "still fails" not in result["disclosure"]
+
+
+def test_diagnosis_gate_disclosure_retains_an_exercised_exception(monkeypatch):
+    import run_joint_fit_comparison_20260917 as comparison
+
+    monkeypatch.setattr(comparison, "run_diagnosis_test_gate", lambda: {
+        "ok": True,
+        "n_passed": 38,
+        "n_failed": 1,
+        "n_errors": 0,
+        "n_skipped": 0,
+        "tolerated_failure_still_fails": True,
+        "suite_fully_passing": False,
+    })
+    result = rcc.diagnosis_test_gate()
+    assert "still fails" in result["disclosure"]
+    assert "suite is NOT fully passing" in result["disclosure"]
+
+
 def test_research_declaration_binds_stage_plan_and_upstream_without_auth_claim():
     plan = rcc.RunnerPlan(_payload())
     upstream = {"prepared_manifest": "a" * 64}
