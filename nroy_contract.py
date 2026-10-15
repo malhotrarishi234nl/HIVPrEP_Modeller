@@ -372,6 +372,7 @@ REQUIRED_DECISIONS: dict[str, str] = {
 #: genuinely consumed; they just do not appear as a dotted-path literal.
 DECISIONS_READ_BY_SUBSCRIPT = frozenset({
     "target_contract.register_path",
+    "target_contract.register_sha256",
     "target_contract.frozen_order",
     "target_contract.n_targets",
     "seeds.discovery",
