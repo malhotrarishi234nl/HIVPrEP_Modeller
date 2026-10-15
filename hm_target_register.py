@@ -12,9 +12,9 @@ resolves, for every (series, year) scalar target:
 
 ``V_disc`` is NOT resolved here. It is assembled later by ``build_budgets``
 under the register's explicit, versioned method. Some historical registers use
-simulator-output variance; the focused v1.3 register uses a target-relative 10%
-project assumption. The latter is not attributed to Andrianakis et al. as an
-exact published rule.
+simulator-output variance; the separate robust-NROY production v1.3 proposal
+uses a target-relative 10% project assumption. The latter is not attributed to
+Andrianakis et al. as an exact published rule.
 
 Everything this module reports about a target is traceable to a workbook cell or
 to a declared rule written down in the register JSON.  Nothing is inferred

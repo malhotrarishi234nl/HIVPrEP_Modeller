@@ -100,15 +100,19 @@ def validate_package(
     target_register = _path(root, plan.targets.register_path)
     register_payload = _read_mapping(target_register, label="target register")
     expected_workbook_sha256 = register_payload.get("source_workbook_sha256")
-    if expected_workbook_sha256 is not None:
-        expected_workbook_sha256 = str(expected_workbook_sha256)
-        if (
-            len(expected_workbook_sha256) != 64
-            or any(character not in "0123456789abcdef" for character in expected_workbook_sha256)
-        ):
-            problems.append(
-                "target register source_workbook_sha256 is not an exact lowercase SHA-256"
-            )
+    valid_workbook_sha256 = (
+        isinstance(expected_workbook_sha256, str)
+        and len(expected_workbook_sha256) == 64
+        and all(
+            character in "0123456789abcdef"
+            for character in expected_workbook_sha256
+        )
+    )
+    if not valid_workbook_sha256:
+        problems.append(
+            "plan-bound target register requires source_workbook_sha256 as an "
+            "exact lowercase SHA-256"
+        )
     expected_workbook_path = _path(root, register_payload.get("source_workbook", ""))
     expected_bindings = {
         "plan": (Path(plan.plan_path), plan.plan_sha256),
@@ -132,7 +136,7 @@ def validate_package(
             problems.append(f"source_bindings.{name} is missing")
             continue
         source = _path(root, binding.get("path", ""))
-        if name == "source_workbook" and expected_workbook_sha256 is not None:
+        if name == "source_workbook" and valid_workbook_sha256:
             if str(binding.get("sha256", "")) != expected_workbook_sha256:
                 problems.append(
                     "source_bindings.source_workbook does not match the "

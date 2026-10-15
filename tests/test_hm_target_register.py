@@ -21,6 +21,33 @@ import hm_variance_budget as vb
 
 WORKBOOK = (Path(__file__).resolve().parent.parent / "../data/raw/validation/DiseaseData.xlsx").resolve()
 needs_workbook = pytest.mark.skipif(not WORKBOOK.exists(), reason="disease workbook not available")
+HISTORICAL_FOCUSED_REGISTER = (
+    Path(__file__).resolve().parent.parent
+    / "configs/hm_target_register_focused_20260916.json"
+)
+ROBUST_NROY_PRODUCTION_REGISTER = (
+    Path(__file__).resolve().parent.parent
+    / "configs/hm_target_register_robust_nroy_production_20261015.json"
+)
+
+
+def test_historical_and_production_register_lineages_are_separate():
+    historical = tr._strict_json_load(
+        HISTORICAL_FOCUSED_REGISTER, label="historical focused register"
+    )
+    production = tr._strict_json_load(
+        ROBUST_NROY_PRODUCTION_REGISTER, label="robust-NROY production register"
+    )
+    assert tr._sha256(HISTORICAL_FOCUSED_REGISTER) == (
+        "87db68409e1a3e0c6ede762b37fd7f8c64008a1ba289b4965eb7a7be645e7a03"
+    )
+    assert tr._sha256(ROBUST_NROY_PRODUCTION_REGISTER) == (
+        "57bed71174d2346419e250b2371995421c466f82c1b55c98104fcd2cfcce0af8"
+    )
+    assert "source_workbook_sha256" not in historical
+    assert production["source_workbook_sha256"] == (
+        "0ff530cea5cb2545b32c6c20ab40de324bfadf7846c2078e59eec6b79eb93404"
+    )
 
 
 # --------------------------------------------------------------------------

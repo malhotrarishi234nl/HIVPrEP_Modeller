@@ -35,8 +35,10 @@ has those approvals and there is no CLI bypass.
 - `robust_nroy_freeze_production.json`: fail-closed production plan. It remains
   deliberately unsigned until every decision and evidence dependency is
   complete.
-- `hm_target_register_focused_20260916.json`: proposed 13-target contract and
-  source-workbook provenance.
+- `hm_target_register_robust_nroy_production_20261015.json`: proposed 13-target
+  production contract with exact source-workbook byte identity.
+- `hm_target_register_focused_20260916.json`: immutable historical 15-target
+  register retained at its original hash for coupled-calibration reproducibility.
 - `calib_space_v13_25_unordered_orientation_20260921.json`: proposed M0
   calibration space. M1 is generated as M0 plus one final coordinate.
 - `V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json`:

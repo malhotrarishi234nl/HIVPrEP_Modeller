@@ -2036,17 +2036,16 @@ def test_acceptance_validation_rejects_a_self_consistent_wrong_workbook(tmp_path
     register_path.write_text(json.dumps(register))
     plan_raw["target_contract"]["register_sha256"] = ccs.sha256_file(register_path)
     plan_path.write_text(json.dumps(plan_raw, indent=1))
+    with pd.ExcelWriter(wrong_workbook) as writer:
+        pd.DataFrame({"Year": [2024], "Value": [1]}).to_excel(
+            writer, sheet_name="S", index=False
+        )
     fx._write_test_acceptance_package(
         tmp_path / "acceptance_inputs",
         plan_path=plan_path,
         observed=None,
         variance=None,
     )
-
-    with pd.ExcelWriter(wrong_workbook) as writer:
-        pd.DataFrame({"Year": [2024], "Value": [1]}).to_excel(
-            writer, sheet_name="S", index=False
-        )
     provenance_path = tmp_path / "acceptance_inputs" / nai.PROVENANCE_FILENAME
     provenance = nc.strict_json_load(provenance_path, what="acceptance provenance")
     provenance["source_bindings"]["source_workbook"] = {
@@ -2061,6 +2060,37 @@ def test_acceptance_validation_rejects_a_self_consistent_wrong_workbook(tmp_path
         nai.validate_package(
             plan,
             provenance_path,
+            root=ROOT,
+            scientific_code_sha256=runner._code_sha256(),
+            scientific_runtime=nig.scientific_runtime_fingerprint(),
+        )
+
+
+def test_acceptance_validation_rejects_missing_register_workbook_hash(tmp_path):
+    """A fully signed, otherwise complete package cannot omit source-byte identity."""
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan_raw = nc.strict_json_load(plan_path, what="signed test plan")
+    register_path = Path(plan_raw["target_contract"]["register_path"])
+    register = nc.strict_json_load(register_path, what="test target register")
+    register.pop("source_workbook_sha256")
+    register_path.write_text(json.dumps(register))
+    plan_raw["target_contract"]["register_sha256"] = ccs.sha256_file(register_path)
+    plan_path.write_text(json.dumps(plan_raw, indent=1))
+    fx._write_test_acceptance_package(
+        tmp_path / "acceptance_inputs",
+        plan_path=plan_path,
+        observed=None,
+        variance=None,
+    )
+
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    with pytest.raises(
+        ContractError,
+        match="plan-bound target register requires source_workbook_sha256",
+    ):
+        nai.validate_package(
+            plan,
+            tmp_path / "acceptance_inputs" / nai.PROVENANCE_FILENAME,
             root=ROOT,
             scientific_code_sha256=runner._code_sha256(),
             scientific_runtime=nig.scientific_runtime_fingerprint(),

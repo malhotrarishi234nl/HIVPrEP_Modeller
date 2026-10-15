@@ -106,6 +106,28 @@ def generate(args: argparse.Namespace) -> int:
             "acceptance-input generator is pinned to the reviewed 13-target order; "
             f"plan declares {list(target_order)}"
         )
+    register_raw = nc.strict_json_load(register_path, what="target register")
+    if not isinstance(register_raw, dict):
+        raise nc.ContractError("target register must be a JSON object")
+    expected_workbook_sha256 = register_raw.get("source_workbook_sha256")
+    if (
+        not isinstance(expected_workbook_sha256, str)
+        or len(expected_workbook_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in expected_workbook_sha256
+        )
+    ):
+        raise nc.ContractError(
+            "production target register requires an exact lowercase "
+            "source_workbook_sha256"
+        )
+    workbook_path = resolve(register_raw["source_workbook"])
+    if sha256(workbook_path) != expected_workbook_sha256:
+        raise nc.ContractError(
+            "source workbook does not match source_workbook_sha256 in the target register"
+        )
+
     wave_plan_path = resolve(args.wave_plan)
     wave_plan = nc.strict_json_load(wave_plan_path, what="history-matching wave plan")
     if not isinstance(wave_plan, dict):
@@ -131,15 +153,6 @@ def generate(args: argparse.Namespace) -> int:
         writer.writeheader()
         writer.writerows(target.as_row() for target in targets)
 
-    register_raw = nc.strict_json_load(register_path, what="target register")
-    if not isinstance(register_raw, dict):
-        raise nc.ContractError("target register must be a JSON object")
-    workbook_path = resolve(register_raw["source_workbook"])
-    expected_workbook_sha256 = register_raw.get("source_workbook_sha256")
-    if expected_workbook_sha256 is not None and sha256(workbook_path) != expected_workbook_sha256:
-        raise nc.ContractError(
-            "source workbook does not match source_workbook_sha256 in the target register"
-        )
     command = " ".join(shlex.quote(value) for value in [sys.executable, *sys.argv])
     provenance = {
         "schema": SCHEMA,
@@ -169,10 +182,7 @@ def generate(args: argparse.Namespace) -> int:
             "source_workbook": {
                 "path": portable_path(workbook_path),
                 "sha256": sha256(workbook_path),
-                **(
-                    {"expected_sha256": expected_workbook_sha256}
-                    if expected_workbook_sha256 is not None else {}
-                ),
+                "expected_sha256": expected_workbook_sha256,
             },
             "wave_plan": {"path": portable_path(wave_plan_path), "sha256": sha256(wave_plan_path)},
         },

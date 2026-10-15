@@ -50,9 +50,9 @@ P_CONFIG_PATH = (
 TEST_SIGNATURES: dict[str, object] = {
     "models.m0.calib_space": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
     "models.base_config": SHARED_PRODUCTION_CONFIG,
-    "target_contract.register_path": "configs/hm_target_register_focused_20260916.json",
+    "target_contract.register_path": "configs/hm_target_register_robust_nroy_production_20261015.json",
     "target_contract.register_sha256": ccs.sha256_file(
-        ROOT / "configs" / "hm_target_register_focused_20260916.json"
+        ROOT / "configs" / "hm_target_register_robust_nroy_production_20261015.json"
     ),
     "target_contract.n_targets": 13,
     "target_contract.frozen_order": list(ccs.FROZEN_TARGET_ORDER),
@@ -146,14 +146,62 @@ def write_signed_plan(
     }
     base_path = tmp_path / "stochastic_base_config.json"
     base_path.write_text(json.dumps(base, indent=1))
-    # Acceptance-package unit tests use a fabricated workbook.  Give those
-    # tests an explicitly legacy, hashless register copy so they do not weaken
-    # the production focused register's mandatory workbook-byte binding.
+    # Acceptance-package unit tests use a minimal fabricated workbook and
+    # private two-series register. Both exact byte identities are bound so the
+    # production-only invariant is exercised without external data or any
+    # pretence that this fixture is scientific evidence.
     if "target_contract.register_path" not in overrides:
-        fixture_register = json.loads(
-            (ROOT / "configs" / "hm_target_register_focused_20260916.json").read_text()
+        fixture_workbook = tmp_path / "acceptance_inputs" / "fixture_source_workbook.xlsx"
+        fixture_workbook.parent.mkdir(parents=True, exist_ok=True)
+        fixture_series = (
+            (
+                "SHM",
+                "shm_new_diagnoses_msm",
+                "new_diagnoses_msm",
+                [1996, 2000, 2004, 2010, 2015, 2019, 2024],
+            ),
+            (
+                "AIDS",
+                "rivm_aids_msm",
+                "aids_prevalence_msm",
+                [2000, 2005, 2010, 2015, 2019, 2022],
+            ),
         )
-        fixture_register.pop("source_workbook_sha256", None)
+        if not fixture_workbook.exists():
+            with pd.ExcelWriter(fixture_workbook) as writer:
+                for sheet, _series, _output, years in fixture_series:
+                    pd.DataFrame([["fixture spacer"]]).to_excel(
+                        writer, sheet_name=sheet, index=False, header=False
+                    )
+                    pd.DataFrame(
+                        {"Year": years, "Value": range(1, len(years) + 1)}
+                    ).to_excel(writer, sheet_name=sheet, index=False, startrow=1)
+        fixture_register = {
+            "version": "verification-fixture-only",
+            "source_workbook": str(fixture_workbook),
+            "source_workbook_sha256": ccs.sha256_file(fixture_workbook),
+            "defaults": {
+                "v_disc": {"method": "relative_to_target", "multiplier": 0.1},
+                "v_ensemble": {"reason": "verification fixture"},
+            },
+            "targets": [
+                {
+                    "series_name": series,
+                    "model_output": output,
+                    "source_sheet": sheet,
+                    "source_organisation": "verification fixture",
+                    "year_column": "Year",
+                    "estimate_column": "Value",
+                    "year_coverage": [min(years), max(years)],
+                    "epistemic_tier": 1,
+                    "role": "calibration",
+                    "z_derivation": "fabricated verification fixture",
+                    "v_obs": {"method": "underivable", "reason": "fixture"},
+                    "v_disc": {"method": "default"},
+                }
+                for sheet, series, output, years in fixture_series
+            ],
+        }
         fixture_register_path = tmp_path / "fixture_target_register.json"
         fixture_register_path.write_text(json.dumps(fixture_register, indent=1))
         overrides = {
@@ -296,9 +344,7 @@ def _write_test_acceptance_package(
                 "b_variance": b_value,
             })
 
-    source_workbook = out / "fixture_source_workbook.txt"
     wave_plan = out / "fixture_wave_plan.json"
-    source_workbook.write_text("fabricated test fixture; not scientific evidence\n")
     wave_plan.write_text("{}\n")
     base_config = Path(str(plan.require("models.base_config")))
     if not base_config.is_absolute():
@@ -309,6 +355,11 @@ def _write_test_acceptance_package(
     register = Path(plan.targets.register_path)
     if not register.is_absolute():
         register = ROOT / register
+    register_payload = nc.strict_json_load(register, what="test target register")
+    source_workbook = Path(str(register_payload["source_workbook"]))
+    if not source_workbook.is_absolute():
+        source_workbook = ROOT / source_workbook
+    expected_workbook_sha256 = register_payload.get("source_workbook_sha256")
     base_config_sha256 = (
         ccs.sha256_file(base_config) if base_config.is_file() else "MISSING_TEST_INPUT"
     )
@@ -349,6 +400,10 @@ def _write_test_acceptance_package(
             "source_workbook": {
                 "path": str(source_workbook),
                 "sha256": ccs.sha256_file(source_workbook),
+                **(
+                    {"expected_sha256": expected_workbook_sha256}
+                    if expected_workbook_sha256 is not None else {}
+                ),
             },
             "wave_plan": {"path": str(wave_plan), "sha256": ccs.sha256_file(wave_plan)},
         },

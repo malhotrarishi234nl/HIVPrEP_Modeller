@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 
 import coupled_calibration_search as ccs
-import hm_target_register as tr
 import nroy_contract as nc
 from tools import prepare_robust_nroy_acceptance_inputs as prep
 
@@ -119,7 +118,7 @@ def test_generator_rejects_a_structurally_valid_wrong_workbook(tmp_path):
         )
 
     register = nc.strict_json_load(
-        ROOT / "configs" / "hm_target_register_focused_20260916.json",
+        ROOT / "configs" / "hm_target_register_robust_nroy_production_20261015.json",
         what="target register fixture",
     )
     register["source_workbook"] = str(wrong_workbook)
@@ -136,5 +135,29 @@ def test_generator_rejects_a_structurally_valid_wrong_workbook(tmp_path):
     generate_args = args(tmp_path / "out", draft=True)
     generate_args.plan = str(plan_path)
 
-    with pytest.raises(tr.RegisterError, match="does not match the register-bound"):
+    with pytest.raises(nc.ContractError, match="does not match source_workbook_sha256"):
+        prep.generate(generate_args)
+
+
+def test_generator_rejects_a_register_without_workbook_hash(tmp_path):
+    register = nc.strict_json_load(
+        ROOT / "configs" / "hm_target_register_robust_nroy_production_20261015.json",
+        what="target register fixture",
+    )
+    register.pop("source_workbook_sha256")
+    register_path = tmp_path / "target_register.json"
+    register_path.write_text(json.dumps(register))
+
+    plan = nc.strict_json_load(PLAN, what="production plan fixture")
+    plan["target_contract"]["register_path_proposal"] = str(register_path)
+    plan["target_contract"]["register_sha256_proposal"] = ccs.sha256_file(register_path)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan))
+    generate_args = args(tmp_path / "out", draft=True)
+    generate_args.plan = str(plan_path)
+
+    with pytest.raises(
+        nc.ContractError,
+        match="production target register requires an exact lowercase",
+    ):
         prep.generate(generate_args)

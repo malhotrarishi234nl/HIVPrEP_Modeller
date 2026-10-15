@@ -2,9 +2,9 @@
 
 **Status: CURRENT decision support as of 2026-10-15.** This packet is bound to
 plan SHA-256
-`71152198b3c9d5173a629b6babf77948553a6c7ae188cb12759c5ca76596ad55` and
+`d147ec6c0422c28e1c2c885bcef2a83bac26f7c0630acf94469128cbdf760f27` and
 decision-register SHA-256
-`dfa15eba805548c5f232f9c584c3402faa8b61ad2e932423bea3f0e369053f46`.
+`df0f11b3e2dfb2a45225e731c71d11714594347e157e1a18479ecb23022b9216`.
 It recommends decisions; it does not edit or sign the plan and does not
 authorize an engine run.
 
@@ -179,7 +179,7 @@ not proof of completeness.
 
 | Row | Plan path | Recommendation | Required evidence |
 |---:|---|---|---|
-| 3 | `target_contract.register_path` | Use `configs/hm_target_register_focused_20260916.json` if source review confirms every construct. | Exact file hash, workbook hash, sheet/range/definition review, units, and extraction path. |
+| 3 | `target_contract.register_path` | Use `configs/hm_target_register_robust_nroy_production_20261015.json` if source review confirms every construct. | Exact file hash, workbook hash, sheet/range/definition review, units, and extraction path. The historical 2026-09-16 register remains unchanged for reproducibility and is not the production proposal. |
 | 4 | `target_contract.register_sha256` | Recompute and bind the exact reviewed target-register hash. | Must equal the SHA-256 of the scientifically approved register immediately before signing. |
 | 5 | `target_contract.frozen_order` | Keep the proposed seven SHM diagnosis then six RIVM AIDS targets. | Confirm the 1996-onward diagnosis and 2000-onward AIDS window decision; order becomes vector identity. |
 | 6 | `target_contract.n_targets` | `13`, mechanically conditional on row 5. | Must equal the unique frozen-order length; this is not an independent scientific choice. |

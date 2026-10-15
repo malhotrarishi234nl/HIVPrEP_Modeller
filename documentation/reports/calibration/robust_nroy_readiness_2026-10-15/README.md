@@ -8,7 +8,7 @@
   integrated branch must repeat the guarded repository suite before retaining
   the earlier code-acceptance verdict.
 - **Production readiness: NOT READY.** The exact current plan hash is
-  `71152198b3c9d5173a629b6babf77948553a6c7ae188cb12759c5ca76596ad55`
+  `d147ec6c0422c28e1c2c885bcef2a83bac26f7c0630acf94469128cbdf760f27`
   and validation reports 45 unsigned required decisions: 39 proposal-backed
   and 6 budget/seed decisions that correctly remain evidence-dependent.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
@@ -67,7 +67,7 @@
 ## Acceptance-input provenance
 
 The authoritative values resolve from
-`configs/hm_target_register_focused_20260916.json` and its bound
+`configs/hm_target_register_robust_nroy_production_20261015.json` and its bound
 `../data/raw/validation/DiseaseData.xlsx` workbook via the existing
 `coupled_calibration_search.load_frozen_targets` path. For every target:
 
@@ -112,11 +112,13 @@ hash assertions for older scripts, not replacement inputs.
 
 The preserved `acceptance_inputs_pre_sign/` files remain bound to the earlier
 plan hash `7d113408...`, original deterministic config proposal, and target
-register hash `87db6840...`. The current target register is version 1.3 and now
+register hash `87db6840...`. That historical register is again preserved
+byte-for-byte under its original 2026-09-16 path. The separate robust-NROY
+production proposal is version 1.3, binds the exact workbook SHA-256, and
 describes the rule actually used by scoring: target-relative 10% discrepancy as
-a project assumption. These contract changes intentionally make that draft
-stale; do not relabel or promote it. Regenerate into a new empty evidence
-directory only after the current plan is signed.
+a project assumption. These contract changes intentionally make the draft stale;
+do not relabel or promote it. Regenerate into a new empty evidence directory
+only after the current plan is signed.
 
 ## Other evidence-generation commands
 

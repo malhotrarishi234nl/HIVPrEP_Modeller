@@ -56,7 +56,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
     ROLE_PROPOSED: _names("""
         calib_space_v13_25_unordered_orientation_20260921.json
         collaborator_parameter_contract.json
-        hm_target_register_focused_20260916.json
+        hm_target_register_robust_nroy_production_20261015.json
         robust_nroy_freeze_production.json
     """),
     ROLE_HISTORICAL: _names("""
@@ -79,6 +79,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
         hm_focused_warm_start_20260916.csv
         hm_forecast_windows_warm_start_20260921.csv
         hm_target_register.json
+        hm_target_register_focused_20260916.json
         hm_target_register_rivm_msm_aids_20260916.json
         hm_wave_plan_baseline_learning_20260915.json
         hm_wave_plan_focused_continuation_20260915.json
@@ -188,7 +189,7 @@ STATUS_OVERRIDES = {
         "UNAPPROVED_CONTRACT — fail-closed edit allowlist; production use requires exact "
         "SHA-256 binding in the canonical production approval"
     ),
-    "hm_target_register_focused_20260916.json": (
+    "hm_target_register_robust_nroy_production_20261015.json": (
         "UNSIGNED_PROPOSAL — proposed 13-target contract; target constructs and provenance require review"
     ),
 }
@@ -212,7 +213,7 @@ SAFE_NOTE_OVERRIDES = {
         "Use to validate draft copies only; binding its exact hash in production approval means the "
         "approver reviewed every listed path and interval."
     ),
-    "hm_target_register_focused_20260916.json": (
+    "hm_target_register_robust_nroy_production_20261015.json": (
         "Do not treat targets as accepted; use only after source-window, construct, and provenance review."
     ),
 }
