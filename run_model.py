@@ -56,10 +56,11 @@ PRODUCTION_APPROVAL_FIELDS = {
     "scientific_files_sha256", "requirements_operator_sha256",
 }
 
-ANALYSIS_RUN_SHEET_SCHEMA = "collaborator_analysis_run_sheet/1.0.0"
+ANALYSIS_RUN_SHEET_SCHEMA = "collaborator_analysis_run_sheet/1.1.0"
 ANALYSIS_RUN_SHEET_FIELDS = {
     "schema", "analysis_config_sha256",
     "collaborator_parameter_contract_sha256", "model", "p", "seeds",
+    "output_directory",
     "scientific_files_sha256", "requirements_operator_sha256",
     "scientific_approved_by", "scientific_approved_utc",
     "dispatch_authorized_by", "dispatch_authorized_utc",
@@ -893,6 +894,7 @@ def _load_analysis_run_sheet(
     path: str | Path, *, input_config_sha256: str,
     parameter_contract_sha256: str, scientific_files_sha256: str,
     requirements_operator_sha256: str, model: str, p: float | None, seed: int,
+    output_dir: str | Path,
     production_approved_utc: str,
 ) -> tuple[dict[str, Any], str]:
     """Load one exact, scientifically approved and dispatched analysis sheet."""
@@ -951,19 +953,35 @@ def _load_analysis_run_sheet(
             )
 
     seeds = payload["seeds"]
-    if not isinstance(seeds, list) or not seeds:
+    if not isinstance(seeds, list) or len(seeds) != 1:
         raise OperatorConfigError(
-            "analysis run sheet seeds must be a non-empty list of unique uint32 integers"
+            "analysis run sheet seeds must contain exactly one uint32 integer; "
+            "one sheet authorizes one invocation"
         )
     if any(type(value) is not int or not 0 <= value <= UINT32_MAX for value in seeds):
         raise OperatorConfigError(
             "analysis run sheet seeds must contain only uint32 integers"
         )
-    if len(seeds) != len(set(seeds)):
-        raise OperatorConfigError("analysis run sheet seeds must be unique")
-    if seed not in seeds:
+    if seed != seeds[0]:
         raise OperatorConfigError(
             f"--seed {seed} is not authorized by the analysis run sheet"
+        )
+
+    authorized_output = payload["output_directory"]
+    if not isinstance(authorized_output, str) or not authorized_output.strip():
+        raise OperatorConfigError(
+            "analysis run sheet output_directory must be a non-empty absolute path"
+        )
+    authorized_path = Path(authorized_output)
+    if not authorized_path.is_absolute():
+        raise OperatorConfigError(
+            "analysis run sheet output_directory must be an absolute path"
+        )
+    requested_path = Path(output_dir).resolve()
+    if authorized_path.resolve() != requested_path:
+        raise OperatorConfigError(
+            "analysis run sheet output_directory does not match --output-dir "
+            f"({authorized_path.resolve()} != {requested_path})"
         )
 
     for field in ("scientific_approved_by", "dispatch_authorized_by"):
@@ -1320,6 +1338,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             model=args.model,
             p=args.p,
             seed=args.seed,
+            output_dir=output_path,
             production_approved_utc=approval_bindings[
                 "production_approved_utc"
             ],

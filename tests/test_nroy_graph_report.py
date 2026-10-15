@@ -34,6 +34,11 @@ import run_robust_nroy_freeze as runner  # noqa: E402
 from coupled_calibration_search import ContractError  # noqa: E402
 from tools import audit_robust_nroy_seeds as seed_audit_tool  # noqa: E402
 
+EXTERNAL_WORKBOOK = (ROOT / "../data/raw/validation/DiseaseData.xlsx").resolve()
+EXTERNAL_WORKBOOK_REASON = (
+    "external-data lane requires ../data/raw/validation/DiseaseData.xlsx"
+)
+
 #: The only bridge pass rule the implementation provides; the plan signs it and
 #: nroy_graph.classify_edge checks it rather than assuming it.
 PASS_RULE = ng.BRIDGE_PASS_RULES[0]
@@ -1579,6 +1584,7 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
     assert evidence_problems == []
 
 
+@pytest.mark.skipif(not EXTERNAL_WORKBOOK.is_file(), reason=EXTERNAL_WORKBOOK_REASON)
 def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evidence(
     tmp_path, capsys,
 ):

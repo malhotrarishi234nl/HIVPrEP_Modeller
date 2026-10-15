@@ -46,7 +46,7 @@ manifest alongside the results, and it refuses to mark a run complete unless
 the protected `baseline_run_001.csv` is a nonempty regular file. Validation-only
 constructs no engine and writes no run files. Actual simulations additionally
 require the canonical config's protected machine-readable production approval
-and a SHA-bound `collaborator_analysis_run_sheet/1.0.0` carrying both scientific
+and a SHA-bound `collaborator_analysis_run_sheet/1.1.0` carrying both scientific
 approval and separate dispatch authorization; no current candidate has these,
 and the collaborator CLI has no bypass. This leaves mechanical validation
 usable while calibration and scientific acceptance are completed.
@@ -56,8 +56,10 @@ approval and dispatch record.
 Collaborator edits are limited to the numeric paths and closed intervals in
 `configs/collaborator_parameter_contract.json`; production approval must bind
 that file's exact SHA-256, the scientific source aggregate, and the exact
-operator-requirements file. Seeds must be uint32 integers, and the approved
-analysis run sheet—not the operator—defines their pairing and replication.
+operator-requirements file. Each approved analysis run sheet authorizes exactly
+one model, `p` value, uint32 seed, and absolute output destination. A separate
+sheet is required for every additional invocation; this runner does not claim
+to enforce cross-model pairing or an analysis-wide replication design.
 
 ## Safety boundary
 

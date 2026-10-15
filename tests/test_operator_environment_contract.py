@@ -58,11 +58,12 @@ def test_operator_setup_and_no_external_workbook_boundary_are_documented():
 
 def test_run_sheet_template_is_typed_deliberately_incomplete_and_separates_dispatch():
     payload = json.loads(RUN_SHEET_TEMPLATE.read_text(encoding="utf-8"))
-    assert payload["schema"] == "collaborator_analysis_run_sheet/1.0.0"
+    assert payload["schema"] == "collaborator_analysis_run_sheet/1.1.0"
     assert payload["analysis_config_sha256"] == ""
     assert payload["model"] is None
     assert payload["p"] is None
     assert payload["seeds"] == []
+    assert payload["output_directory"] == ""
     assert payload["scientific_approved_by"] == ""
     assert payload["scientific_approved_utc"] == ""
     assert payload["dispatch_authorized_by"] == ""

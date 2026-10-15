@@ -144,10 +144,13 @@ saved config seed.
 
 Do not reuse the draft copy made before promotion. After promotion, make a fresh
 copy of the newly approved canonical config, reapply only the reviewed parameter
-diff, and run `--validate-only` again. Obtain the seed or paired seed list from
-the approved analysis run sheet; do not invent or casually reuse the example
-seed below. One command creates one stochastic trajectory, so repeat runs only
-as declared by that run sheet and give every trajectory a new output directory.
+diff, and run `--validate-only` again. Obtain the seed and output destination
+from the approved analysis run sheet; do not invent or casually reuse the
+example seed below. One command and one sheet authorize exactly one stochastic
+trajectory. Any additional seed, model, or destination requires its own sheet.
+This single-run interface does not claim to enforce M0/M1 pairing or the wider
+replication design; those belong in the reviewed analysis design from which the
+individual dispatch sheets are issued.
 
 The maintainer and approving owners must create the run sheet from
 [`COLLABORATOR_ANALYSIS_RUN_SHEET.json.template`](COLLABORATOR_ANALYSIS_RUN_SHEET.json.template).
@@ -155,8 +158,9 @@ The template is deliberately incomplete and cannot authorize a run. Save the
 completed sheet with the reviewed analysis record, for example as
 `operator_configs/my_analysis_run_sheet.json`. It binds the exact analysis
 config, collaborator parameter contract, scientific source aggregate, operator
-requirements, M0/M1 choice, exact M1 `p` (or `null` for M0), and the complete
-nonempty unique uint32 seed list. It also requires a named, timezone-stamped
+requirements, M0/M1 choice, exact M1 `p` (or `null` for M0), exactly one uint32
+seed, and the exact absolute output directory. It also requires a named,
+timezone-stamped
 scientific approval and a separate named, timezone-stamped dispatch
 authorization. These are separate records even if governance permits one
 person to hold both roles. An operator must not fill placeholders or change the
@@ -277,8 +281,11 @@ reviewed commit/bundle and supply a separately approved analysis run sheet.
 Reviewers must reconcile the run manifest's config and Git hashes to that
 release. Neither the block alone nor possession of a runnable copy proves
 scientific acceptance or dispatch authorization. The separate run sheet is
-mandatory for every actual invocation and the chosen seed must appear in its
-exact approved seed list.
+mandatory for every actual invocation; its sole seed must equal `--seed`, and
+its absolute output destination must resolve to the same path as
+`--output-dir`. Because that directory must initially be empty and the runner
+writes its sealed sheet and manifest before engine import, the same dispatch
+cannot be replayed into that destination.
 
 ## Editable and protected inputs
 

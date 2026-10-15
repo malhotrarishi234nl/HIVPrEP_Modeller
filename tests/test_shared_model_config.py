@@ -60,6 +60,7 @@ def _write_approved_canonical(tmp_path: Path) -> Path:
 def _write_run_sheet(
     tmp_path: Path, *, config_path: Path, model: str = "M0",
     p: float | None = None, seeds: list[int] | None = None,
+    output_dir: Path | None = None,
 ) -> Path:
     bindings = run_model.production_approval_binding_values()
     payload = {
@@ -69,6 +70,9 @@ def _write_run_sheet(
         "model": model,
         "p": p,
         "seeds": [42001] if seeds is None else seeds,
+        "output_directory": str(
+            (tmp_path / "authorized-output" if output_dir is None else output_dir).resolve()
+        ),
         "scientific_approved_by": "Synthetic scientific owner",
         "scientific_approved_utc": "2026-10-15T09:05:00Z",
         "dispatch_authorized_by": "Synthetic dispatch owner",
@@ -290,6 +294,37 @@ def test_operator_run_refuses_to_overwrite_a_nonempty_output(tmp_path, capsys):
     assert "output directory is not empty" in capsys.readouterr().out
 
 
+def test_authorized_single_run_destination_cannot_be_replayed(
+    tmp_path, monkeypatch, capsys,
+):
+    output = tmp_path / "authorized-run"
+    output.mkdir()
+    (output / run_model.RUN_MANIFEST_FILENAME).write_text("preserved prior run")
+    approved = _write_approved_canonical(tmp_path)
+    monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
+    run_sheet = _write_run_sheet(
+        tmp_path, config_path=approved, output_dir=output
+    )
+
+    class MustNotConstruct:
+        def __init__(self, config, seed):
+            raise AssertionError("replayed dispatch reached engine construction")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "run_v3",
+        types.SimpleNamespace(SimulationEngineV3=MustNotConstruct),
+    )
+    assert run_model.main([
+        "--config", str(approved), "--model", "M0", "--seed", "42001",
+        "--output-dir", str(output), "--run-sheet", str(run_sheet),
+    ]) == 2
+    assert "output directory is not empty" in capsys.readouterr().out
+    assert (output / run_model.RUN_MANIFEST_FILENAME).read_text() == (
+        "preserved prior run"
+    )
+
+
 def test_operator_run_requires_an_explicit_seed_before_engine_import(tmp_path, capsys):
     output = tmp_path / "new-run"
     assert run_model.main([
@@ -482,7 +517,10 @@ def test_runtime_mismatch_fails_before_engine_import_or_output_creation(
 ):
     approved = _write_approved_canonical(tmp_path)
     monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
-    run_sheet = _write_run_sheet(tmp_path, config_path=approved)
+    output = tmp_path / "must-not-run"
+    run_sheet = _write_run_sheet(
+        tmp_path, config_path=approved, output_dir=output
+    )
     expected, _ = run_model._operator_requirements_contract()
     monkeypatch.setattr(run_model, "_runtime_identity", lambda: {
         "python_implementation": "CPython",
@@ -499,7 +537,6 @@ def test_runtime_mismatch_fails_before_engine_import_or_output_creation(
     monkeypatch.setitem(
         sys.modules, "run_v3", types.SimpleNamespace(SimulationEngineV3=MustNotConstruct)
     )
-    output = tmp_path / "must-not-run"
     assert run_model.main([
         "--config", str(approved), "--model", "M0", "--seed", "42001",
         "--output-dir", str(output), "--run-sheet", str(run_sheet),
@@ -521,10 +558,12 @@ def test_runtime_mismatch_fails_before_engine_import_or_output_creation(
          "requirements_operator_sha256 does not match"),
         (lambda p: p.__setitem__("model", "M1"), "does not match --model"),
         (lambda p: p.__setitem__("p", 0.2), "M0 analysis run sheet must set p to null"),
-        (lambda p: p.__setitem__("seeds", []), "seeds must be a non-empty list"),
-        (lambda p: p.__setitem__("seeds", [42001, 42001]), "seeds must be unique"),
+        (lambda p: p.__setitem__("seeds", []), "seeds must contain exactly one"),
+        (lambda p: p.__setitem__("seeds", [42001, 42002]), "seeds must contain exactly one"),
         (lambda p: p.__setitem__("seeds", [True]), "only uint32 integers"),
         (lambda p: p.__setitem__("seeds", [42002]), "is not authorized"),
+        (lambda p: p.__setitem__("output_directory", "relative/output"),
+         "output_directory must be an absolute path"),
         (lambda p: p.__setitem__("scientific_approved_by", ""),
          "scientific_approved_by must name an owner"),
         (lambda p: p.__setitem__("scientific_approved_utc", "2026-10-15T09:00:00"),
@@ -559,6 +598,7 @@ def test_analysis_run_sheet_fails_closed_on_every_bound_field(
             model="M0",
             p=None,
             seed=42001,
+            output_dir=tmp_path / "authorized-output",
             production_approved_utc="2026-10-15T09:00:00Z",
         )
 
@@ -584,6 +624,33 @@ def test_analysis_run_sheet_uses_strict_json_loading(tmp_path, raw):
             model="M0",
             p=None,
             seed=1,
+            output_dir=tmp_path / "authorized-output",
+            production_approved_utc="2026-10-15T09:00:00Z",
+        )
+
+
+def test_analysis_run_sheet_binds_one_exact_output_destination(tmp_path):
+    authorized = tmp_path / "authorized-output"
+    sheet = _write_run_sheet(
+        tmp_path, config_path=SHARED, output_dir=authorized
+    )
+    bindings = run_model.production_approval_binding_values()
+    with pytest.raises(
+        run_model.OperatorConfigError,
+        match="output_directory does not match --output-dir",
+    ):
+        run_model._load_analysis_run_sheet(
+            sheet,
+            input_config_sha256=hashlib.sha256(SHARED.read_bytes()).hexdigest(),
+            parameter_contract_sha256=bindings[
+                "collaborator_parameter_contract_sha256"
+            ],
+            scientific_files_sha256=bindings["scientific_files_sha256"],
+            requirements_operator_sha256=bindings["requirements_operator_sha256"],
+            model="M0",
+            p=None,
+            seed=42001,
+            output_dir=tmp_path / "different-output",
             production_approved_utc="2026-10-15T09:00:00Z",
         )
 
@@ -750,7 +817,8 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     ]["value"] = 0.6
     operator_copy = _write_copy(tmp_path, operator_payload)
     run_sheet = _write_run_sheet(
-        tmp_path, config_path=operator_copy, model="M1", p=0.2, seeds=[42001]
+        tmp_path, config_path=operator_copy, model="M1", p=0.2, seeds=[42001],
+        output_dir=output,
     )
     seen = {}
 
@@ -848,7 +916,8 @@ def test_fake_engine_return_without_scientific_output_marks_manifest_failed(
     approved = _write_approved_canonical(tmp_path)
     monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
     run_sheet = _write_run_sheet(
-        tmp_path, config_path=approved, model="M0", p=None, seeds=[42003]
+        tmp_path, config_path=approved, model="M0", p=None, seeds=[42003],
+        output_dir=output,
     )
 
     class NoOutputFakeEngine:
@@ -907,7 +976,8 @@ def test_fake_engine_failure_marks_manifest_failed(tmp_path, monkeypatch):
     approved = _write_approved_canonical(tmp_path)
     monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
     run_sheet = _write_run_sheet(
-        tmp_path, config_path=approved, model="M0", p=None, seeds=[42002]
+        tmp_path, config_path=approved, model="M0", p=None, seeds=[42002],
+        output_dir=output,
     )
 
     class FailingFakeEngine:

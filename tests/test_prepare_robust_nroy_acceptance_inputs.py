@@ -13,6 +13,10 @@ from tools import prepare_robust_nroy_acceptance_inputs as prep
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "configs" / "robust_nroy_freeze_production.json"
+EXTERNAL_WORKBOOK = (ROOT / "../data/raw/validation/DiseaseData.xlsx").resolve()
+EXTERNAL_WORKBOOK_REASON = (
+    "external-data lane requires ../data/raw/validation/DiseaseData.xlsx"
+)
 
 
 def args(out: Path, *, draft: bool) -> argparse.Namespace:
@@ -24,6 +28,7 @@ def args(out: Path, *, draft: bool) -> argparse.Namespace:
     )
 
 
+@pytest.mark.skipif(not EXTERNAL_WORKBOOK.is_file(), reason=EXTERNAL_WORKBOOK_REASON)
 def test_unsigned_plan_can_only_generate_explicit_nonproduction_draft(tmp_path):
     out = tmp_path / "draft"
     assert prep.generate(args(out, draft=True)) == 0
@@ -50,6 +55,7 @@ def test_unsigned_plan_is_refused_for_final_evidence(tmp_path):
         prep.generate(args(tmp_path / "final", draft=False))
 
 
+@pytest.mark.skipif(not EXTERNAL_WORKBOOK.is_file(), reason=EXTERNAL_WORKBOOK_REASON)
 def test_generator_refuses_to_overwrite_an_existing_package(tmp_path):
     out = tmp_path / "draft"
     assert prep.generate(args(out, draft=True)) == 0
