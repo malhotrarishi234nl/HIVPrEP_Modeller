@@ -179,7 +179,7 @@ STATUS_OVERRIDES = {
         "not production approval"
     ),
     "robust_nroy_freeze_production.json": (
-        "UNSIGNED_PROPOSAL — 43 owner-assigned decisions remain unsigned; fails closed"
+        "UNSIGNED_PROPOSAL — 45 owner-assigned decisions remain unsigned; fails closed"
     ),
     "calib_space_v13_25_unordered_orientation_20260921.json": (
         "UNSIGNED_PROPOSAL — proposed robust-NROY M0 space; bounds and injection paths require review"

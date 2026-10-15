@@ -715,7 +715,7 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
     pricing_source = tmp_path / "pricing_source.json"
     pricing_source.write_text(json.dumps({"credit_per_trajectory": 0.25}))
     priced = {
-        "schema": "robust_nroy_priced_budget/1.0.0",
+        "schema": "robust_nroy_priced_budget/1.1.0",
         "status": "FINAL",
         "production_eligible": True,
         "generated_utc": "2026-10-15T00:00:00Z",
@@ -731,6 +731,8 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "pricing_source_sha256": ccs.sha256_file(pricing_source),
         "currency_or_credit_unit": "test-credit",
         "unit_price": 0.25,
+        "cap_scope": "per_stage_ledger",
+        "cost_scope": "entire_workflow",
         "max_attempts": int(plan.require("budget.max_attempts")),
         "max_trajectories": int(plan.require("budget.max_trajectories")),
         "wall_time_cap_seconds": float(plan.require("budget.wall_time_cap_seconds")),
@@ -831,6 +833,10 @@ def test_production_readiness_reconciles_every_evidence_template(tmp_path):
         ("priced_budget", lambda value: value.update(status="INCOMPLETE"), "status is not FINAL"),
         ("priced_budget", lambda value: value.update(pricing_source_sha256="0" * 64),
          "pricing-source hash"),
+        ("priced_budget", lambda value: value.update(cap_scope="cumulative"),
+         "per-stage ledger caps"),
+        ("priced_budget", lambda value: value.update(cost_scope="single_stage"),
+         "entire workflow"),
         ("seed_disjointness_audit",
          lambda value: value.update(production_eligible=False), "not production-eligible"),
         ("seed_disjointness_audit",

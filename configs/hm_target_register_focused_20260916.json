@@ -1,5 +1,5 @@
 {
-  "version": "1.2-focused-ecdc-early-holdout",
+  "version": "1.3-focused-target-relative-discrepancy",
   "created": "2026-09-16",
   "spec": "HISTORY_MATCHING_BUILD_SPEC.md section 4 (HM-1); handoff task B-4; decision D-07",
   "source_workbook": "../data/raw/validation/DiseaseData.xlsx",
@@ -24,9 +24,9 @@
   },
   "defaults": {
     "v_disc": {
-      "method": "fraction_of_output_variance",
+      "method": "relative_to_target",
       "multiplier": 0.1,
-      "source": "Andrianakis et al. 2015, PLoS Comput Biol 11(1):e1003968 -- '10% of the variance of the simulator output training data obtained at each wave', declared by those authors as an illustrative choice"
+      "source": "Robust-NROY project assumption: use 10% of the observed target magnitude as the model-discrepancy standard-deviation scale, then square it to obtain variance. Andrianakis et al. support declaring model discrepancy explicitly but do not supply this exact target-relative rule. Any alternative requires a new versioned acceptance contract and predeclared sensitivity."
     },
     "v_ensemble": {
       "method": "predictive_local",
@@ -470,5 +470,5 @@
     "path": "configs/hm_target_register_rivm_msm_aids_20260916.json",
     "sha256": "b7bf0d4b562cd1f8797b11bb55679ac6a1307a4e78152151bb6b162b4464aba4"
   },
-  "change_record": "2026-09-16, user decisions: (1) predictive variance contract V_ens(x)=s(x)+s(x)/K with s(x) re-estimated locally, A-5 file not used; (2) model AIDS compartment confirmed as clinical AIDS (CASCADE 2000/2003 clinical 1993 CDC definition), no recognition fraction; (3) diagnostic wave scores RIVM MSM AIDS only; non-MSM and total RIVM AIDS and ECDC AIDS are cross-validation. The original register is unchanged. | 1.2 (2026-09-16, Rishi): ecdc_hiv_confirmed_cases moved to cross_validation. Pre-1996 Dutch HIV diagnoses include only persons alive in 1996 (RIVM STI/HIV report on 2008, sec. 1.8, PDF p.24); ECDC NL 1990-95 very likely derives from that registration. Report as ONE-SIDED: model new_diagnoses should be >= observed. See ECDC_EARLY_HIV_SOURCE_DECISION_2026-09-16.md."
+  "change_record": "2026-09-16, user decisions: (1) predictive variance contract V_ens(x)=s(x)+s(x)/K with s(x) re-estimated locally, A-5 file not used; (2) model AIDS compartment confirmed as clinical AIDS (CASCADE 2000/2003 clinical 1993 CDC definition), no recognition fraction; (3) diagnostic wave scores RIVM MSM AIDS only; non-MSM and total RIVM AIDS and ECDC AIDS are cross-validation. The original register is unchanged. | 1.2 (2026-09-16, Rishi): ecdc_hiv_confirmed_cases moved to cross_validation. Pre-1996 Dutch HIV diagnoses include only persons alive in 1996 (RIVM STI/HIV report on 2008, sec. 1.8, PDF p.24); ECDC NL 1990-95 very likely derives from that registration. Report as ONE-SIDED: model new_diagnoses should be >= observed. See ECDC_EARLY_HIV_SOURCE_DECISION_2026-09-16.md. | 1.3 (2026-10-15): corrected discrepancy metadata to the implemented target-relative 10% project assumption. Andrianakis et al. support explicit discrepancy treatment but are not claimed as the source of this exact rule."
 }

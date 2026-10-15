@@ -36,7 +36,10 @@ from coupled_calibration_search import ContractError
 #: so a design can never be silently mixed across kernel versions.  Version
 #: 1.1.0 makes every directed design the complete direction x scale x sign
 #: product rather than allowing a total quota to truncate later scales.
-KERNEL_VERSION = "1.1.0"
+#: 1.2.0 makes the archive ordering truthful, selects confirmed differences
+#: by the declared normalised metric, and labels cross-block probes as
+#: exploratory rather than inferred compensation.
+KERNEL_VERSION = "1.2.0"
 
 #: Declared direction generators.  The plan must name one; the code never
 #: infers it from a default (spec sec. 3.1).
@@ -47,21 +50,26 @@ DIRECTION_GENERATORS = ("gaussian_unit_sphere", "uniform_coordinate_box")
 DIRCLASS_AMBIENT = "ambient_isotropic"
 DIRCLASS_ARCHIVE_DIFF = "archive_difference"
 DIRCLASS_CONFIRMED_DIFF = "confirmed_difference"
-DIRCLASS_CROSS_BLOCK = "cross_block_compensating"
+DIRCLASS_CROSS_BLOCK = "cross_block_exploratory"
 DIRCLASS_BRIDGE = "bridge_interpolation"
 DIRCLASS_P_BOUNDARY = "p_boundary_one_sided"
 
-#: Two directions counted as the same class if |cos| exceeds this.  A declared
-#: computational threshold for *independence of direction classes*; it is not a
-#: scientific criterion and never affects acceptance.
-COLLINEAR_COSINE = 0.99
-
 #: Declared rules for choosing which archive vectors an anchor consults.  The
-#: plan names one; nothing is inferred.  "Low J" orders the *consultation*; it
-#: never establishes plausibility and no J value enters the geometry.
+#: plan names one; nothing is inferred.  ``lowest_j_then_distance`` says what
+#: the implementation actually does: J is the primary key, normalised distance
+#: the secondary key, and candidate id the deterministic tie-break.  Low J
+#: orders the *consultation*; it never establishes plausibility and no J value
+#: enters the geometry.
 ARCHIVE_NEIGHBOUR_RULES = (
-    "k_nearest_low_J_archive_vectors",
+    "lowest_j_then_distance",
     "k_nearest_in_normalised_metric",
+)
+
+#: Declared rule for choosing confirmed-difference directions when the signed
+#: count cap is smaller than the available pool.  This is a versioned code and
+#: plan contract rather than an outcome-dependent choice.
+CONFIRMED_DIFFERENCE_RULES = (
+    "nearest_in_normalised_metric_then_candidate_id",
 )
 
 #: Declared kinds of correlation-following direction source (spec sec. 3.2).
@@ -277,13 +285,18 @@ def maximin_subset(directions: np.ndarray, k: int) -> np.ndarray:
     return pool[np.array(chosen, dtype=int)]
 
 
-def direction_classes(vectors: Sequence[np.ndarray], *, cosine: float = COLLINEAR_COSINE) -> int:
+def direction_classes(vectors: Sequence[np.ndarray], *, cosine: float) -> int:
     """How many mutually non-collinear directions a set contains.
 
     Used for the "independent direction classes" requirement: two duplicate or
     nearly collinear moves are one class, not two, so ridge support cannot rest
     on the same direction sampled twice.
     """
+    threshold = float(cosine)
+    if not 0.0 <= threshold < 1.0:
+        raise ContractError(
+            f"direction-class maximum absolute cosine must be in [0, 1); got {cosine!r}"
+        )
     reps: list[np.ndarray] = []
     for raw in vectors:
         vector = np.asarray(raw, dtype=float)
@@ -291,7 +304,7 @@ def direction_classes(vectors: Sequence[np.ndarray], *, cosine: float = COLLINEA
         if norm == 0.0:
             continue
         unit = vector / norm
-        if not any(abs(float(unit @ other)) > float(cosine) for other in reps):
+        if not any(abs(float(unit @ other)) > threshold for other in reps):
             reps.append(unit)
     return len(reps)
 
@@ -629,7 +642,7 @@ def archive_directions(
     ``neighbour_rule`` is the signed choice of *which* archive vectors an
     anchor consults:
 
-    ``k_nearest_low_J_archive_vectors``
+    ``lowest_j_then_distance``
         order by J ascending, then by normalised distance, then by id.  This
         requires ``archive_j`` and refuses to proceed without it, because
         silently falling back to a distance-only ordering would mean the signed
@@ -647,7 +660,7 @@ def archive_directions(
         )
     if len(archive) != len(archive_ids):
         raise ContractError("archive vectors and ids differ in length")
-    uses_j = neighbour_rule == "k_nearest_low_J_archive_vectors"
+    uses_j = neighbour_rule == "lowest_j_then_distance"
     if uses_j:
         if archive_j is None:
             raise ContractError(
@@ -704,26 +717,45 @@ def confirmed_difference_directions(
     confirmed: Sequence[Mapping[str, float]],
     confirmed_ids: Sequence[str],
     max_directions: int,
+    selection_rule: str,
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
-    """Directions along differences between confirmed vectors (spec sec. 3.2)."""
+    """Directions to confirmed vectors under the declared normalised rule.
+
+    Candidate identifiers are only a deterministic tie-break.  They never
+    determine which direction is retained ahead of a nearer vector.
+    """
     if len(confirmed) != len(confirmed_ids):
         raise ContractError("confirmed vectors and ids differ in length")
+    if selection_rule not in CONFIRMED_DIFFERENCE_RULES:
+        raise ContractError(
+            f"unknown confirmed-difference selection rule {selection_rule!r}; "
+            f"the plan must declare one of {CONFIRMED_DIFFERENCE_RULES}"
+        )
     anchor_u = anchor.u(model)
     out: list[tuple[np.ndarray, str, tuple[str, ...]]] = []
-    order = sorted(range(len(confirmed)), key=lambda i: str(confirmed_ids[i]))
-    for position in order:
-        params = confirmed[position]
-        if str(confirmed_ids[position]) == anchor.anchor_id:
+    candidates: list[tuple[float, str, np.ndarray]] = []
+    for position, params in enumerate(confirmed):
+        candidate_id = str(confirmed_ids[position])
+        if candidate_id == anchor.anchor_id:
             continue
+        missing = [name for name in model.names if name not in params]
+        if missing:
+            raise ContractError(
+                f"confirmed vector {candidate_id!r} is missing {missing}; confirmed "
+                "vectors must be complete joint vectors"
+            )
         u_other = model.normalise({name: float(params[name]) for name in model.names})
         direction = u_other - anchor_u
-        norm = np.linalg.norm(direction)
-        if norm == 0.0:
+        distance = float(np.linalg.norm(direction))
+        if distance == 0.0:
             continue
+        candidates.append((distance, candidate_id, direction))
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    for distance, candidate_id, direction in candidates:
         out.append((
-            direction / norm,
+            direction / distance,
             DIRCLASS_CONFIRMED_DIFF,
-            (anchor.anchor_id, str(confirmed_ids[position])),
+            (anchor.anchor_id, candidate_id),
         ))
         if len(out) >= int(max_directions):
             break
@@ -738,13 +770,16 @@ def cross_block_directions(
     count: int,
     generator: str = "gaussian_unit_sphere",
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
-    """Compensating moves that act on exactly two parameter blocks.
+    """Exploratory paired-sign moves that act on exactly two parameter blocks.
 
     The block partition is the coupled search's own
     (:data:`coupled_calibration_search.BLOCKS`), and the pairs are cycled in
     the frozen :data:`coupled_calibration_search.BLOCK_PAIRS` order, so the
     design does not depend on iteration order anywhere.  ``p``, when present,
-    joins the diagnosis block: it is a diagnosis mechanism.
+    joins the diagnosis block: it is a diagnosis mechanism.  These random
+    directions probe coupled block changes; they are not empirically learned
+    compensation directions and do not, by themselves, establish ridge
+    support.
     """
     rng = design_rng(seed, "cross_block", anchor.vector_hash)
     index_of = {name: i for i, name in enumerate(model.names)}
@@ -820,6 +855,7 @@ def correlation_following_directions(
     neighbour_count: int,
     max_directions: int,
     neighbour_rule: str,
+    confirmed_difference_rule: str,
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
     """Assemble the archive-following directions from the *declared* sources.
 
@@ -862,7 +898,7 @@ def correlation_following_directions(
                 )
             out.extend(confirmed_difference_directions(
                 anchor, model, confirmed=confirmed, confirmed_ids=confirmed_ids,
-                max_directions=max_directions,
+                max_directions=max_directions, selection_rule=confirmed_difference_rule,
             ))
     return out
 

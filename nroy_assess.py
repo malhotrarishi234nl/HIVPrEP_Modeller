@@ -265,6 +265,7 @@ def local_support_table(
     smaller_ambient_scale: float,
     min_confirming: int,
     min_direction_classes: int,
+    max_abs_direction_cosine: float,
     scores: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """One local-support row per anchor, with every underlying count.
@@ -340,6 +341,7 @@ def local_support_table(
             smaller_ambient_scale=float(smaller_ambient_scale),
             min_confirming=int(min_confirming),
             min_direction_classes=int(min_direction_classes),
+            max_abs_direction_cosine=float(max_abs_direction_cosine),
             designed_neighbours=designed,
             feasible_direction_coverage=ambient_coverage,
             redraw_exhausted=exhausted.get(anchor_id, False),

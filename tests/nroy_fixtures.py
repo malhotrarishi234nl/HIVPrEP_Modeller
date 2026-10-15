@@ -62,6 +62,7 @@ TEST_SIGNATURES: dict[str, object] = {
     "p_parameter.max": 0.5,
     "p_parameter.bins": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
     "p_parameter.routine_hazard_scale_identity_value": 1.0,
+    "p_parameter.symptom_start_year": 1985,
     "budget.max_trajectories": 100000,
     "budget.max_attempts": 100000,
     "budget.wall_time_cap_seconds": 3600,
@@ -84,6 +85,7 @@ TEST_SIGNATURES: dict[str, object] = {
     "separation.min_anchor_neighbour": 1e-4,
     "separation.min_neighbour_neighbour": 1e-4,
     "separation.min_direction_classes": 2,
+    "separation.max_abs_direction_cosine": 0.99,
     "promotion.variance_alpha": 0.05,
     "support.min_confirming_neighbours": 2,
     "graph.edge_proposal_rule": "complete_pairwise_distances",
@@ -204,6 +206,8 @@ def write_signed_plan(
     }))
     (tmp_path / "priced_budget.json").write_text(json.dumps({
         **common,
+        "cap_scope": "per_stage_ledger",
+        "cost_scope": "entire_workflow",
         "max_attempts": int(raw["budget"]["max_attempts"]),
         "max_trajectories": int(raw["budget"]["max_trajectories"]),
         "wall_time_cap_seconds": float(raw["budget"]["wall_time_cap_seconds"]),

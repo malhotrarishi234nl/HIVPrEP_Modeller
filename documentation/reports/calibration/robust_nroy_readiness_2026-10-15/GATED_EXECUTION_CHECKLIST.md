@@ -21,7 +21,7 @@ engine-running gate.
   the production adapter sets the model switch explicitly and its no-engine
   config-route tests pass. This is code acceptance only; the identity and pilot
   gates below remain open.
-- [ ] All 43 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
+- [ ] All 45 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
 - [x] The owner selected backbone Option B on 2026-10-15. A hash-bound,
   machine-diffed V13.22-on-1980 stochastic M0/M1 **calibration candidate** now
   records that direction without signing the plan or claiming fit validity;
@@ -44,7 +44,8 @@ engine-running gate.
   internal or prior-source overlap.
 - [ ] Identity-gate run separately authorized, executed through the production route, and passed.
 - [ ] Measured-pilot run separately authorized and completed on the declared machine profile.
-- [ ] `robust_nroy_priced_budget/1.0.0` generated from the measured pilot, priced, and approved.
+- [ ] `robust_nroy_priced_budget/1.1.0` generated from the measured pilot,
+  declaring per-stage ledger caps and a separately priced entire workflow, and approved.
 - [ ] Positive-p M1 anchors confirmed on the reserved 20-seed block under separate authorization.
 - [ ] Observed values, component variance budget and B_i regenerated from the signed plan; hashes frozen; discrepancy appears exactly once.
 - [x] Repository code-handoff gate passes: current README/index, config and external-

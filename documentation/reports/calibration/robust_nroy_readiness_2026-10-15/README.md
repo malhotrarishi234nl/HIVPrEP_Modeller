@@ -2,21 +2,25 @@
 
 ## Verdict
 
-- **Code acceptance: ACCEPT.** The merged fail-closed implementation passed an
-  independent adversarial audit, the reported defects were remediated, and the
-  final guarded repository suite passed with warnings treated as errors.
+- **Code acceptance: RE-VERIFICATION REQUIRED FOR THIS REVISION.** The prior
+  fail-closed baseline passed an independent adversarial audit. The current
+  methods-contract corrections have focused no-engine coverage, but the final
+  integrated branch must repeat the guarded repository suite before retaining
+  the earlier code-acceptance verdict.
 - **Production readiness: NOT READY.** The exact current plan hash is
-  `e3835812876831af6381e96bc662b75731fe89b35ba261ef79e38e683f181c74`
-  and validation reports 43 unsigned required decisions: 29 proposal-backed
-  and 14 requiring new decisions.
+  `532b1500096b2835e2d24a5b3d0c66db1f07e6e5cde823fba197fb0949658db3`
+  and validation reports 45 unsigned required decisions: 39 proposal-backed
+  and 6 budget/seed decisions that correctly remain evidence-dependent.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
   run. No historical result was resealed.
-- Final isolated no-engine suite: **2866 passed, 285 skipped, 0 failed, 0
-  errors, 0 warnings** in 461.29 seconds.
+- Prior-revision isolated no-engine suite: **2866 passed, 285 skipped, 0
+  failed, 0 errors, 0 warnings** in 461.29 seconds. This is retained as baseline
+  evidence, not mislabelled as verification of the current revision.
 
 ## Package contents
 
-- `DECISION_REGISTER.csv`: all 43 decisions, split 29/14, with ranges,
+- `DECISION_REGISTER.csv`: all 45 decisions, split 39 proposal-backed / 6
+  evidence-dependent, with ranges,
   dependencies, consequences, evidence needs, suggested owner role and status.
 - `EXTERNAL_INPUT_RECONCILIATION.md`: exact locations/hashes and path fixes.
 - `HISTORICAL_ARTIFACT_DISPOSITION.md`: old/current code-map hashes,
@@ -34,16 +38,16 @@
   none to current validation.
 - `POSITIVE_P_M1_CONFIRMATION_PLAN.md`: candidate, seed, vector and evidence
   contract without execution.
-- `acceptance_inputs_pre_sign/`: current-source observed values, component
-  table and B_i reconstruction, explicitly marked non-production because the
-  plan is unsigned.
+- `acceptance_inputs_pre_sign/`: preserved earlier-plan observed values,
+  component table and B_i reconstruction; non-production and stale after the
+  current plan/target-metadata revision.
 - `templates/`: deliberately incomplete evidence templates. Their `.template`
   names and null verdicts prevent accidental acceptance.
 - `GATED_EXECUTION_CHECKLIST.md`: ordered launch gates and authorization stops.
 - `OWNER_LOCK_IN_AND_METHODS_GUIDE.md`: plain-language owner decisions,
-  assumptions, methods rationale, reading list, and newly discovered design
-  gaps that must close before signing.
-- `OWNER_DECISION_PACKET.md`: all 43 unsigned rows grouped by closure route,
+  assumptions, methods rationale, reading list, and the surfaced choices that
+  remain unsigned before launch.
+- `OWNER_DECISION_PACKET.md`: all 45 unsigned rows grouped by closure route,
   with coupled numeric recommendations, bounded sensitivities, and explicit
   trajectory-cost consequences; it is decision support, not a signature.
 - `REPOSITORY_HANDOFF_CLEANUP_PLAN.md`: preservation-first repository and
@@ -98,10 +102,12 @@ stage copies; its optional `--observed` and `--base-variance` arguments are
 hash assertions for older scripts, not replacement inputs.
 
 The preserved `acceptance_inputs_pre_sign/` files remain bound to the earlier
-plan hash `7d113408...` and original deterministic config proposal. The proposal
-change intentionally makes that draft stale; do not relabel or promote it.
-Regenerate into a new empty evidence directory only after the current plan is
-signed.
+plan hash `7d113408...`, original deterministic config proposal, and target
+register hash `87db6840...`. The current target register is version 1.3 and now
+describes the rule actually used by scoring: target-relative 10% discrepancy as
+a project assumption. These contract changes intentionally make that draft
+stale; do not relabel or promote it. Regenerate into a new empty evidence
+directory only after the current plan is signed.
 
 ## Other evidence-generation commands
 
@@ -148,7 +154,7 @@ confirmation, and proposal blocks are supplied. See
    before selecting or signing any production base. The current candidate is
    explicitly not fitted, validated, or production eligible; code-route tests
    do not replace calibration, identity, or scientific review.
-2. Review and sign all 43 owner-assigned decision rows when their dependent
+2. Review and sign all 45 owner-assigned decision rows when their dependent
    evidence exists, then complete the separate strict sign-off block. A signed
    plan still does not authorize compute.
 3. Review `seed_source_scope.json`, reconcile any remote,

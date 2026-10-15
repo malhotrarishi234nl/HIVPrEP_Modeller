@@ -54,7 +54,7 @@
     ],
     "frozen_order_note": "The 13-target contract is the production spec's RECOMMENDED choice because it implements the recorded 1996-onward HIV and 2000-onward AIDS source-window decision. Older 15-target memos predate that decision. Recommended is not signed.",
     "register_sha256": "UNSIGNED",
-    "register_sha256_proposal": "87db68409e1a3e0c6ede762b37fd7f8c64008a1ba289b4965eb7a7be645e7a03",
+    "register_sha256_proposal": "11b4edb51e02ad040c9742bc853a45e9ac5212336f7f981f753a8ec7ba661129",
     "register_sha256_note": "Hash of configs/hm_target_register_focused_20260916.json as audited on 2026-10-15. Recompute immediately before signing; a changed register requires renewed target review.",
     "reporting_groups_proposal": {
       "diagnoses_1996_2015": [
@@ -119,7 +119,9 @@
     "no_identity_epsilon_note": "There is deliberately NO identity_epsilon and NO exclusion band above zero. Both specifications prohibit one (ROBUST_NROY_FREEZE_SPEC section 3.3; PRODUCTION_LOCKIN_SPEC section 2). The engine dispatches on exact p == 0.0, so any p > 0 draws from different named RNG streams -- but that changes seed-wise COUPLING, not the admissibility of a parameter value. Exact p=0 is retained as the M0 identity control; every positive value in the signed range is admissible, is never snapped to zero, and is compared DISTRIBUTIONALLY across the seed block rather than paired with p=0. nroy_contract.FrozenPlan.validate REFUSES a plan that declares an identity_epsilon field, so this cannot be reintroduced by a stale config.",
     "extra_probe_values": [],
     "extra_probe_values_note": "Optional additional declared p values probed by the p-boundary kernel, beyond the bin edges. Deliberately permitted to be arbitrarily small and positive: a tiny positive p is a valid point of the range. Empty is a legitimate frozen choice and is not an unsigned decision.",
-    "symptom_start_year_proposal": 1985
+    "symptom_start_year": "UNSIGNED",
+    "symptom_start_year_proposal": 1985,
+    "symptom_start_year_note": "The 1985 value is a project model assumption, motivated by the availability of HIV antibody testing but not established as the exact onset of this Dutch diagnosis mechanism. Review it explicitly and report a predeclared start-year sensitivity; do not present it as a literature constant."
   },
 
   "acceptance": {
@@ -146,39 +148,51 @@
 
   "archive_following": {
     "quota": "UNSIGNED",
-    "quota_note": "Total prepared cells per anchor. Must equal the complete frozen direction x scale x sign design; it may not truncate a direction or declared scale.",
+    "quota_proposal": 8,
+    "quota_note": "Engineering proposal: 8 cells = one retained low-J direction plus one confirmed-difference direction, each at two scales and two signs. Must equal the complete frozen direction x scale x sign design; it may not truncate a direction or declared scale. If max_directions becomes 2 per source, this proposal must become 16.",
     "scales": "UNSIGNED",
     "scales_proposal": [0.025, 0.05],
     "neighbour_rule": "UNSIGNED",
-    "neighbour_rule_proposal": "k_nearest_low_J_archive_vectors",
-    "neighbour_rule_note": "Must be one of nroy_design.ARCHIVE_NEIGHBOUR_RULES. 'k_nearest_low_J_archive_vectors' orders consultation by J ascending and REQUIRES a 'j' column in the archive table supplied to prepare --archive; nroy_design.archive_directions refuses to fall back to a distance-only ordering, because that would mean the signed rule is not the rule that ran.",
+    "neighbour_rule_proposal": "lowest_j_then_distance",
+    "neighbour_rule_note": "Must be one of nroy_design.ARCHIVE_NEIGHBOUR_RULES. 'lowest_j_then_distance' orders consultation by J ascending, then normalised distance, then candidate id. It REQUIRES a 'j' column in the archive table supplied to prepare --archive and never treats low J as plausibility evidence.",
     "neighbour_count": "UNSIGNED",
-    "neighbour_count_note": "How many archive neighbours each anchor consults. This is a local direction-estimation choice; the graph now uses complete pairwise distances and has no neighbour-count setting. No proposal in either specification.",
+    "neighbour_count_proposal": 3,
+    "neighbour_count_note": "Engineering proposal: consult the first three rows under the signed archive rule; assess 2/3/5 in a no-engine geometry sensitivity. This is a local direction-estimation choice; the graph uses complete pairwise distances and has no neighbour-count setting.",
     "max_directions": "UNSIGNED",
-    "max_directions_note": "Maximum retained directions per declared archive-following source. This is a deterministic count cap, not numerical rank estimation.",
+    "max_directions_proposal": 1,
+    "max_directions_note": "Engineering proposal: retain at most one direction per assembled archive source; assess two per source before launch. This is a deterministic count cap, not numerical rank estimation.",
+    "confirmed_difference_rule": "nearest_in_normalised_metric_then_candidate_id",
+    "confirmed_difference_rule_note": "Versioned code contract: confirmed vectors are ordered by normalised distance from the anchor, then candidate id only as a deterministic tie-break. Candidate naming never chooses a direction ahead of a nearer vector.",
     "source_pool": "UNSIGNED",
     "source_pool_proposal": [
       "low_j_archive_vectors",
       "confirmed_differences",
       "cross_block_directions"
     ],
-    "source_pool_note": "Must be a subset of nroy_design.ARCHIVE_SOURCE_KINDS, and it is load-bearing: a declared source that cannot contribute is a contract error, not a quietly shorter direction list, and an undeclared source contributes nothing however much data is available. 'low_j_archive_vectors' requires prepare --archive. 'cross_block_directions' must agree with cross_block.quota (> 0 iff declared); nroy_design.assert_cross_block_declared refuses a plan where they disagree.",
+    "source_pool_note": "Must be a subset of nroy_design.ARCHIVE_SOURCE_KINDS, and it is load-bearing: a declared source that cannot contribute is a contract error, not a quietly shorter direction list, and an undeclared source contributes nothing however much data is available. 'low_j_archive_vectors' requires prepare --archive. 'cross_block_directions' names a separate exploratory kernel, must agree with cross_block.quota (> 0 iff declared), and cannot establish ridge support by itself.",
     "note": "The spec requires 'a predeclared number of paired moves'. No number is proposed in either document; it requires a decision. 'Low J' guides proposals but never establishes plausibility."
   },
 
   "cross_block": {
     "quota": "UNSIGNED",
-    "quota_note": "Total prepared cells per anchor. With S scales, the quota must be a multiple of 2*S and implies quota/(2*S) frozen cross-block directions.",
+    "quota_proposal": 24,
+    "quota_note": "Engineering proposal: 24 cells = six frozen unordered block pairs x one exploratory direction x two scales x two signs. With S scales, the quota must be a multiple of 2*S. These random paired-block probes are exploratory and cannot establish ridge support by themselves.",
     "scales": "UNSIGNED",
     "scales_proposal": [0.025, 0.05]
   },
 
   "separation": {
     "min_anchor_neighbour": "UNSIGNED",
+    "min_anchor_neighbour_proposal": 0.0001,
     "min_neighbour_neighbour": "UNSIGNED",
+    "min_neighbour_neighbour_proposal": 0.0001,
     "min_direction_classes": "UNSIGNED",
-    "min_direction_classes_note": "The spec requires correlation-following support to involve 'the required number of independent direction classes'. No number is given.",
-    "note": "Only unique vector hashes count as neighbours. These separations stop two near-identical probes counting as two neighbours."
+    "min_direction_classes_proposal": 2,
+    "min_direction_classes_note": "Engineering proposal: require two archive-derived direction classes, matching the two-neighbour support rule; report label sensitivity at 1 and 3.",
+    "max_abs_direction_cosine": "UNSIGNED",
+    "max_abs_direction_cosine_proposal": 0.99,
+    "max_abs_direction_cosine_note": "Two archive-derived moves with absolute cosine above this threshold count as one direction class. Proposal 0.99 is a project geometry choice, not a literature constant; report label sensitivity at 0.95 and 0.999 without changing acceptance.",
+    "note": "Only unique vector hashes count as neighbours. The proposed distance thresholds are 1e-4 with no-engine geometry sensitivities at 1e-6, 1e-4 and 1e-3. These choices stop near-identical probes inflating support."
   },
 
   "support": {
@@ -190,7 +204,7 @@
   "promotion": {
     "variance_alpha": "UNSIGNED",
     "variance_alpha_proposal": 0.05,
-    "variance_alpha_note": "Alpha for the direct one-sided 1-alpha upper confidence bound on process variance, used ONLY as a conservative compute-allocation safeguard against five-seed false negatives. At the proposed alpha=0.05 this is a one-sided 95% upper bound. It is not final acceptance, which always uses nominal variance on the reserved confirmation block.",
+    "variance_alpha_note": "Alpha for a nominal direct one-sided 1-alpha upper confidence bound on process variance under an approximate normal-replicate assumption, used ONLY as a compute-allocation safeguard against five-seed false negatives. At proposed alpha=0.05 this is a nominal one-sided 95% bound. It is not final acceptance, which always uses nominal variance on the reserved confirmation block.",
     "rule": "promote if nominal five-seed I_max <= cutoff OR if rescoring with the upper confidence bound for process variance gives I_max <= cutoff; final acceptance is always recomputed nominally from the reserved 20-seed confirmation block"
   },
 
@@ -214,7 +228,8 @@
     "rule": "UNSIGNED",
     "rule_proposal": "maximin_geometry",
     "n_per_component": "UNSIGNED",
-    "note": "Selection uses parameter/baseline geometry only. Policy outcomes are unavailable to selection. The production spec lists 'how many representative parameter sets, and how they are drawn' as an outstanding decision, and this stage does not choose the final number."
+    "n_per_component_proposal": 2,
+    "note": "This is a cap of up to two provisional geometry-only shortlist members per supported component, with sensitivities at 1 and 3. Selection uses parameter/baseline geometry only and policy outcomes are unavailable. It does not choose the final policy/PSA ensemble size, which remains deferred."
   },
 
   "seeds": {
@@ -238,10 +253,10 @@
   "budget": {
     "max_trajectories": "UNSIGNED",
     "max_attempts": "UNSIGNED",
-    "max_attempts_note": "Launch attempts consume budget and are never refunded. Lost or failed attempts stay spent.",
+    "max_attempts_note": "Per-stage launch attempts consume budget and are never refunded. Lost or failed attempts stay spent.",
     "wall_time_cap_seconds": "UNSIGNED",
     "on_cap": "stop dispatch, finish bounded in-flight work, mark the stage PARTIAL; a PARTIAL stage cannot become a parent",
-    "note": "The production spec requires a priced trajectory budget and a measured time per trajectory from a pilot before launch. No pilot has been run."
+    "note": "These three caps apply separately to each prepared stage ledger. Total workflow cost must be priced separately across all stages. The production spec requires a measured time per trajectory from a pilot before launch; no pilot has been run."
   },
 
   "tolerances": {

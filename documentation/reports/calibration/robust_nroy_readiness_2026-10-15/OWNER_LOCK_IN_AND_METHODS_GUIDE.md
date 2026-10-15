@@ -10,7 +10,7 @@ All scientific, methods, provenance, compute, and final-approval decisions are
 owned by the thesis owner, Rishi Malhotra. Named reviewer roles in the decision
 register describe the kind of review required; they do not imply that another
 person owns the work. The decision register records Rishi Malhotra as owner of
-all 43 rows; every row remains unsigned until it is reviewed on its merits.
+all 45 rows; every row remains unsigned until it is reviewed on its merits.
 
 ## Design principle
 
@@ -81,10 +81,11 @@ subset of what it might have been with defensible observation uncertainty.
 Approved wording:
 
 > Where no defensible observation-error variance can be derived from the
-> available source, the primary analysis assigns `V_obs = 0` as a conservative
-> screening assumption. This is not a claim that the observation is measured
-> without error. It biases toward over-exclusion and is therefore reported as
-> a limitation.
+> available source, the primary analysis assigns `V_obs = 0` as an assumption
+> that is conservative **with respect to exclusion**. This is not a claim that
+> the observation is measured without error. It narrows the denominator, can
+> falsely exclude vectors, and understates parameter uncertainty; those effects
+> are reported as limitations.
 
 This may be used as the current model assumption. A later non-zero value must
 be introduced as a new, versioned acceptance contract and reported as a
@@ -110,17 +111,21 @@ The current simplest defensible starting choices are:
 - design-only tolerance sensitivity at `1e-6`, `1e-4`, and `1e-3`;
 - bridge fractions `0.25`, `0.5`, and `0.75`, with every declared bridge probe
   required to confirm;
-- maximin selection of two representatives per supported component;
-- `alpha = 0.05` for a one-sided 95% upper process-variance bound used only to
-  allocate confirmation compute; final acceptance remains nominal on 20 fresh
-  seeds.
+- maximin selection of up to two **provisional** geometry-only shortlist
+  members per supported component, not the final policy/PSA ensemble size;
+- absolute direction cosine `0.99` as the proposed class-collapse threshold,
+  with label sensitivities at `0.95` and `0.999`;
+- `alpha = 0.05` for a nominal one-sided 95% upper process-variance bound under
+  an approximate normal-replicate assumption, used only to allocate
+  confirmation compute; final acceptance remains nominal on 20 fresh seeds.
 
 These numbers must be described as frozen engineering choices with sensitivity
 checks, not as universal constants taken from the literature.
 
-## Newly identified design/code gaps
+## Methods-contract corrections now implemented
 
-These must be closed before the methods choices above are signed.
+These corrections remove misleading or hidden defaults. They do not sign the
+choices or supply the evidence still required for scientific acceptance.
 
 ### 1. Declared directed-probe scales: implementation corrected
 
@@ -174,7 +179,40 @@ sigma_upper^2 = (K - 1) * s^2 / chi2.ppf(alpha, K - 1)
 
 and keeps it exclusively as a promotion/compute-allocation safeguard. Final
 nominal acceptance is unchanged. The pilot must report how many candidates are
-promoted only by this bound.
+promoted only by this bound. The chi-square interval is nominal under an
+approximate normal-replicate assumption; stochastic model outputs may depart
+from that assumption, especially with only five discovery replicates.
+
+### 5. Archive and confirmed-difference selection — corrected in code
+
+The archive rule is now named `lowest_j_then_distance`, matching its actual
+ordering: J first, normalized distance second, candidate id only as a final
+tie-break. Confirmed-difference directions are selected by normalized distance
+from the anchor, not lexicographic candidate naming. Low J and proximity guide
+proposal construction; neither establishes plausibility.
+
+### 6. Cross-block probes and ridge support — corrected in code
+
+Random paired-sign block probes are labelled `cross_block_exploratory`, not
+“compensating.” They remain useful bounded probes of coupled perturbations but
+cannot, by themselves, establish correlation-following/ridge support. A
+confirmation only from these probes therefore remains unresolved.
+
+### 7. Hidden scientific choices — surfaced and unsigned
+
+The absolute direction-cosine threshold is now a required plan decision, with
+proposal `0.99` and predeclared label sensitivities. The M1
+`symptom_start_year` is also a required decision. Its `1985` proposal is a
+model assumption motivated by testing history, not proof of the exact onset of
+the Dutch mechanism, and requires a predeclared start-year sensitivity.
+
+### 8. Regions and representative finality — fail closed
+
+If an unresolved sampled edge would change component representation, the
+regions stage is `PARTIAL` and non-parentable. It writes only a clearly named
+provisional shortlist, never a final `representatives.csv`. Straight-path
+support remains evidence only at the declared sampled fractions; it is not a
+claim of continuous connectivity.
 
 ## Reading guide
 
@@ -204,11 +242,13 @@ Read these in this order; the first three are closest to this thesis model.
 - One thesis owner holds all decision roles.
 - Proceed toward one canonical optional-M1 config, built and reviewed carefully.
 - Retain the current M0 calibration-space proposal subject to bound review.
-- Permit `V_obs = 0` where underivable as an explicit conservative model
-  assumption that can be refined in a later version.
+- Permit `V_obs = 0` where underivable as an explicit model assumption that is
+  conservative only with respect to exclusion and can be refined in a later
+  version.
 - Use the simplest literature-consistent design for probe, support, graph, and
   promotion settings, with small predeclared sensitivities.
-- Retain two maximin representatives per supported component.
+- Retain up to two provisional maximin shortlist members per supported
+  component; this does not set the final policy/PSA ensemble size.
 - Complete the seed audit before allocating seeds.
 - Use a measured pilot before pricing or signing compute caps.
 - Clean and organize the repository and artifacts so it can be handed to

@@ -50,6 +50,7 @@ def test_every_required_decision_is_reported_not_just_the_first():
         "budget.max_trajectories", "ambient.quota_per_scale", "graph.bridge_fractions",
         "representative_selection.rule", "seeds.discovery", "seeds.confirmation",
         "promotion.variance_alpha", "separation.min_direction_classes",
+        "separation.max_abs_direction_cosine", "p_parameter.symptom_start_year",
     ):
         assert path in pending, f"{path} must be reported as unsigned"
 
@@ -148,6 +149,8 @@ def test_coordinated_arbitrary_spec_and_version_edit_cannot_bypass_gate(tmp_path
         ({"archive_following.max_directions": 0}, "must be positive"),
         ({"archive_following.scales": [0.025, float("nan")]}, "finite native JSON number"),
         ({"cross_block.quota": 5}, "complete direction x scale x sign"),
+        ({"separation.max_abs_direction_cosine": 1.0}, "strictly between 0 and 1"),
+        ({"p_parameter.symptom_start_year": 1899}, "must be >= 1900"),
     ],
 )
 def test_cross_field_validation_fails_closed(tmp_path, override, message):
@@ -170,6 +173,7 @@ def test_cross_field_validation_fails_closed(tmp_path, override, message):
         ("cross_block.quota", 4),
         ("separation.min_direction_classes", 2),
         ("support.min_confirming_neighbours", 2),
+        ("p_parameter.symptom_start_year", 1985),
     ],
 )
 @pytest.mark.parametrize("bad_kind", ["fractional", "string", "boolean"])
@@ -226,6 +230,7 @@ def test_conditional_integer_decisions_reject_coercion(tmp_path, path, bad):
         ("separation.min_anchor_neighbour", 1e-4),
         ("separation.min_neighbour_neighbour", 1e-4),
         ("promotion.variance_alpha", 0.05),
+        ("separation.max_abs_direction_cosine", 0.99),
     ],
 )
 @pytest.mark.parametrize("bad_kind", ["string", "boolean", "nonfinite"])
@@ -852,8 +857,13 @@ def test_ambient_attempt_budget_smaller_than_quota_fails_closed(monkeypatch):
 
 def test_direction_classes_collapse_collinear_moves():
     base = np.array([1.0, 0.0, 0.0])
-    assert nd.direction_classes([base, base * 2.0, -base]) == 1
-    assert nd.direction_classes([base, np.array([0.0, 1.0, 0.0])]) == 2
+    assert nd.direction_classes([base, base * 2.0, -base], cosine=0.99) == 1
+    assert nd.direction_classes(
+        [base, np.array([0.0, 1.0, 0.0])], cosine=0.99
+    ) == 2
+    near = np.array([0.995, np.sqrt(1.0 - 0.995**2), 0.0])
+    assert nd.direction_classes([base, near], cosine=0.99) == 1
+    assert nd.direction_classes([base, near], cosine=0.999) == 2
 
 
 def test_cross_block_directions_touch_exactly_two_blocks():
@@ -1090,7 +1100,7 @@ def test_broad_basin_is_broadly_supported():
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=3,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=3,
         feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_BROADLY_SUPPORTED
@@ -1104,7 +1114,7 @@ def test_broad_support_requires_an_ambient_neighbour_at_the_smaller_scale():
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=2, feasible_direction_coverage=1.0,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=2, feasible_direction_coverage=1.0,
     )
     assert support.label != nc.LABEL_BROADLY_SUPPORTED
 
@@ -1114,12 +1124,12 @@ def test_thin_ridge_is_ridge_supported_not_broadly_supported():
         _neighbour("a1", nc.KERNEL_AMBIENT, 0.025, nd.DIRCLASS_AMBIENT, confirmed=False),
         _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference",
                    direction=_E1),
-        _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:diagnosis+contacts_mixing",
+        _neighbour("r2", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "confirmed_difference",
                    direction=_E2),
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=3, feasible_direction_coverage=1.0,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=3, feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_RIDGE_SUPPORTED
     assert support.eligible
@@ -1135,12 +1145,12 @@ def test_ridge_support_requires_geometric_not_label_independence():
     nearly_collinear = [
         _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference",
                    direction=(1.0, 0.0, 0.0)),
-        _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:a+b",
+        _neighbour("r2", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "confirmed_difference",
                    direction=(1.0, 1e-6, 0.0)),
     ]
     support = nc.classify_local_support(
         nearly_collinear, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=2, feasible_direction_coverage=1.0,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=2, feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_UNRESOLVED
     assert support.n_direction_classes == 1
@@ -1152,13 +1162,31 @@ def test_ridge_support_is_withheld_when_directions_are_not_supplied():
     support = nc.classify_local_support(
         [
             _neighbour("r1", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "archive_difference"),
-            _neighbour("r2", nc.KERNEL_CROSS_BLOCK, 0.025, "cross_block:a+b"),
+            _neighbour("r2", nc.KERNEL_ARCHIVE_FOLLOWING, 0.025, "confirmed_difference"),
         ],
-        smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99,
         designed_neighbours=2, feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_UNRESOLVED
     assert "geometric independence cannot be verified" in support.reason
+
+
+def test_cross_block_confirmations_alone_are_exploratory_not_ridge_support():
+    support = nc.classify_local_support(
+        [
+            _neighbour("x1", nc.KERNEL_CROSS_BLOCK, 0.025,
+                       nd.DIRCLASS_CROSS_BLOCK, direction=_E1),
+            _neighbour("x2", nc.KERNEL_CROSS_BLOCK, 0.025,
+                       nd.DIRCLASS_CROSS_BLOCK, direction=_E2),
+        ],
+        smaller_ambient_scale=0.025, min_confirming=2,
+        min_direction_classes=2, max_abs_direction_cosine=0.99,
+        designed_neighbours=2, feasible_direction_coverage=1.0,
+    )
+    assert support.label == nc.LABEL_UNRESOLVED
+    assert support.n_confirmed_correlation == 0
+    assert support.n_confirmed_exploratory_cross_block == 2
+    assert "cannot establish ridge support" in support.reason
 
 
 def test_a_retried_failure_does_not_change_the_label_by_row_order():
@@ -1174,7 +1202,7 @@ def test_a_retried_failure_does_not_change_the_label_by_row_order():
     results = [
         nc.classify_local_support(
             order, smaller_ambient_scale=0.025, min_confirming=2,
-            min_direction_classes=2, designed_neighbours=2,
+            min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=2,
             feasible_direction_coverage=1.0,
         )
         for order in ([failure, retry, other], [retry, failure, other])
@@ -1196,7 +1224,7 @@ def test_ridge_support_needs_independent_direction_classes():
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=2, feasible_direction_coverage=1.0,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=2, feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_UNRESOLVED
     assert "direction class" in support.reason
@@ -1209,7 +1237,7 @@ def test_isolated_point_reports_no_support_detected_only_on_a_complete_design():
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=8, feasible_direction_coverage=1.0,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=8, feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_NO_LOCAL_SUPPORT
     assert not support.eligible
@@ -1224,7 +1252,7 @@ def test_execution_failure_is_never_read_as_absence_of_support():
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=2, feasible_direction_coverage=1.0,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=2, feasible_direction_coverage=1.0,
     )
     assert support.label == nc.LABEL_UNRESOLVED
     assert support.n_failed == 1
@@ -1237,7 +1265,7 @@ def test_work_not_run_is_never_read_as_absence_of_support():
     ]
     support = nc.classify_local_support(
         neighbours, smaller_ambient_scale=0.025, min_confirming=2,
-        min_direction_classes=2, designed_neighbours=8,
+        min_direction_classes=2, max_abs_direction_cosine=0.99, designed_neighbours=8,
     )
     assert support.label == nc.LABEL_UNRESOLVED
     assert support.n_not_run == 1
@@ -1246,7 +1274,7 @@ def test_work_not_run_is_never_read_as_absence_of_support():
 def test_boundary_anchor_with_one_sided_coverage_is_unresolved_not_negative():
     """The headline false-negative guard of the specification."""
     support = nc.classify_local_support(
-        [], smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        [], smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99,
         designed_neighbours=16, feasible_direction_coverage=0.0, redraw_exhausted=True,
     )
     assert support.label == nc.LABEL_UNRESOLVED
@@ -1259,7 +1287,7 @@ def test_partial_feasible_coverage_is_unresolved_not_negative():
         for i in range(4)
     ]
     support = nc.classify_local_support(
-        neighbours, smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        neighbours, smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99,
         designed_neighbours=4, feasible_direction_coverage=0.4,
     )
     assert support.label == nc.LABEL_UNRESOLVED
@@ -1272,7 +1300,7 @@ def test_variance_unstable_only_evidence_is_unresolved():
         for i in range(4)
     ]
     support = nc.classify_local_support(
-        neighbours, smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        neighbours, smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99,
         designed_neighbours=4, feasible_direction_coverage=1.0, variance_unstable_only=True,
     )
     assert support.label == nc.LABEL_UNRESOLVED
@@ -1284,7 +1312,7 @@ def test_only_unique_vector_hashes_count_as_neighbours():
         _neighbour("n2", nc.KERNEL_AMBIENT, 0.025, nd.DIRCLASS_AMBIENT, vector_hash="SAME"),
     ]
     support = nc.classify_local_support(
-        duplicated, smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        duplicated, smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99,
         designed_neighbours=2, feasible_direction_coverage=1.0,
     )
     assert support.n_confirmed_ambient == 1

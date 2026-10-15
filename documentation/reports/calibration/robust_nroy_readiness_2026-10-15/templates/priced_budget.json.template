@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_priced_budget/1.0.0",
+  "schema": "robust_nroy_priced_budget/1.1.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "generated_utc": null,
@@ -15,6 +15,8 @@
   "pricing_source_sha256": null,
   "currency_or_credit_unit": null,
   "unit_price": null,
+  "cap_scope": "per_stage_ledger",
+  "cost_scope": "entire_workflow",
   "max_attempts": null,
   "max_trajectories": null,
   "wall_time_cap_seconds": null,

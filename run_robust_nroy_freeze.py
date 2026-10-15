@@ -453,7 +453,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             continue
         required_schema = {
             "measured_pilot": "robust_nroy_measured_pilot/1.0.0",
-            "priced_budget": "robust_nroy_priced_budget/1.0.0",
+            "priced_budget": "robust_nroy_priced_budget/1.1.0",
             "seed_disjointness_audit": "robust_nroy_seed_audit/1.0.0",
         }[key]
         if str(payload.get("schema", "")) != required_schema:
@@ -632,6 +632,14 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             problems.append("the seed-disjointness audit has no limitations list")
     priced = loaded.get("priced_budget", {})
     if priced:
+        if priced.get("cap_scope") != "per_stage_ledger":
+            problems.append(
+                "the priced-budget artifact does not declare per-stage ledger caps"
+            )
+        if priced.get("cost_scope") != "entire_workflow":
+            problems.append(
+                "the priced-budget artifact does not price the entire workflow separately"
+            )
         expected_budget = {
             "max_attempts": int(plan.require("budget.max_attempts")),
             "max_trajectories": int(plan.require("budget.max_trajectories")),
@@ -1862,6 +1870,9 @@ def build_designs(
             neighbour_count=archive_neighbours,
             max_directions=int(plan.require("archive_following.max_directions")),
             neighbour_rule=archive_rule,
+            confirmed_difference_rule=str(plan.require(
+                "archive_following.confirmed_difference_rule"
+            )),
         )
         archive_outcome = nd.directed_probes(
             anchor, model, validator, stage=stage, kernel=nc.KERNEL_ARCHIVE_FOLLOWING,
@@ -2798,6 +2809,19 @@ class ProductionEvaluator:
                     "the production M1 route did not explicitly enable "
                     "stage_structured_diagnosis"
                 )
+            declared_start_year = int(self.plan.require(
+                "p_parameter.symptom_start_year"
+            ))
+            start_year_node = node.get("symptom_start_year")
+            if not isinstance(start_year_node, Mapping) or "value" not in start_year_node:
+                raise ContractError(
+                    "the shared M1 config has no explicit symptom_start_year.value to bind "
+                    "to the signed scientific decision"
+                )
+            node["symptom_start_year"] = {
+                **dict(start_year_node),
+                "value": declared_start_year,
+            }
             actual = node.get("routine_hazard_scale")
             if isinstance(actual, Mapping):
                 actual = actual.get("value")
@@ -3822,6 +3846,9 @@ def command_classify(args: argparse.Namespace) -> int:
         smaller_ambient_scale=plan.smaller_ambient_scale(),
         min_confirming=int(plan.require("support.min_confirming_neighbours")),
         min_direction_classes=int(plan.require("separation.min_direction_classes")),
+        max_abs_direction_cosine=float(plan.require(
+            "separation.max_abs_direction_cosine"
+        )),
         scores=scores,
     )
     controls = proposals[proposals["kernel_id"].astype(str) == nc.KERNEL_ANCHOR]
@@ -3983,6 +4010,7 @@ def command_regions(args: argparse.Namespace) -> int:
         for node in sorted(eligible)
     ])
     blocking = ng.unresolved_changes_representation(groups, verdicts)
+    region_status = nc.STATUS_PARTIAL if blocking else nc.STATUS_COMPLETE
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -3993,7 +4021,14 @@ def command_regions(args: argparse.Namespace) -> int:
     ne.atomic_write_frame(out / "candidate_edges.csv", tables["candidate_edges"])
     ne.atomic_write_frame(out / "edge_verdicts.csv", tables["edge_verdicts"])
     ne.atomic_write_frame(out / "components.csv", tables["components"])
-    ne.atomic_write_frame(out / "representatives.csv", representatives)
+    if blocking:
+        provisional = representatives.copy()
+        provisional["provisional_reason"] = (
+            "representation-changing unresolved edge(s); not a final shortlist"
+        )
+        ne.atomic_write_frame(out / "provisional_representatives.csv", provisional)
+    else:
+        ne.atomic_write_frame(out / "representatives.csv", representatives)
     ne.atomic_write_frame(out / "representation_eligibility.csv", eligibility)
     ne.atomic_write_frame(out / "graph_nodes.csv", nodes)
     anchors_path = parent_dir / "anchors.csv"
@@ -4020,8 +4055,9 @@ def command_regions(args: argparse.Namespace) -> int:
         ),
     })
 
-    # A regions stage runs no simulation, so it has an empty frozen work list
-    # by construction rather than an unfinished one.
+    # A regions stage runs no simulation, so it has an empty frozen work list.
+    # PARTIAL here means scientific representation is unresolved, not that a
+    # simulation work unit is missing.
     empty = ne.Ledger(stage=nc.STAGE_REGIONS, model=model.model, units=())
     empty.save(out)
     _freeze_parent_acceptance_identity(
@@ -4029,7 +4065,7 @@ def command_regions(args: argparse.Namespace) -> int:
         current_package_identity=acceptance_package_identity,
     )
     ne.write_stage_manifest(
-        out, stage=nc.STAGE_REGIONS, model=model.model, status=nc.STATUS_COMPLETE,
+        out, stage=nc.STAGE_REGIONS, model=model.model, status=region_status,
         ledger=empty, contract=plan.manifest_contract(),
         parent_manifest=validated,
         extra={
@@ -4040,8 +4076,17 @@ def command_regions(args: argparse.Namespace) -> int:
             "n_sampled_path_supported_edges": sum(1 for v in verdicts if v.supported),
             "n_unresolved_edges": sum(1 for v in verdicts if not v.supported),
             "n_components": len(groups),
-            "n_representatives": int(representatives["candidate_id"].notna().sum())
-            if not representatives.empty else 0,
+            "n_representatives": (
+                int(representatives["candidate_id"].notna().sum())
+                if not blocking and not representatives.empty else 0
+            ),
+            "n_provisional_representatives": (
+                int(representatives["candidate_id"].notna().sum())
+                if blocking and not representatives.empty else 0
+            ),
+            "representative_status": (
+                "PROVISIONAL_UNRESOLVED" if blocking else "FINAL_FOR_THIS_STAGE"
+            ),
             "eligibility_grounds": {
                 ground_name: int((eligibility["eligibility_ground"] == ground_name).sum())
                 for ground_name in sorted(set(eligibility["eligibility_ground"]))
@@ -4068,8 +4113,9 @@ def command_regions(args: argparse.Namespace) -> int:
     print(f"  components:           {len(groups)}")
     if blocking:
         print(f"  {len(blocking)} unresolved edge(s) WOULD change representation: {blocking}")
+        print("  regions status is PARTIAL; only provisional representatives were written")
         print("  that is a recorded unresolved geometry question (spec sec. 4)")
-    return 0
+    return 0 if not blocking else 3
 
 
 # ==========================================================================

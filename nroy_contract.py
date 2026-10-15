@@ -453,6 +453,14 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "seeds.discovery": "discovery seed block (five common seeds)",
     "seeds.confirmation": "reserved confirmation seed block (20 disjoint fresh seeds)",
     "seeds.proposal_rng": "design RNG seed",
+    # ---- load-bearing choices surfaced by the 2026-10-15 methods audit ----
+    "separation.max_abs_direction_cosine": (
+        "maximum absolute cosine at which two confirmed moves still count as "
+        "different direction classes"
+    ),
+    "p_parameter.symptom_start_year": (
+        "calendar year from which the M1 AIDS-symptom diagnosis mechanism is active"
+    ),
 }
 
 
@@ -1427,11 +1435,14 @@ def assert_acceptance_identity(
 def variance_bound_factor(k: int, alpha: float) -> float:
     """Upper ``1-alpha`` confidence factor for ``sigma^2`` from ``K`` replicates.
 
+    Under an approximate normal-replicate assumption,
     ``(K-1) s^2 / sigma^2 ~ chi^2_{K-1}``, so the upper bound multiplies ``s^2``
-    by ``(K-1)/chi2.ppf(alpha, K-1)``.  This is the direct one-sided bound:
-    ``alpha=0.05`` means a one-sided 95% upper confidence bound, not the 97.5%
-    one-sided endpoint obtained from a two-sided 95% interval.  It is used only
-    to allocate additional confirmation compute; nominal acceptance is unchanged.
+    by ``(K-1)/chi2.ppf(alpha, K-1)``.  This is the direct nominal one-sided
+    bound: ``alpha=0.05`` means a nominal one-sided 95% upper confidence bound,
+    not the 97.5% one-sided endpoint obtained from a two-sided 95% interval.
+    It is used only to allocate additional confirmation compute; nominal final
+    acceptance is unchanged. With five discovery replicates, non-normal output
+    distributions can make its nominal coverage inaccurate.
     """
     from scipy.stats import chi2  # noqa: PLC0415 - optional-at-import, as elsewhere in the repo
 
@@ -1575,6 +1586,7 @@ class LocalSupport:
     n_confirmed_ambient_small: int
     n_confirmed_ambient: int
     n_confirmed_correlation: int
+    n_confirmed_exploratory_cross_block: int
     n_direction_classes: int
     n_evaluated: int
     n_failed: int
@@ -1600,6 +1612,9 @@ class LocalSupport:
             "n_confirmed_ambient_small_scale": self.n_confirmed_ambient_small,
             "n_confirmed_ambient": self.n_confirmed_ambient,
             "n_confirmed_correlation_following": self.n_confirmed_correlation,
+            "n_confirmed_exploratory_cross_block": (
+                self.n_confirmed_exploratory_cross_block
+            ),
             "n_independent_direction_classes": self.n_direction_classes,
             "n_neighbours_evaluated": self.n_evaluated,
             "n_neighbours_failed": self.n_failed,
@@ -1616,6 +1631,7 @@ def classify_local_support(
     smaller_ambient_scale: float,
     min_confirming: int,
     min_direction_classes: int,
+    max_abs_direction_cosine: float,
     designed_neighbours: int,
     feasible_direction_coverage: float | None = None,
     redraw_exhausted: bool = False,
@@ -1674,10 +1690,13 @@ def classify_local_support(
 
     ambient = [n for n in confirmed if n.kernel == KERNEL_AMBIENT]
     ambient_small = [n for n in ambient if float(n.scale) <= float(smaller_ambient_scale)]
-    correlation = [
-        n for n in confirmed
-        if n.kernel in (KERNEL_ARCHIVE_FOLLOWING, KERNEL_CROSS_BLOCK)
-    ]
+    # Only directions derived from observed archive/confirmed-vector
+    # differences can establish the correlation-following ridge label.
+    # Cross-block moves are deterministic random exploratory probes.  They are
+    # valuable evidence, but are not learned compensation directions and may
+    # not establish ridge support by themselves.
+    correlation = [n for n in confirmed if n.kernel == KERNEL_ARCHIVE_FOLLOWING]
+    exploratory_cross_block = [n for n in confirmed if n.kernel == KERNEL_CROSS_BLOCK]
     # Independent direction classes must be established GEOMETRICALLY.  Two
     # moves carrying different labels can still be the same direction, and the
     # specification asks for independence "rather than duplicate or nearly
@@ -1691,7 +1710,8 @@ def classify_local_support(
         import nroy_design  # noqa: PLC0415 - avoids a module-level import cycle
 
         n_direction_classes = nroy_design.direction_classes(
-            [np.asarray(d, dtype=float) for d in directions]
+            [np.asarray(d, dtype=float) for d in directions],
+            cosine=float(max_abs_direction_cosine),
         )
     else:
         n_direction_classes = 0
@@ -1701,6 +1721,7 @@ def classify_local_support(
         "n_confirmed_ambient_small": len(ambient_small),
         "n_confirmed_ambient": len(ambient),
         "n_confirmed_correlation": len(correlation),
+        "n_confirmed_exploratory_cross_block": len(exploratory_cross_block),
         "n_direction_classes": n_direction_classes,
         "n_evaluated": len(evidence) - n_not_run,
         "n_failed": n_failed,
@@ -1782,6 +1803,16 @@ def classify_local_support(
                 f"correlation-following confirmations span only {n_direction_classes} "
                 f"direction class(es), fewer than the required {int(min_direction_classes)}; "
                 "the design is directionally inadequate rather than negative"
+            ),
+            **counts,
+        )
+    if exploratory_cross_block:
+        return LocalSupport(
+            label=LABEL_UNRESOLVED,
+            reason=(
+                f"{len(exploratory_cross_block)} exploratory cross-block neighbour(s) "
+                "confirmed, but these random paired-block probes are not learned "
+                "correlation directions and cannot establish ridge support by themselves"
             ),
             **counts,
         )
@@ -1925,6 +1956,11 @@ class FrozenPlan:
                 "the engine's p=0 identity dispatch requires routine_hazard_scale == 1.0; "
                 f"the plan pins {rho!r}, under which M1 would not nest M0"
             )
+
+        require_native_integer(
+            self.require("p_parameter.symptom_start_year"),
+            what="p_parameter.symptom_start_year", minimum=1900, maximum=2100,
+        )
         # Both specifications prohibit an identity_epsilon exclusion band above
         # zero. A plan that still declares one is refused rather than ignored,
         # so a stale config cannot quietly reintroduce the band.
@@ -2001,6 +2037,14 @@ class FrozenPlan:
             self.require("separation.min_direction_classes"),
             what="separation.min_direction_classes", minimum=1,
         )
+        max_abs_cosine = require_native_number(
+            self.require("separation.max_abs_direction_cosine"),
+            what="separation.max_abs_direction_cosine",
+        )
+        if not 0.0 < max_abs_cosine < 1.0:
+            raise ContractError(
+                "separation.max_abs_direction_cosine must be strictly between 0 and 1"
+            )
 
         min_an = require_native_number(
             self.require("separation.min_anchor_neighbour"),
@@ -2183,6 +2227,12 @@ class FrozenPlan:
             "distance_metric_role": (
                 "edge proposal only; never establishes a region and never asserts "
                 "continuous connectivity"
+            ),
+            "max_abs_direction_cosine": float(
+                self.require("separation.max_abs_direction_cosine")
+            ),
+            "symptom_start_year": int(
+                self.require("p_parameter.symptom_start_year")
             ),
             "acceptance_cutoff": self.cutoff,
             "discrepancy": self.discrepancy,

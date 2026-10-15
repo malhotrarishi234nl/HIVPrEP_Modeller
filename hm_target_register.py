@@ -10,9 +10,11 @@ resolves, for every (series, year) scalar target:
   * ``role``     -- calibration / calibration_restricted / cross_validation /
                     excluded_pending_c1
 
-``V_disc`` is NOT resolved here.  Andrianakis et al. define it from the variance
-of the simulator output *at each wave*, so it depends on the ensemble being
-scored and is assembled later, by ``build_budgets``.
+``V_disc`` is NOT resolved here. It is assembled later by ``build_budgets``
+under the register's explicit, versioned method. Some historical registers use
+simulator-output variance; the focused v1.3 register uses a target-relative 10%
+project assumption. The latter is not attributed to Andrianakis et al. as an
+exact published rule.
 
 Everything this module reports about a target is traceable to a workbook cell or
 to a declared rule written down in the register JSON.  Nothing is inferred
@@ -577,10 +579,13 @@ def build_budgets(
     """Assemble the full four-term budget for each target, given a scored ensemble.
 
     ``simulated`` maps ``target.key`` to that target's simulator outputs across the
-    ensemble; ``V_disc`` is a fraction of the variance of exactly those values,
-    per Andrianakis et al.  ``v_ensemble`` supplies a per-target seed-variability
-    term where one exists; targets without one get an explicit "unavailable" term
-    that contributes 0.0 and is reported.
+    ensemble. ``V_disc`` follows the register's declared, versioned method. The
+    focused v1.3 register uses a target-relative 10% project assumption; it must
+    not be attributed to Andrianakis et al. as an exact published rule. Historical
+    registers can still explicitly request the output-variance method.
+    ``v_ensemble`` supplies a per-target seed-variability term where one exists;
+    targets without one get an explicit "unavailable" term that contributes 0.0
+    and is reported.
     """
     disc_defaults = dict(defaults.get("v_disc", {}) or {})
     method = str(disc_method or disc_defaults.get("method", "fraction_of_output_variance"))

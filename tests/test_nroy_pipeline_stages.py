@@ -409,7 +409,7 @@ def test_an_undispatched_probe_makes_its_anchor_unresolved_not_negative(tmp_path
         kernel_outcomes=ne.read_frame_exact(stage_dir / "kernel_outcomes.csv"),
         evidence=evidence, model=model,
         smaller_ambient_scale=harness.plan.smaller_ambient_scale(),
-        min_confirming=2, min_direction_classes=2, scores=scores,
+        min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99, scores=scores,
     )
     assert (complete["local_support_label"] == nc.LABEL_BROADLY_SUPPORTED).all()
 
@@ -425,7 +425,7 @@ def test_an_undispatched_probe_makes_its_anchor_unresolved_not_negative(tmp_path
         kernel_outcomes=ne.read_frame_exact(stage_dir / "kernel_outcomes.csv"),
         evidence=partial, model=model,
         smaller_ambient_scale=harness.plan.smaller_ambient_scale(),
-        min_confirming=2, min_direction_classes=2, scores=scores,
+        min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99, scores=scores,
     )
     row = support[support["candidate_id"] == first].iloc[0]
     assert int(row["n_neighbours_not_run"]) == 1, "the probe really was withheld"
@@ -466,7 +466,7 @@ def test_incomplete_work_blocks_a_NEGATIVE_label_but_not_a_positive_one(tmp_path
     failed = neighbour(98, confirmed=False, state=nc.EVIDENCE_EXECUTION_FAILURE)
 
     kwargs = dict(
-        smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2,
+        smaller_ambient_scale=0.025, min_confirming=2, min_direction_classes=2, max_abs_direction_cosine=0.99,
     )
     # Complete and positive -> supported.
     assert nc.classify_local_support(
@@ -1314,6 +1314,32 @@ def test_an_unresolved_edge_that_would_change_representation_is_recorded(tmp_pat
     assert "emulator" in payload["escalation"]
 
 
+def test_representation_changing_unresolved_edges_publish_no_final_shortlist(
+    tmp_path, monkeypatch,
+):
+    """A blocking edge makes regions conditional, never final or parentable."""
+    harness = Harness(tmp_path)
+    bridges = harness.chain_to_bridges()
+    edge_id = str(ne.read_frame_exact(bridges / "candidate_edges.csv").iloc[0]["edge_id"])
+    monkeypatch.setattr(
+        ng, "unresolved_changes_representation", lambda groups, verdicts: [edge_id]
+    )
+
+    out = tmp_path / "regions_blocked"
+    code = runner.main([
+        "regions", "--plan", str(harness.plan_path),
+        "--parent-dir", str(bridges), "--out", str(out),
+    ])
+    assert code == 3
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["status"] == nc.STATUS_PARTIAL
+    assert manifest["parentable"] is False
+    assert manifest["extra"]["n_representatives"] == 0
+    assert manifest["extra"]["n_provisional_representatives"] > 0
+    assert (out / "provisional_representatives.csv").exists()
+    assert not (out / "representatives.csv").exists()
+
+
 # ==========================================================================
 # Wall-clock cap (spec sec. 5)
 # ==========================================================================
@@ -1473,6 +1499,7 @@ def test_a_declared_source_that_cannot_contribute_is_refused():
             confirmed=[anchor.params], confirmed_ids=["A0"],
             neighbour_count=2, max_directions=2,
             neighbour_rule="k_nearest_in_normalised_metric",
+            confirmed_difference_rule="nearest_in_normalised_metric_then_candidate_id",
         )
     with pytest.raises(ContractError, match="no other confirmed vector"):
         nd.correlation_following_directions(
@@ -1480,6 +1507,7 @@ def test_a_declared_source_that_cannot_contribute_is_refused():
             confirmed=[anchor.params], confirmed_ids=["A0"],
             neighbour_count=2, max_directions=2,
             neighbour_rule="k_nearest_in_normalised_metric",
+            confirmed_difference_rule="nearest_in_normalised_metric_then_candidate_id",
         )
 
 
@@ -1493,11 +1521,53 @@ def test_an_undeclared_source_contributes_nothing():
         confirmed=vectors, confirmed_ids=["A0", "A1", "A2"],
         neighbour_count=2, max_directions=4,
         neighbour_rule="k_nearest_in_normalised_metric",
+        confirmed_difference_rule="nearest_in_normalised_metric_then_candidate_id",
     )
     assert directions
     assert {label for _, label, _ in directions} == {nd.DIRCLASS_CONFIRMED_DIFF}, (
         "an archive pool that was not declared must not reach the design"
     )
+
+
+def test_confirmed_difference_selection_uses_distance_not_candidate_name():
+    space = fx.m0_space()
+    anchor_u = np.full(space.n, 0.5)
+    far_u = anchor_u.copy()
+    near_u = anchor_u.copy()
+    far_u[0] = 0.8
+    near_u[0] = 0.6
+    anchor_params = space.as_dict(space.space.denormalise(anchor_u))
+    far_params = space.as_dict(space.space.denormalise(far_u))
+    near_params = space.as_dict(space.space.denormalise(near_u))
+    anchor = nd.Anchor.build("M_ANCHOR", anchor_params, space)
+
+    selected = nd.confirmed_difference_directions(
+        anchor,
+        space,
+        confirmed=[anchor_params, far_params, near_params],
+        confirmed_ids=["M_ANCHOR", "A_FAR_LEXICOGRAPHICALLY_FIRST", "Z_NEAR"],
+        max_directions=1,
+        selection_rule="nearest_in_normalised_metric_then_candidate_id",
+    )
+    assert len(selected) == 1
+    assert selected[0][2] == ("M_ANCHOR", "Z_NEAR")
+
+
+def test_retired_or_undeclared_direction_rules_are_not_silently_reinterpreted():
+    space = fx.m0_space()
+    vectors = fx.valid_interior_vectors(space, 3, seed=31)
+    anchor = nd.Anchor.build("A0", vectors[0], space)
+    with pytest.raises(ContractError, match="unknown archive neighbour rule"):
+        nd.archive_directions(
+            anchor, space, archive=vectors[1:], archive_ids=["A1", "A2"],
+            archive_j=[0.1, 0.2], neighbour_count=2, max_directions=1,
+            neighbour_rule="k_nearest_low_J_archive_vectors",
+        )
+    with pytest.raises(ContractError, match="unknown confirmed-difference selection rule"):
+        nd.confirmed_difference_directions(
+            anchor, space, confirmed=vectors, confirmed_ids=["A0", "A1", "A2"],
+            max_directions=1, selection_rule="candidate_id_order",
+        )
 
 
 def test_the_source_pool_is_validated_rather_than_interpreted():
@@ -1530,7 +1600,7 @@ def test_the_low_j_rule_refuses_to_fall_back_to_distance_only():
         nd.archive_directions(
             anchor, space, archive=vectors[1:], archive_ids=["Z1", "Z2"],
             neighbour_count=2, max_directions=2,
-            neighbour_rule="k_nearest_low_J_archive_vectors",
+            neighbour_rule="lowest_j_then_distance",
         )
 
 
@@ -1543,7 +1613,7 @@ def test_the_low_j_rule_consults_in_j_order(tmp_path):
     by_j = nd.archive_directions(
         anchor, space, archive=vectors[1:], archive_ids=["Z1", "Z2", "Z3"],
         archive_j=[9.0, 5.0, 0.1], neighbour_count=1, max_directions=1,
-        neighbour_rule="k_nearest_low_J_archive_vectors",
+        neighbour_rule="lowest_j_then_distance",
     )
     assert [parents[1] for _, _, parents in by_j] == ["Z3"]
     by_distance = nd.archive_directions(
@@ -1583,7 +1653,7 @@ def test_the_declared_archive_pool_reaches_a_real_design(tmp_path):
                 nd.SOURCE_LOW_J_ARCHIVE, nd.SOURCE_CONFIRMED_DIFFERENCES,
                 nd.SOURCE_CROSS_BLOCK,
             ],
-            "archive_following.neighbour_rule": "k_nearest_low_J_archive_vectors",
+            "archive_following.neighbour_rule": "lowest_j_then_distance",
         },
     )
     stage_dir = harness.prepare(
@@ -1835,7 +1905,10 @@ def test_m1_injection_fails_loudly_if_the_config_lacks_the_p_block(tmp_path):
 
 def test_m1_injection_lands_p_at_the_signed_path_when_the_block_exists(tmp_path):
     """With the block present, ``p`` lands exactly where the plan says."""
-    harness = Harness(tmp_path, model=nc.MODEL_M1)
+    harness = Harness(
+        tmp_path, model=nc.MODEL_M1,
+        **{"p_parameter.symptom_start_year": 1990},
+    )
     adapter = runner.ProductionEvaluator(harness.plan, root=ROOT)
     base_before = copy.deepcopy(adapter.base_config)
     space = fx.m1_space()
@@ -1861,6 +1934,11 @@ def test_m1_injection_lands_p_at_the_signed_path_when_the_block_exists(tmp_path)
         "transmission_model.disease.diagnosis.stage_structured_diagnosis."
         "routine_hazard_scale.value",
     ) == 1.0
+    assert _dig(
+        config,
+        "transmission_model.disease.diagnosis.stage_structured_diagnosis."
+        "symptom_start_year.value",
+    ) == 1990
 
 
 def test_the_production_adapter_resolves_every_target_in_the_frozen_order(tmp_path):
