@@ -150,7 +150,7 @@ Pilot and pricing generation remain intentionally unimplemented as automatic
 “passed” commands: pilot measurements require authorization and real hardware,
 and pricing requires current account data and approval. The validator does not
 trust authored timing or cost totals. `robust_nroy_measured_pilot/2.0.0` must
-hash-bind a strict `robust_nroy_raw_pilot_measurements/1.0.0` JSON artifact;
+hash-bind a strict `robust_nroy_raw_pilot_measurements/1.1.0` JSON artifact;
 duplicate keys and non-standard `NaN`/`Infinity` tokens are rejected. Its rows
 have globally unique trajectory ids, `SUCCESS` status, positive finite elapsed
 seconds and positive integer peak memory under the exact declared machine and
@@ -159,12 +159,25 @@ uint32 from the signed discovery block, the complete finite timed parameter
 vector and its recomputed model-specific vector SHA-256, plus the
 recomputed model-specific scientific-config SHA-256. Every discovery seed must
 appear exactly once for each model and a vector/seed identity cannot be
-reused, including across model labels. The validator independently recomputes
+reused, including across model labels. The raw artifact also records exact M0
+and M1 parameter-space identities covering the ordered names, inclusive lower
+and upper bounds, and config paths. The validator recomputes those identities
+from the signed plan and rejects every timed coordinate outside its exact
+model-specific bounds, even when the vector and enclosing artifact hashes were
+consistently regenerated. The validator independently recomputes
 separate M0 and M1 counts, ids, seeds, arithmetic-mean elapsed time, observed
 maximum, total elapsed time and peak memory. The model-specific arithmetic means are the simple
 predeclared timing statistics used for expected full-capacity pricing; neither
 is silently projected onto the other model or claimed to describe a population
 timing distribution.
+
+Bounds establish admissibility, not timing representativeness. No generic
+vector-selection rule is invented here: the defensible rule depends on the
+authorized pilot objective and the newly calibrated Option B population. Before
+closing the measured-pilot checklist item, the scientific reviewer must approve
+the predeclared selection rationale and the exact timed vectors. The resulting
+budget remains conditional on those vectors; a mechanical PASS alone does not
+establish that they span worst-case runtime behavior.
 
 `robust_nroy_priced_budget/2.0.0` must also hash-bind a typed
 `robust_nroy_pricing_source/1.0.0` for that machine profile. The source records

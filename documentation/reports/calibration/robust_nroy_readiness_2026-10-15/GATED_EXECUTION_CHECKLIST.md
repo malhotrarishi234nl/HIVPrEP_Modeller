@@ -46,12 +46,15 @@ engine-running gate.
   confirmation, and proposal blocks are supplied, and the audit proves no
   internal or prior-source overlap.
 - [ ] Identity-gate run separately authorized, executed through the production route, and passed.
-- [ ] Measured-pilot run separately authorized and completed on the declared machine profile.
+- [ ] Measured-pilot run separately authorized and completed on the declared
+  machine profile; a scientific reviewer approved the predeclared vector-
+  selection rationale and exact timed vectors after Option B recalibration.
 - [ ] `robust_nroy_measured_pilot/2.0.0` recomputed from its hash-bound
-  `robust_nroy_raw_pilot_measurements/1.0.0` rows, with unique successful
+  `robust_nroy_raw_pilot_measurements/1.1.0` rows, with unique successful
   trajectory ids, exact uint32 signed-block seeds, unique vector/seed
   identities even across model labels, complete finite vectors whose hashes
-  recompute in the model-specific coordinate order, positive finite elapsed
+  recompute in the model-specific coordinate order and whose coordinates lie
+  inside the exact hash-bound signed M0/M1 spaces, positive finite elapsed
   measurements, exact M0/M1 scientific
   config hashes, and exact machine/scheduler identity. Strict JSON validation
   rejects duplicate keys and non-finite tokens.

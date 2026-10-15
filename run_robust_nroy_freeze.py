@@ -108,7 +108,10 @@ M1_INDEPENDENT_ANCHORS_FILENAME = "m1_independent_anchors.csv"
 FROZEN_ACCEPTANCE_IDENTITY_SCHEMA = "robust_nroy_frozen_acceptance_identity/1.0.0"
 FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
 MEASURED_PILOT_SCHEMA = "robust_nroy_measured_pilot/2.0.0"
-RAW_PILOT_SCHEMA = "robust_nroy_raw_pilot_measurements/1.0.0"
+RAW_PILOT_SCHEMA = "robust_nroy_raw_pilot_measurements/1.1.0"
+PILOT_PARAMETER_SPACE_IDENTITY_SCHEMA = (
+    "robust_nroy_pilot_parameter_space_identity/1.0.0"
+)
 PILOT_TIMING_STATISTIC = "arithmetic_mean_successful_elapsed_seconds"
 PRICED_BUDGET_SCHEMA = "robust_nroy_priced_budget/2.0.0"
 PRICING_SOURCE_SCHEMA = "robust_nroy_pricing_source/1.0.0"
@@ -292,6 +295,18 @@ def _finite_product(*values: object) -> float | None:
     return result if math.isfinite(result) else None
 
 
+def _pilot_parameter_space_sha256(model: nc.ModelSpace) -> str:
+    """Identity of the exact ordered bounds used to admit pilot vectors."""
+    return ccs.sha256_json({
+        "schema": PILOT_PARAMETER_SPACE_IDENTITY_SCHEMA,
+        "model": model.model,
+        "parameter_names": list(model.names),
+        "lower": [float(value) for value in model.space.lower],
+        "upper": [float(value) for value in model.space.upper],
+        "config_paths": list(model.space.config_paths),
+    })
+
+
 def _pilot_measurement_facts(
     pilot: Mapping,
     pilot_path: Path,
@@ -367,12 +382,21 @@ def _pilot_measurement_facts(
             model: _scientific_config_sha256(plan, model_spaces[model])
             for model in nc.MODELS
         }
+        expected_space_sha = {
+            model: _pilot_parameter_space_sha256(model_spaces[model])
+            for model in nc.MODELS
+        }
     except Exception as exc:  # noqa: BLE001 - identity cannot be inferred on failure
         problems.append(
             f"the measured-pilot scientific config identities could not be resolved: "
             f"{type(exc).__name__}: {exc}"
         )
         return None
+    if raw.get("parameter_space_sha256_by_model") != expected_space_sha:
+        problems.append(
+            "the measured-pilot raw measurement is not bound to the exact signed "
+            "M0/M1 parameter spaces"
+        )
     parsed_rows: dict[str, list[dict[str, object]]] = {
         model: [] for model in nc.MODELS
     }
@@ -381,6 +405,7 @@ def _pilot_measurement_facts(
     malformed = False
     failed = False
     duplicate_vector_seed = False
+    out_of_bounds_rows: list[str] = []
     for row in rows:
         if not isinstance(row, Mapping):
             malformed = True
@@ -400,16 +425,31 @@ def _pilot_measurement_facts(
         vector_sha = row.get("parameter_vector_sha256")
         config_sha = row.get("scientific_config_sha256")
         vector_identity_valid = isinstance(vector, Mapping)
+        vector_bounds_valid = False
         if vector_identity_valid:
             try:
                 vector_identity_valid = (
                     all(_is_finite_json_number(value) for value in vector.values())
                     and nc.vector_hash(vector, names=model_spaces[model].names) == vector_sha
                 )
+                if vector_identity_valid:
+                    vector_values = model_spaces[model].space.as_vector(vector)
+                    below = vector_values < model_spaces[model].space.lower
+                    above = vector_values > model_spaces[model].space.upper
+                    vector_bounds_valid = not bool(np.any(below) or np.any(above))
+                    if not vector_bounds_valid:
+                        violated = [
+                            model_spaces[model].names[index]
+                            for index in np.flatnonzero(below | above)
+                        ]
+                        out_of_bounds_rows.append(
+                            f"{trajectory_id!r}/{model}: {violated}"
+                        )
             except (ContractError, KeyError, TypeError, ValueError):
                 vector_identity_valid = False
         if seed is None or seed not in plan.seeds.discovery \
                 or not _is_sha256(vector_sha) or not vector_identity_valid \
+                or not vector_bounds_valid \
                 or config_sha != expected_config_sha[model]:
             row_malformed = True
         if row.get("status") != "SUCCESS":
@@ -440,6 +480,12 @@ def _pilot_measurement_facts(
     if malformed or len(trajectory_ids) != len(rows) or sum(
         len(model_rows) for model_rows in parsed_rows.values()
     ) != len(rows):
+        if out_of_bounds_rows:
+            problems.append(
+                "the measured-pilot raw measurement contains parameter vectors outside "
+                "the exact signed model-specific space bounds: "
+                + "; ".join(out_of_bounds_rows)
+            )
         problems.append(
             "the measured-pilot raw rows require model, non-empty trajectory_id, exact "
             "uint32 signed seed, complete finite parameter vector with matching SHA256, "

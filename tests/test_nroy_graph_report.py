@@ -736,6 +736,10 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "scientific_code_sha256": runner._code_sha256(),
         "models": list(nc.MODELS),
         "discovery_seeds": list(plan.seeds.discovery),
+        "parameter_space_sha256_by_model": {
+            model: runner._pilot_parameter_space_sha256(model_spaces[model])
+            for model in nc.MODELS
+        },
         "machine_profile": machine,
         "scheduler_request": scheduler,
         "rows": raw_rows,
@@ -1214,6 +1218,45 @@ def test_measured_pilot_rejects_anonymous_or_repeated_timing_rows(
     _mutate_raw_pilot(paths, mutation)
     assert any(
         expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+@pytest.mark.parametrize("model_name", nc.MODELS)
+def test_measured_pilot_rejects_hash_consistent_out_of_bounds_vector(
+        tmp_path, model_name):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    spaces = runner._model_spaces(plan)
+
+    def move_vector_outside_signed_space(raw):
+        row = next(row for row in raw["rows"] if row["model"] == model_name)
+        model = spaces[row["model"]]
+        name = model.names[0]
+        upper = float(model.space.upper[0])
+        row["parameter_vector"][name] = upper + max(abs(upper), 1.0)
+        row["parameter_vector_sha256"] = nc.vector_hash(
+            row["parameter_vector"], names=model.names
+        )
+
+    # This reseals the raw file, measured-pilot hash and priced-budget pilot
+    # hash, so rejection cannot be attributed to stale integrity metadata.
+    _mutate_raw_pilot(paths, move_vector_outside_signed_space)
+    assert any(
+        "outside the exact signed model-specific space bounds" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_parameter_space_identity_drift(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths,
+        lambda raw: raw["parameter_space_sha256_by_model"].update(M0="0" * 64),
+    )
+    assert any(
+        "not bound to the exact signed M0/M1 parameter spaces" in problem
         for problem in runner._production_readiness_problems(plan)
     )
 
