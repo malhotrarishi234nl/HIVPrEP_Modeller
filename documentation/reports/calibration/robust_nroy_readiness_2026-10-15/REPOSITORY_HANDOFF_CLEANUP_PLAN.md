@@ -2,18 +2,50 @@
 
 ## Audit verdict
 
-The collaborator **source-code handoff is complete** at commit
-`68112bba96402dbbf43c4456289f4384b9635cbe`. A new researcher can restore the
-complete Git history from the verified bundle, identify the current ordinary
-M0/M1 workflow, install hash-recorded requirements, and run the documented
+The collaborator **source-code handoff is complete** on the
+`research-e2e-20261015` branch. A new researcher can restore the complete Git
+history, identify the current ordinary M0/M1 and bounded research-E2E
+workflows, install hash-recorded requirements, and run the documented
 validation-only and guarded test lanes. Scientific production is still **not
-ready**: the Option-B candidate is unfitted, its preparation seeds are
-unsigned, and the robust plan retains 45 unsigned decisions plus separate
-sign-off.
+ready**: the bounded Option-B rehearsal produced no fresh-seed-confirmed
+candidate and ran no PSA, and the robust production plan retains its separate
+scientific sign-off requirements.
 
 This plan remains non-destructive. The code bundle closes source delivery; it
 does not authorize movement or deletion of the external scientific artifact
 vault, raw data, or literature library.
+
+### 2026-10-16 cleanup update
+
+The current tracked source has been separated from machine-local research
+artifacts without deleting evidence:
+
+- A fresh no-hardlink checkout, `hiv-prep-model-interface`, is clean, contains
+  699 files, occupies about 34 MB including Git history, and contains no
+  `outputs/` directory. This is the recommended starting point for interface
+  work and collaborator-facing source changes.
+- The completed bounded Option-B rehearsal remains preserved under
+  `outputs/calibration/option_b_research_e2e_20261015T181418Z/` in the isolated
+  research checkout. It contains 835 files and 321,536,969 logical bytes. It
+  must not be inferred to exist in a source-only clone.
+- The older live working tree remains frozen and untouched because it combines
+  uncommitted source with 13,277,647,002 logical bytes of outputs, environments,
+  caches, and backups. Cleaning that tree in place would mix source recovery
+  with artifact disposition.
+- The two loose conference restores plus three byte-identical archive copies
+  account for about 7.39 GB of reclaimable logical storage. Removal remains
+  gated on an external canonical vault location, an independent backup,
+  destination checksum and restore verification, and explicit owner approval.
+- Two unreferenced historical plans were moved into
+  `documentation/archive/historical_workstreams/`. Twenty-nine historical root
+  documents remain at their original provenance paths with prominent status
+  banners because frozen source, config, tests, or catalog records cite them.
+- The conservative configuration registry now covers 79 files and has SHA-256
+  `cdc7471aee3677f5111320294e4f63a2a9f87b780a8603aafc31c73bc9090726`.
+
+This creates a clean repository for the next implementation session while
+keeping scientific outputs recoverable. It does not yet complete the separate
+artifact-vault migration or authorize deletion from the frozen live tree.
 
 ### 2026-10-15 implementation update
 
