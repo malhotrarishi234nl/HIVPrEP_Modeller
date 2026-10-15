@@ -13,6 +13,7 @@ PLAN = ROOT / "configs/msm_beta_response_audit_20260921.json"
 STALE_SEARCH_ERROR = (
     "code changed since the search: "
     "['aids_observation.py', 'calib_extractor.py', 'config_utils.py', "
+    "'coupled_calibration_search.py', "
     "'hm_target_register.py', 'hm_variance_budget.py', "
     "'run_coupled_calibration.py', 'run_lhs_calibration.py', 'run_v3.py']"
 )
