@@ -7,18 +7,23 @@
   additional findings below. This accepts the fail-closed implementation, not
   the absent scientific inputs or any proposed production decision.
 - **Production readiness:** **not ready**. The production plan still contains
-  42 unsigned decisions, proposes a deterministic and non-M1-capable base
-  configuration, and has no plan-bound config registry, measured pilot,
-  priced-budget artifact, production seed-disjointness audit, independently
-  confirmed positive-`p` M1 anchor evidence, or production observed/base-
-  variance evidence.
+  42 unsigned decisions. A stochastic shared M0/M1 derivative is now prepared,
+  but it inherits the source config's diagnostic 1975 backbone and explicitly
+  unvalidated period inputs; it cannot be selected or signed until those are
+  reconciled against the intended 1980 production backbone. There is also no
+  plan-bound config registry, measured pilot, priced-budget artifact,
+  production seed-disjointness audit, independently confirmed positive-`p` M1
+  anchor evidence, or production observed/base-variance evidence.
 - **Production simulations run during remediation:** none.
 
 Historical validation transcripts below retain the 43-decision count observed
 before the 2026-10-15 complete-pairwise graph correction. The current plan has
 42 unsigned decisions (28 proposal-backed, 14 without proposals) because the
 non-load-bearing graph neighbour-count decision was removed and the direct
-one-sided `alpha=0.05` variance rule now has an explicit proposal.
+one-sided `alpha=0.05` variance rule now has an explicit proposal. References
+below to the earlier deterministic, non-M1-capable config proposal are likewise
+historical; the prepared shared derivative closes that mechanical route gap but
+does not close the 1975-versus-1980 scientific configuration decision.
 
 ## Closed review findings
 

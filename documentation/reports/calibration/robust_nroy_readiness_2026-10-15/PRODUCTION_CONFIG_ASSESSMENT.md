@@ -25,7 +25,13 @@ Relative to the original, it changes only descriptive metadata, switches
 complete optional diagnosis block with `enabled=false`,
 `routine_hazard_scale=1.0`, `aids_symptom_annual_probability=0.0`, and
 `symptom_start_year=1985`. All calibrated scientific parameter values are
-unchanged. The exact file hash must be recorded after review.
+unchanged. That minimal mechanical diff is not evidence that the source values
+are scientifically suitable for production: the inherited config starts in
+1975, uses a 1975 population/age-sex distribution and seed year, and labels the
+period-specific demographic inputs as unvalidated diagnostic burn-in settings;
+its own notes say production uses the 1980 backbone. The 1975-versus-1980
+backbone must therefore be reconciled before selection or signature. The exact
+file hash must be recorded after that review.
 
 ## Exact production route
 
@@ -50,7 +56,9 @@ identity or runtime suitability.
 
 ## Recommendation
 
-Review the prepared derivative and its minimal diff, then bind its exact hash
-in the signed plan and `CONFIG_REGISTRY.md`. After that, separately authorize
-and pass the real M0/M1 identity gate and measured pilot. This report prepares
-the proposal; it does not select it, sign it, or claim scientific acceptance.
+First reconcile the inherited diagnostic 1975 settings against the intended
+1980 production backbone. Then review the resulting shared config and exact
+diff, and bind the approved file's exact hash in the signed plan and
+`CONFIG_REGISTRY.md`. After that, separately authorize and pass the real M0/M1
+identity gate and measured pilot. This report prepares a mechanical route
+candidate; it does not select it, sign it, or claim scientific acceptance.

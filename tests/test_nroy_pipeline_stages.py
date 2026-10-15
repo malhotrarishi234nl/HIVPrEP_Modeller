@@ -1791,7 +1791,7 @@ def test_a_plan_that_unpins_the_routine_hazard_scale_never_loads(tmp_path):
 # The M0/M1 identity gate as a pre-production command
 # ==========================================================================
 
-def test_m1_prepare_refuses_without_the_identity_gate(tmp_path):
+def test_m1_prepare_refuses_without_the_identity_gate(tmp_path, capsys):
     """A green full suite does not establish the identity, so M1 demands the gate."""
     plan_path = fx.write_signed_plan(tmp_path)
     anchors = _write_anchors(tmp_path / "anchors.csv", fx.m1_space())
@@ -1801,6 +1801,10 @@ def test_m1_prepare_refuses_without_the_identity_gate(tmp_path):
     ])
     assert code == 1
     assert not (tmp_path / "m1" / "manifest.json").exists()
+    assert (
+        "identity-gate --plan <signed-plan.json> --out <dir>"
+        in capsys.readouterr().err
+    )
 
 
 def test_m0_prepare_does_not_require_the_gate(tmp_path):
@@ -1879,6 +1883,14 @@ def test_the_gate_command_is_documented_and_explicit():
     doc = (ROOT / "nroy_identity_gate.py").read_text()
     assert "no-engine guard" in doc
     assert "cannot be skipped" in doc
+
+    readiness = (
+        ROOT / "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md"
+    ).read_text()
+    assert "run_robust_nroy_freeze.py identity-gate" in readiness
+    assert "--identity-gate <identity-evidence-dir>/m0_m1_identity_gate.json" in readiness
+    assert "--m0-confirmed-dir" in readiness
+    assert "--m0-confirmation-dir" not in readiness
 
 
 def test_prepared_work_and_identity_gate_cover_the_production_dependency_surface():

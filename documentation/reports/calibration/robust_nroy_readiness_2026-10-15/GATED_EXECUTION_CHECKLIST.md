@@ -22,7 +22,10 @@ engine-running gate.
   config-route tests pass. This is code acceptance only; the identity and pilot
   gates below remain open.
 - [ ] All 42 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
-- [ ] A stochastic M1-capable base configuration is selected and hashed.
+- [ ] The prepared stochastic M1-capable derivative's inherited diagnostic 1975
+  backbone and explicitly unvalidated period inputs are reconciled against the
+  intended 1980 production backbone; only then is the reviewed base selected
+  and hashed.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
 - [ ] Historical artifacts have an approved disposition; current claims exclude unrepeated stale lineages.
 - [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.
@@ -38,6 +41,6 @@ engine-running gate.
 - [ ] `.venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan>` returns zero blockers.
 - [ ] Only then request a new, separate authorization for production dispatch.
 
-Current stopping point: the first two implementation gates are closed, but the
-design values remain unsigned and later scientific/evidence gates are open, so
-no engine gate may run.
+Current stopping point: the five implementation gates above are closed, but the
+design values remain unsigned, the production backbone is unresolved, and
+later scientific/evidence gates are open, so no engine gate may run.

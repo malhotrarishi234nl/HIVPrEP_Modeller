@@ -999,7 +999,8 @@ def command_prepare(args: argparse.Namespace) -> int:
             raise ContractError(
                 "preparing an M1 design requires --identity-gate pointing at a passing "
                 f"{nig.GATE_FILENAME}. Produce it with\n"
-                "  .venv/bin/python run_robust_nroy_freeze.py identity-gate --out <dir>\n"
+                "  .venv/bin/python run_robust_nroy_freeze.py identity-gate "
+                "--plan <signed-plan.json> --out <dir>\n"
                 "ROBUST_NROY_FREEZE_SPEC section 2 requires the multi-vector, multi-seed "
                 "identity before M1 is launched, and the pytests that check it are "
                 "skipped under the no-engine guard."

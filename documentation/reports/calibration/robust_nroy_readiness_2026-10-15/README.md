@@ -83,14 +83,15 @@ not authorizations.
 .venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan.json>
 
 # Identity gate: requires explicit authorization before running.
-.venv/bin/python run_robust_nroy_freeze.py identity \
-  --plan <signed-plan.json> --out <identity-evidence.json> <reviewed gate args>
+.venv/bin/python run_robust_nroy_freeze.py identity-gate \
+  --plan <signed-plan.json> --out <identity-evidence-dir> <reviewed gate args>
 
 # M1 discovery preparation after positive-p confirmation exists; preparation
 # validates the typed evidence before consuming the anchor CSV.
 .venv/bin/python run_robust_nroy_freeze.py prepare \
   --plan <signed-plan.json> --model M1 --stage discovery \
-  --m0-confirmation-dir <sealed-m0-confirmation> \
+  --identity-gate <identity-evidence-dir>/m0_m1_identity_gate.json \
+  --m0-confirmed-dir <sealed-m0-confirmation> \
   --anchors <confirmed-positive-p-m1.csv> \
   --m1-anchor-evidence <m1-anchor-confirmation.json> \
   --out <new-m1-discovery-dir>
@@ -106,7 +107,10 @@ bindings and cannot pass the production validator as stored.
 
 1. Rishi Malhotra reviews and signs the 42 owner-assigned register rows.
 2. Review and approve the prepared minimal stochastic M0/M1 config derivative;
-   code-route tests do not replace the identity gate or scientific review.
+   code-route tests do not replace the identity gate or scientific review. Its
+   inherited 1975 diagnostic backbone and explicitly unvalidated period inputs
+   must be reconciled against the intended 1980 production backbone before it
+   can be selected or signed.
 3. Choose whether a full preserved backlog edition should be restored as
    authoritative documentation.
 4. Approve retirement-only versus current-code rerun for the two stale
