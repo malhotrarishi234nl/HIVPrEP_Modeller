@@ -4,13 +4,13 @@
 
 - Production-readiness status and evidence:
   `reports/calibration/robust_nroy_readiness_2026-10-15/README.md`
-- Production-backbone evidence and required 1975/1980 decision:
+- Production-backbone evidence and the selected Option B 1980 recalibration direction:
   `reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md`
 - Ordered launch gates:
   `reports/calibration/robust_nroy_readiness_2026-10-15/GATED_EXECUTION_CHECKLIST.md`
 - Owner decisions, assumptions, and methods reading:
   `reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md`
-- Owner packet for all 42 unsigned robust-NROY rows, grouped by evidence gate:
+- Owner packet for all 43 unsigned robust-NROY rows, grouped by evidence gate:
   `reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_DECISION_PACKET.md`
 - Collaborator-facing M0/M1 commands and protected parameter boundary:
   `reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md`
