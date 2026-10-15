@@ -1134,6 +1134,10 @@ def build_initial_vectors(
     *,
     injection_check=None,
     size: int = INITIAL_ARCHIVE_SIZE,
+    source_vector_ids: Sequence[int] = SOURCE_VECTOR_IDS,
+    source_experiment: str = SOURCE_EXPERIMENT,
+    warm_start_path: str = WARM_START_PATH,
+    max_warm_vectors: int = MAX_WARM_VECTORS,
 ) -> tuple[list[dict], dict]:
     """Source vectors, then warm-start rows in FILE ORDER, then constrained LHS.
 
@@ -1161,22 +1165,24 @@ def build_initial_vectors(
         return True
 
     warm_accepted = 0
-    for design_id in SOURCE_VECTOR_IDS:
+    for design_id in source_vector_ids:
         if design_id not in source_frame.index:
             raise ContractError(f"source design {design_id} is absent from the source experiment")
         vector = source_frame.loc[design_id, list(space.names)].to_numpy(dtype=float)
         if accept(vector, "warm_source_vector",
-                  {"source_design_id": int(design_id), "source": SOURCE_EXPERIMENT}):
+                  {"source_design_id": int(design_id), "source": source_experiment,
+                   "prior_status_carried_forward": False}):
             warm_accepted += 1
 
     for row_index in range(len(warm_frame)):
-        if warm_accepted >= MAX_WARM_VECTORS:
+        if warm_accepted >= max_warm_vectors:
             rejections.append({"warm_start_row": row_index, "origin": "warm_start_csv",
-                               "reason": f"warm cap of {MAX_WARM_VECTORS} already reached"})
+                               "reason": f"warm cap of {max_warm_vectors} already reached"})
             continue
         vector = warm_frame.iloc[row_index][list(space.names)].to_numpy(dtype=float)
         if accept(vector, "warm_start_csv",
-                  {"warm_start_row": int(row_index), "source": WARM_START_PATH}):
+                  {"warm_start_row": int(row_index), "source": warm_start_path,
+                   "prior_status_carried_forward": False}):
             warm_accepted += 1
 
     n_fill = size - len(entries)
@@ -1196,7 +1202,7 @@ def build_initial_vectors(
         raise ContractError(f"initial archive has {len(entries)} vectors, expected {size}")
     diagnostics = {
         "n_warm_accepted": warm_accepted, "n_lhs_fill": n_fill,
-        "warm_cap": MAX_WARM_VECTORS, "rejections": rejections, "lhs_generation": fill_diag,
+        "warm_cap": max_warm_vectors, "rejections": rejections, "lhs_generation": fill_diag,
     }
     return entries, diagnostics
 

@@ -56,6 +56,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
     ROLE_PROPOSED: _names("""
         calib_space_v13_25_unordered_orientation_20260921.json
         collaborator_parameter_contract.json
+        coupled_search_plan_option_b_1980_recalibration_preparation_20261015.json
         hm_target_register_robust_nroy_production_20261015.json
         robust_nroy_freeze_production.json
     """),
@@ -189,6 +190,10 @@ STATUS_OVERRIDES = {
         "UNAPPROVED_CONTRACT — fail-closed edit allowlist; production use requires exact "
         "SHA-256 binding in the canonical production approval"
     ),
+    "coupled_search_plan_option_b_1980_recalibration_preparation_20261015.json": (
+        "PREPARATION_ONLY_NOT_AUTHORIZED — exact Option B inputs and 1980 window are bound; "
+        "seed decisions and execution authorization remain unsigned"
+    ),
     "hm_target_register_robust_nroy_production_20261015.json": (
         "UNSIGNED_PROPOSAL — proposed 13-target contract; target constructs and provenance require review"
     ),
@@ -212,6 +217,10 @@ SAFE_NOTE_OVERRIDES = {
     "collaborator_parameter_contract.json": (
         "Use to validate draft copies only; binding its exact hash in production approval means the "
         "approver reviewed every listed path and interval."
+    ),
+    "coupled_search_plan_option_b_1980_recalibration_preparation_20261015.json": (
+        "Validation-only use is safe. Historical 1975 vectors are proposal seeds only; do not "
+        "prepare or run until seed fields and execution authorization are explicitly approved."
     ),
     "hm_target_register_robust_nroy_production_20261015.json": (
         "Do not treat targets as accepted; use only after source-window, construct, and provenance review."

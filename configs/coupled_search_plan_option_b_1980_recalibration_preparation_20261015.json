@@ -1,0 +1,357 @@
+{
+  "design": {
+    "name": "option_b_1980_recalibration_preparation_20261015",
+    "question": "Can the Option B 1980-start stochastic M0 calibration reproduce the frozen 13-target diagnosis/AIDS evidence before any M1 robust-NROY production work is considered?",
+    "status_vocabulary": [
+      "PREPARED",
+      "SMOKE_PASSED",
+      "SEARCH_COMPLETE",
+      "CONFIRMATION_COMPLETE",
+      "PARTIAL_TIME_LIMIT",
+      "FAILED"
+    ],
+    "declared_as": "preparation-only Option B 1980 recalibration proposal; exact inputs and design are bound for validation, while seed choices and all engine execution remain unsigned",
+    "not": [
+      "emulator",
+      "gradient inference",
+      "posterior sampler",
+      "proof of efficient global optimization",
+      "exhaustive coverage of 33 dimensions"
+    ]
+  },
+  "inputs": {
+    "source_experiment": "outputs/calibration/hm_focused_diagnoses_then_aids_20260916",
+    "base_config": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
+    "calib_space": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
+    "target_register": "configs/hm_target_register_robust_nroy_production_20261015.json",
+    "wave_plan": "configs/hm_wave_plan_forecast_windows_20260921.json",
+    "warm_start": "configs/hm_forecast_windows_warm_start_20260921.csv",
+    "source_workbook_sha256": "0ff530cea5cb2545b32c6c20ab40de324bfadf7846c2078e59eec6b79eb93404",
+    "expected_sha256": {
+      "base_config": "49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30",
+      "calib_space": "82970c6d542ea7319ba9cc807ea221bb43f4558afdc5d8abb37e96d649649a12",
+      "target_register": "57bed71174d2346419e250b2371995421c466f82c1b55c98104fcd2cfcce0af8",
+      "wave_plan": "a75fc8656aad6c25996c96be940c20874948b9bf0e09c4635c85e562cfd877ef",
+      "warm_start": "b2427feeab984c4b008f3c12bf0d337cfcab4a2f6decfa7e8914da1438a7363a",
+      "source_manifest": "667f844ede038c124631568bc054ef192756c0214e2bfeb0a3ed6e65ec12abab"
+    }
+  },
+  "targets": {
+    "n": 13,
+    "frozen_order": [
+      "shm_new_diagnoses_msm@1996",
+      "shm_new_diagnoses_msm@2000",
+      "shm_new_diagnoses_msm@2004",
+      "shm_new_diagnoses_msm@2010",
+      "shm_new_diagnoses_msm@2015",
+      "shm_new_diagnoses_msm@2019",
+      "shm_new_diagnoses_msm@2024",
+      "rivm_aids_msm@2000",
+      "rivm_aids_msm@2005",
+      "rivm_aids_msm@2010",
+      "rivm_aids_msm@2015",
+      "rivm_aids_msm@2019",
+      "rivm_aids_msm@2022"
+    ],
+    "diagnosis_series": "shm_new_diagnoses_msm",
+    "diagnosis_years": [
+      1996,
+      2000,
+      2004,
+      2010,
+      2015,
+      2019,
+      2024
+    ],
+    "aids_series": "rivm_aids_msm",
+    "aids_years": [
+      2000,
+      2005,
+      2010,
+      2015,
+      2019,
+      2022
+    ],
+    "reporting_groups": {
+      "diagnoses_1996_2015": [
+        "shm_new_diagnoses_msm@1996",
+        "shm_new_diagnoses_msm@2000",
+        "shm_new_diagnoses_msm@2004",
+        "shm_new_diagnoses_msm@2010",
+        "shm_new_diagnoses_msm@2015"
+      ],
+      "aids_2000_2015": [
+        "rivm_aids_msm@2000",
+        "rivm_aids_msm@2005",
+        "rivm_aids_msm@2010",
+        "rivm_aids_msm@2015"
+      ],
+      "diagnoses_after_2015": [
+        "shm_new_diagnoses_msm@2019",
+        "shm_new_diagnoses_msm@2024"
+      ],
+      "aids_after_2015": [
+        "rivm_aids_msm@2019",
+        "rivm_aids_msm@2022"
+      ]
+    },
+    "unresolved_target_policy": "fatal; never silently dropped"
+  },
+  "parameters": {
+    "n": 33,
+    "coordinates": "original linear normalized u=(x-lower)/(upper-lower)",
+    "transformations": "none",
+    "blocks": {
+      "initial_burden": [
+        "seed_prevalence",
+        "seed_msm_fraction",
+        "p_msm",
+        "seed_msm_chronic_share",
+        "seed_msm_aids_share",
+        "seed_non_msm_chronic_share",
+        "seed_non_msm_aids_share"
+      ],
+      "contacts_mixing": [
+        "orient_female",
+        "orient_msm",
+        "epsilon_hetero",
+        "epsilon_msm",
+        "activity_med",
+        "activity_high",
+        "contact_low",
+        "contact_med",
+        "contact_high"
+      ],
+      "diagnosis": [
+        "diagnosis_1985",
+        "diagnosis_1990",
+        "diagnosis_1997",
+        "diagnosis_2019",
+        "msm_diag_mult_1996",
+        "msm_diag_mult_2004",
+        "msm_diag_mult_2019"
+      ],
+      "care_progression_survival": [
+        "art_init_1996",
+        "art_init_2000",
+        "art_init_2015",
+        "art_init_2020",
+        "art_dropout_rate",
+        "chronic_to_aids",
+        "chronic_to_aids_on_art_early",
+        "chronic_to_aids_on_art_recent",
+        "aids_mortality",
+        "art_mortality_reduction"
+      ]
+    },
+    "block_pairs": [
+      [
+        "initial_burden",
+        "contacts_mixing"
+      ],
+      [
+        "initial_burden",
+        "diagnosis"
+      ],
+      [
+        "initial_burden",
+        "care_progression_survival"
+      ],
+      [
+        "contacts_mixing",
+        "diagnosis"
+      ],
+      [
+        "contacts_mixing",
+        "care_progression_survival"
+      ],
+      [
+        "diagnosis",
+        "care_progression_survival"
+      ]
+    ]
+  },
+  "objective": {
+    "search_residual": "r_i = (mu_i - z_i)/sqrt(B_i)",
+    "B_i": "frozen non-process variance: observation + code + target-relative 0.1 discrepancy (+ any extra budget term)",
+    "group_statistic": "R_G = sqrt(mean(r_i^2))",
+    "rank": "J = max_G R_G; ties by mean_G R_G, then candidate id",
+    "purpose": "SEARCH RANKING ONLY; equal group treatment is a declared heuristic and is not a likelihood, weight or acceptance rule"
+  },
+  "acceptance": {
+    "rule": "frozen 13-target primary maximum implausibility",
+    "process_variance": "s_i^2 (1 + 1/K)",
+    "discrepancy": 0.1,
+    "cutoff": 3.0,
+    "boundary": "I_max <= cutoff passes",
+    "sensitivity_discrepancy": 0.2,
+    "sensitivity_status": "reported only; never promotes a candidate",
+    "recorded_fields": [
+      "search_rank",
+      "discovery_primary_pass",
+      "fresh_confirmation_primary_pass",
+      "sensitivity_pass"
+    ]
+  },
+  "search": {
+    "initial_archive": 256,
+    "source_vector_ids": [
+      620,
+      621,
+      548
+    ],
+    "max_warm_vectors": 24,
+    "batches": 28,
+    "batch_size": 64,
+    "per_batch": {
+      "global_lhs": 16,
+      "differential_full": 24,
+      "differential_block": 24
+    },
+    "max_discovery_vectors": 2048,
+    "parent_pool": {
+      "size": 160,
+      "best_by_J": 64,
+      "per_group": 16,
+      "maximin_diversity": 32
+    },
+    "differential": {
+      "formula": "u_new = u_a + F (u_b - u_c)",
+      "F_values": [
+        0.5,
+        0.8
+      ],
+      "F_rule": "alternating by proposal index",
+      "crossover": false,
+      "clipping": false,
+      "domain_shrinking": false
+    },
+    "rejection": {
+      "max_attempts_per_slot": 200,
+      "fallback": "one valid global draw, recorded",
+      "max_raw_global_proposals_per_batch": 100000,
+      "duplicate_tolerance_max_coordinate": 1e-10
+    },
+    "early_stopping": "none; neither a good fit nor an empty accepted set stops the run"
+  },
+  "seeds": {
+    "discovery": [
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED"
+    ],
+    "confirmation": [
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED"
+    ],
+    "smoke": [
+      "UNSIGNED",
+      "UNSIGNED",
+      "UNSIGNED"
+    ],
+    "proposal_rng": "UNSIGNED",
+    "design": "UNSIGNED placeholders; final common random numbers must be shared across candidates within each stage, with confirmation seeds disjoint from discovery and all previous experiments"
+  },
+  "budget": {
+    "table": [
+      {
+        "stage": "three paired harness-versus-production smoke checks",
+        "maximum_full_trajectories": 6
+      },
+      {
+        "stage": "256 initial + 28x64 adaptive vectors, K=5",
+        "maximum_full_trajectories": 10240
+      },
+      {
+        "stage": "at most 10 fresh confirmations, K=20",
+        "maximum_full_trajectories": 200
+      },
+      {
+        "stage": "total scientific/smoke maximum",
+        "maximum_full_trajectories": 10446
+      }
+    ],
+    "total": 10446,
+    "default_workers": 4,
+    "max_workers": 8,
+    "wall_time_cap_seconds": 21600,
+    "on_cap": "stop dispatch, finish bounded in-flight work, mark PARTIAL_TIME_LIMIT",
+    "resume": "never resets the total simulation budget; spent launch attempts stay spent"
+  },
+  "confirmation": {
+    "shortlist_size": 10,
+    "primary_pass_head": 5,
+    "replicates": 20,
+    "rules": [
+      "freeze the shortlist before any fresh simulation",
+      "never pool discovery and confirmation seeds",
+      "never choose a favourable seed subset",
+      "never iteratively replace a failed candidate"
+    ]
+  },
+  "diagnostics": {
+    "stock_years": [
+      1990,
+      2000,
+      2010,
+      2025
+    ],
+    "stock_axes": [
+      "orientation",
+      "activity",
+      "hiv_stage",
+      "diagnosis",
+      "art"
+    ],
+    "annual_activity_flows": {
+      "measure": "new infections",
+      "axes": [
+        "orientation",
+        "activity"
+      ],
+      "years": [
+        1980,
+        2025
+      ],
+      "purpose": "structural sensitivity diagnostic only; no activity-stratified observations enter calibration or acceptance"
+    },
+    "confirmation_state_tensors": {
+      "years": [
+        2025
+      ],
+      "restart_safe": false
+    },
+    "observer": "passive; consumes no RNG, mutates no state, verified by paired smoke"
+  },
+  "calibration_window": {
+    "simulation_start_year": 1980,
+    "extract_start_year": 1980,
+    "extract_end_year": 2025
+  },
+  "execution_authorization": {
+    "status": "PREPARATION_ONLY_NOT_AUTHORIZED",
+    "allowed_modes": [
+      "validate-only"
+    ]
+  }
+}

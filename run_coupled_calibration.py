@@ -94,20 +94,54 @@ class RunnerPlan:
         return self.payload["inputs"]
 
     @property
+    def simulation_start_year(self) -> int:
+        window = self.payload.get("calibration_window")
+        return (ccs.SIMULATION_START_YEAR if window is None
+                else int(window["simulation_start_year"]))
+
+    @property
+    def extract_start_year(self) -> int:
+        window = self.payload.get("calibration_window")
+        return ccs.EXTRACT_START_YEAR if window is None else int(window["extract_start_year"])
+
+    @property
+    def extract_end_year(self) -> int:
+        window = self.payload.get("calibration_window")
+        return ccs.EXTRACT_END_YEAR if window is None else int(window["extract_end_year"])
+
+    @property
+    def source_vector_ids(self) -> tuple[int, ...]:
+        return tuple(int(v) for v in self.payload["search"]["source_vector_ids"])
+
+    @property
+    def max_warm_vectors(self) -> int:
+        return int(self.payload["search"]["max_warm_vectors"])
+
+    @property
     def discovery_seeds(self) -> tuple[int, ...]:
-        return tuple(int(v) for v in self.payload["seeds"]["discovery"])
+        return self._seed_tuple("discovery")
 
     @property
     def confirmation_seeds(self) -> tuple[int, ...]:
-        return tuple(int(v) for v in self.payload["seeds"]["confirmation"])
+        return self._seed_tuple("confirmation")
 
     @property
     def smoke_seeds(self) -> tuple[int, ...]:
-        return tuple(int(v) for v in self.payload["seeds"]["smoke"])
+        return self._seed_tuple("smoke")
 
     @property
     def proposal_rng_seed(self) -> int:
-        return int(self.payload["seeds"]["proposal_rng"])
+        value = self.payload["seeds"]["proposal_rng"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ContractError("plan seeds.proposal_rng is unsigned or not an integer")
+        return value
+
+    def _seed_tuple(self, field: str) -> tuple[int, ...]:
+        values = self.payload["seeds"][field]
+        if (not isinstance(values, list)
+                or any(isinstance(v, bool) or not isinstance(v, int) for v in values)):
+            raise ContractError(f"plan seeds.{field} contains unsigned or non-integer values")
+        return tuple(values)
 
     @property
     def comparison_group(self) -> str | None:
@@ -117,6 +151,25 @@ class RunnerPlan:
     @property
     def paired_designs(self) -> tuple[str, ...]:
         return tuple(str(v) for v in self.payload["seeds"].get("paired_designs", ()))
+
+    def validate_execution_authorization(self) -> dict:
+        """Fail closed when a plan explicitly limits itself to validation."""
+        authorization = self.payload.get("execution_authorization")
+        if authorization is None:
+            return {"status": "legacy_plan_without_explicit_gate", "allowed_modes": "legacy"}
+        if set(authorization) != {"status", "allowed_modes"}:
+            raise ContractError(
+                "execution_authorization must contain exactly status and allowed_modes"
+            )
+        status = authorization["status"]
+        modes = authorization["allowed_modes"]
+        if status != "AUTHORIZED_FOR_PREPARATION_AND_ENGINE":
+            raise ContractError(
+                f"plan execution status is {status!r}; only validate-only is permitted"
+            )
+        if not isinstance(modes, list) or "prepare" not in modes or "engine" not in modes:
+            raise ContractError("authorized plans must explicitly allow prepare and engine")
+        return {"status": status, "allowed_modes": modes}
 
 
 # ==========================================================================
@@ -210,6 +263,13 @@ def input_paths(plan: RunnerPlan | None = None) -> dict[str, Path]:
     }
 
 
+def _config_year(config: dict, field: str) -> int:
+    value = config.get("run_control", {}).get(field, {}).get("value")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or int(value) != value:
+        raise ContractError(f"base config run_control.{field}.value must be an integer")
+    return int(value)
+
+
 def load_inputs(plan: RunnerPlan | None = None) -> dict:
     """Read every authoritative input and verify its hash.  No engine is built."""
     plan = plan or RunnerPlan(plan_payload())
@@ -228,10 +288,41 @@ def load_inputs(plan: RunnerPlan | None = None) -> dict:
         hashes[name] = digest
     warm_path = ROOT / plan.inputs["warm_start"]
     source_dir = ROOT / plan.inputs["source_experiment"]
+    warm_sha256 = ccs.sha256_file(warm_path)
+    source_manifest_sha256 = ccs.sha256_file(source_dir / "manifest.json")
+    expected_hashes = plan.inputs["expected_sha256"]
+    for name, digest in (("warm_start", warm_sha256),
+                         ("source_manifest", source_manifest_sha256)):
+        expected = expected_hashes.get(name)
+        if expected is not None and digest != expected:
+            raise ContractError(
+                f"{name} hash changed: expected {expected}, found {digest}. The frozen "
+                f"proposal-source provenance must not move under this design."
+            )
     space = ccs.ParameterSpace.from_calib_space(json.loads(paths["calib_space"].read_text()))
     wave_plan = json.loads(paths["wave_plan"].read_text())
     base_config = json.loads(paths["base_config"].read_text())
     targets = ccs.load_frozen_targets(paths["target_register"], wave_plan)
+    base_start = _config_year(base_config, "start_year")
+    base_end_exclusive = _config_year(base_config, "end_year")
+    if base_start != plan.simulation_start_year:
+        raise ContractError(
+            f"plan simulation_start_year={plan.simulation_start_year} does not match the "
+            f"hash-bound base config start_year={base_start}"
+        )
+    if not (plan.simulation_start_year <= plan.extract_start_year <= plan.extract_end_year):
+        raise ContractError("calibration window must satisfy simulation start <= extract range")
+    if plan.extract_end_year >= base_end_exclusive:
+        raise ContractError(
+            f"extract_end_year={plan.extract_end_year} must be before the base config's "
+            f"exclusive end_year={base_end_exclusive}"
+        )
+    register = json.loads(paths["target_register"].read_text())
+    expected_workbook = plan.inputs.get("source_workbook_sha256")
+    if expected_workbook is not None and register.get("source_workbook_sha256") != expected_workbook:
+        raise ContractError(
+            "target register workbook hash does not match inputs.source_workbook_sha256"
+        )
 
     from run_hm_confirmation import _verified_manifest  # noqa: PLC0415
 
@@ -249,17 +340,20 @@ def load_inputs(plan: RunnerPlan | None = None) -> dict:
         "paths": paths, "hashes": hashes, "space": space, "wave_plan": wave_plan,
         "base_config": base_config, "targets": targets, "source_frame": source_frame,
         "warm_frame": warm_frame, "source_manifest": source_manifest,
-        "plan": plan, "warm_start_sha256": ccs.sha256_file(warm_path),
-        "source_manifest_sha256": ccs.sha256_file(source_dir / "manifest.json"),
+        "plan": plan, "warm_start_sha256": warm_sha256,
+        "source_manifest_sha256": source_manifest_sha256,
     }
 
 
-def injected_config(base_config: dict, params: dict, space_json: dict) -> dict:
+def injected_config(base_config: dict, params: dict, space_json: dict, *,
+                    simulation_start_year: int = ccs.SIMULATION_START_YEAR) -> dict:
     """The production injection path, in stochastic mode, from the production start year."""
     from run_lhs_calibration import inject_params  # noqa: PLC0415
 
     config = inject_params(base_config, params, space_json, deterministic_mode=False,
-                           simulation_start_year=ccs.SIMULATION_START_YEAR)
+                           simulation_start_year=int(simulation_start_year))
+    if _config_year(config, "start_year") != int(simulation_start_year):
+        raise ContractError("injected config did not retain the plan-declared simulation start")
     assert_stochastic_msm_config(config)
     return config
 
@@ -281,9 +375,11 @@ def assert_stochastic_msm_config(config: dict) -> None:
         raise ContractError("msm_relative_diagnosis schedule is empty")
 
 
-def injection_checker(base_config: dict, space_json: dict) -> Callable[[dict], None]:
+def injection_checker(base_config: dict, space_json: dict, *,
+                      simulation_start_year: int = ccs.SIMULATION_START_YEAR) -> Callable[[dict], None]:
     def check(params: dict) -> None:
-        injected_config(base_config, params, space_json)
+        injected_config(base_config, params, space_json,
+                        simulation_start_year=simulation_start_year)
     return check
 
 
@@ -375,8 +471,10 @@ class ObservingEngine:
         return engine
 
 
-def run_one_trajectory(config: dict, seed: int, *, observe: bool) -> dict:
-    """One full 1975-2025 trajectory.  Returns the extracted outputs and states."""
+def run_one_trajectory(config: dict, seed: int, *, observe: bool,
+                       extract_start_year: int = ccs.EXTRACT_START_YEAR,
+                       extract_end_year: int = ccs.EXTRACT_END_YEAR) -> dict:
+    """One full plan-declared trajectory. Returns extracted outputs and states."""
     from calib_extractor import extract_annual_outputs  # noqa: PLC0415
     from run_v3 import SimulationEngineV3  # noqa: PLC0415
 
@@ -388,14 +486,15 @@ def run_one_trajectory(config: dict, seed: int, *, observe: bool) -> dict:
             engine = SimulationEngineV3(copy.deepcopy(config), seed=int(seed))
             engine.output_writer.enabled = False
         result = engine.run(run_number=1)
-    outputs = extract_annual_outputs(result, ccs.EXTRACT_START_YEAR, ccs.EXTRACT_END_YEAR)
+    outputs = extract_annual_outputs(result, int(extract_start_year), int(extract_end_year))
     observed = getattr(engine, "observed_stocks", {})
     activity_flows = getattr(engine, "observed_activity_flows", {})
     if observe:
         missing = [str(y) for y in ccs.STOCK_YEARS if str(y) not in observed]
         if missing:
             raise ContractError(f"observer did not capture start-of-year stocks for {missing}")
-        missing_flow_years = [str(y) for y in range(ccs.EXTRACT_START_YEAR, ccs.EXTRACT_END_YEAR + 1)
+        missing_flow_years = [str(y) for y in range(int(extract_start_year),
+                                                    int(extract_end_year) + 1)
                               if str(y) not in activity_flows]
         if missing_flow_years:
             raise ContractError(f"observer did not capture activity flows for {missing_flow_years}")
@@ -436,7 +535,11 @@ def evaluate_candidate_worker(payload: dict) -> dict:
         seeds = [int(s) for s in payload["replicate_seeds"]]
         per_seed = []
         for seed in seeds:
-            trajectory = run_one_trajectory(config, seed, observe=True)
+            trajectory = run_one_trajectory(
+                config, seed, observe=True,
+                extract_start_year=payload.get("extract_start_year", ccs.EXTRACT_START_YEAR),
+                extract_end_year=payload.get("extract_end_year", ccs.EXTRACT_END_YEAR),
+            )
             series = {name: {int(y): float(v) for y, v in values.items()}
                       for name, values in trajectory["outputs"].items()}
             per_seed.append({
@@ -493,8 +596,14 @@ def smoke_pair_worker(payload: dict) -> dict:
     try:
         config = payload["config"]
         assert_stochastic_msm_config(config)
-        production = run_one_trajectory(config, payload["seed"], observe=False)
-        harness = run_one_trajectory(config, payload["seed"], observe=True)
+        trajectory_kwargs = {
+            "extract_start_year": payload.get("extract_start_year", ccs.EXTRACT_START_YEAR),
+            "extract_end_year": payload.get("extract_end_year", ccs.EXTRACT_END_YEAR),
+        }
+        production = run_one_trajectory(config, payload["seed"], observe=False,
+                                        **trajectory_kwargs)
+        harness = run_one_trajectory(config, payload["seed"], observe=True,
+                                     **trajectory_kwargs)
         pd.testing.assert_frame_equal(production["summary"], harness["summary"], check_exact=True)
         np.testing.assert_array_equal(production["final_state"], harness["final_state"])
         np.testing.assert_array_equal(production["childhood_state"], harness["childhood_state"])
@@ -630,17 +739,19 @@ def validate(*, plan_path: Path | None = None, run_seed_preflight: bool = True) 
                  state["base_config"],
                  state["space"].as_dict(state["source_frame"].loc[d, list(state["space"].names)]
                                         .to_numpy(dtype=float)),
-                 json.loads(state["paths"]["calib_space"].read_text())))}
-            for d in ccs.SOURCE_VECTOR_IDS
+                 json.loads(state["paths"]["calib_space"].read_text()),
+                 simulation_start_year=plan.simulation_start_year))}
+            for d in plan.source_vector_ids
         ])
         check("explanatory_schedule_diagnostics", lambda: {
             "note": "Explanatory diagnostics only; not calibration parameters.",
             "contact_products_first_rows": ccs.effective_contact_products(injected_config(
                 state["base_config"],
-                state["space"].as_dict(state["source_frame"].loc[ccs.SOURCE_VECTOR_IDS[0],
+                state["space"].as_dict(state["source_frame"].loc[plan.source_vector_ids[0],
                                                                  list(state["space"].names)]
                                        .to_numpy(dtype=float)),
-                json.loads(state["paths"]["calib_space"].read_text())))[:3],
+                json.loads(state["paths"]["calib_space"].read_text()),
+                simulation_start_year=plan.simulation_start_year))[:3],
         })
 
     check("budget_arithmetic", lambda: {
@@ -656,6 +767,7 @@ def validate(*, plan_path: Path | None = None, run_seed_preflight: bool = True) 
     else:
         checks["seed_preflight"] = {"ok": False, "detail": "not run"}
     check("plan_execution_contract", lambda: assert_plan_matches(plan.payload))
+    check("execution_authorization", plan.validate_execution_authorization)
     report = {"ok": all(c["ok"] for c in checks.values()), "checks": checks,
               "simulations_started": 0, "engines_constructed": 0,
               "artifacts_written": 0, "generated_utc": now()}
@@ -671,39 +783,81 @@ def assert_plan_matches(plan: dict) -> dict:
     """
     expected = plan_payload()
     required_sections = set(expected)
-    if set(plan) != required_sections:
+    optional_sections = {"calibration_window", "execution_authorization"}
+    if not required_sections.issubset(plan) or set(plan) - required_sections - optional_sections:
         missing = sorted(required_sections - set(plan))
-        extra = sorted(set(plan) - required_sections)
+        extra = sorted(set(plan) - required_sections - optional_sections)
         raise ContractError(f"plan sections differ; missing={missing}, extra={extra}")
     frozen_sections = (
         "targets", "parameters", "objective", "acceptance", "search", "budget",
-        "confirmation", "diagnostics",
+        "confirmation",
     )
     differences = [key for key in frozen_sections
                    if ccs.sha256_json(expected[key]) != ccs.sha256_json(plan.get(key))]
     if differences:
         raise ContractError(f"plan changes frozen methodological sections: {differences}")
 
+    expected_diagnostics = copy.deepcopy(expected["diagnostics"])
+    window = plan.get("calibration_window")
+    if window is not None:
+        expected_diagnostics["annual_activity_flows"]["years"] = [
+            window["extract_start_year"], window["extract_end_year"]
+        ]
+    if ccs.sha256_json(expected_diagnostics) != ccs.sha256_json(plan.get("diagnostics")):
+        raise ContractError(
+            "plan changes diagnostics beyond the plan-declared extraction window"
+        )
+
     expected_design = dict(expected["design"])
     actual_design = dict(plan["design"])
-    for field in ("name", "question"):
+    for field in ("name", "question", "declared_as"):
         expected_design.pop(field, None)
         actual_design.pop(field, None)
     if ccs.sha256_json(expected_design) != ccs.sha256_json(actual_design):
-        raise ContractError("plan design may change only name and question")
+        raise ContractError("plan design may change only name, question and declared_as")
     if not str(plan["design"].get("name", "")).strip():
         raise ContractError("plan design.name must be non-empty")
+    if not str(plan["design"].get("declared_as", "")).strip():
+        raise ContractError("plan design.declared_as must be non-empty")
 
     input_keys = set(expected["inputs"])
-    if set(plan["inputs"]) != input_keys:
-        raise ContractError("plan inputs must retain the reviewed input fields")
+    optional_input_fields = {"source_workbook_sha256"}
+    if (not input_keys.issubset(plan["inputs"])
+            or set(plan["inputs"]) - input_keys - optional_input_fields):
+        raise ContractError("plan inputs must retain reviewed fields and only known bindings")
     hash_keys = set(expected["inputs"]["expected_sha256"])
-    if set(plan["inputs"]["expected_sha256"]) != hash_keys:
-        raise ContractError("plan inputs.expected_sha256 must cover every authoritative input")
+    optional_hash_keys = {"warm_start", "source_manifest"}
+    actual_hash_keys = set(plan["inputs"]["expected_sha256"])
+    if (not hash_keys.issubset(actual_hash_keys)
+            or actual_hash_keys - hash_keys - optional_hash_keys):
+        raise ContractError(
+            "plan inputs.expected_sha256 must cover authoritative inputs and only known provenance"
+        )
     for field in input_keys - {"expected_sha256"}:
         value = plan["inputs"][field]
         if not isinstance(value, str) or not value.strip():
             raise ContractError(f"plan inputs.{field} must be a non-empty path")
+    for field in optional_hash_keys:
+        if field in actual_hash_keys:
+            value = plan["inputs"]["expected_sha256"][field]
+            if not isinstance(value, str) or len(value) != 64:
+                raise ContractError(f"plan expected_sha256.{field} must be a SHA-256 digest")
+    if "source_workbook_sha256" in plan["inputs"]:
+        value = plan["inputs"]["source_workbook_sha256"]
+        if not isinstance(value, str) or len(value) != 64:
+            raise ContractError("plan inputs.source_workbook_sha256 must be a SHA-256 digest")
+
+    window = plan.get("calibration_window")
+    if window is not None:
+        required_window = {"simulation_start_year", "extract_start_year", "extract_end_year"}
+        if set(window) != required_window:
+            raise ContractError("calibration_window must declare simulation/extract start and end")
+        if any(isinstance(window[k], bool) or not isinstance(window[k], int)
+               for k in required_window):
+            raise ContractError("calibration_window values must be integers")
+        if not (window["simulation_start_year"] <= window["extract_start_year"]
+                <= window["extract_end_year"]):
+            raise ContractError("calibration_window ordering is invalid")
 
     seeds = plan["seeds"]
     optional_seed_fields = {"comparison_group", "paired_designs", "reuse_policy"}
@@ -737,8 +891,10 @@ def assert_plan_matches(plan: dict) -> dict:
     elif paired_designs is not None or "reuse_policy" in seeds:
         raise ContractError("paired_designs/reuse_policy require seeds.comparison_group")
     return {
-        "plan_sections_verified": sorted(expected),
-        "overridable_fields": ["design.name", "design.question", "inputs", "seed values"],
+        "plan_sections_verified": sorted(plan),
+        "overridable_fields": ["design.name", "design.question", "design.declared_as",
+                               "inputs", "seed values", "calibration_window",
+                               "execution_authorization"],
         "design": plan["design"]["name"],
     }
 
@@ -873,15 +1029,24 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
     size = ccs.INITIAL_ARCHIVE_SIZE if initial_size is None else int(initial_size)
     space = state["space"]
     space_json = json.loads(state["paths"]["calib_space"].read_text())
-    check = injection_checker(state["base_config"], space_json)
+    check = injection_checker(
+        state["base_config"], space_json,
+        simulation_start_year=plan_contract.simulation_start_year,
+    )
     generator = ccs.ProposalGenerator(space, plan_contract.proposal_rng_seed)
     entries, diagnostics = ccs.build_initial_vectors(
         space, state["source_frame"], state["warm_frame"], generator, injection_check=check,
-        size=size)
+        size=size, source_vector_ids=plan_contract.source_vector_ids,
+        source_experiment=plan_contract.inputs["source_experiment"],
+        warm_start_path=plan_contract.inputs["warm_start"],
+        max_warm_vectors=plan_contract.max_warm_vectors)
     rng_state_after_initialisation = generator.get_state()
 
     anchor_params = entries[0]["params"]
-    anchor_config = injected_config(state["base_config"], anchor_params, space_json)
+    anchor_config = injected_config(
+        state["base_config"], anchor_params, space_json,
+        simulation_start_year=plan_contract.simulation_start_year,
+    )
     assert_unoccupied(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -896,12 +1061,13 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
     pd.DataFrame(ccs.effective_contact_products(anchor_config)).to_csv(
         output_dir / "effective_contact_products_anchor.csv", index=False)
     pd.DataFrame(ccs.msm_diagnosis_probability_table(
-        anchor_config, range(ccs.SIMULATION_START_YEAR, ccs.EXTRACT_END_YEAR + 1))).to_csv(
+        anchor_config, range(plan_contract.simulation_start_year,
+                             plan_contract.extract_end_year + 1))).to_csv(
         output_dir / "msm_diagnosis_probabilities_anchor.csv", index=False)
     dump_json(output_dir / "initial_archive.json", {
         "vectors": initial, "diagnostics": diagnostics,
         "note": "Every vector is re-evaluated on fresh common random numbers. No previous "
-                "output score is reused as an evaluation.",
+                "output score, fit label or acceptance status is reused as an evaluation.",
     })
     plan = plan_contract.payload
     dump_json(output_dir / "frozen_plan.json", plan)
@@ -968,6 +1134,7 @@ def load_prepared(prepared_dir: Path) -> dict:
     plan_payload_frozen = json.loads((prepared_dir / "frozen_plan.json").read_text())
     assert_plan_matches(plan_payload_frozen)
     plan = RunnerPlan(plan_payload_frozen)
+    plan.validate_execution_authorization()
     state = load_inputs(plan)
     if manifest["input_sha256"] != state["hashes"]:
         raise ContractError("prepared inputs differ from the current inputs")
@@ -1000,15 +1167,21 @@ def build_smoke_pairs(prepared: dict) -> list[dict]:
     if len(warm) < 2:
         raise ContractError("the smoke check must exercise at least two warm vectors")
     seeds = prepared["contract"].smoke_seeds
+    plan = prepared["contract"]
     chosen = warm[:len(seeds)]
     pairs = []
     for index, (entry, seed) in enumerate(zip(chosen, seeds)):
-        config = injected_config(state["base_config"], entry["params"], space_json)
+        config = injected_config(
+            state["base_config"], entry["params"], space_json,
+            simulation_start_year=plan.simulation_start_year,
+        )
         pairs.append({
             "pair_id": index, "label": f"{entry['origin']}:{entry['candidate_id']}",
             "candidate_id": entry["candidate_id"], "origin": entry["origin"],
             "provenance": entry["provenance"], "seed": int(seed), "config": config,
             "params": entry["params"],
+            "extract_start_year": plan.extract_start_year,
+            "extract_end_year": plan.extract_end_year,
         })
     return pairs
 
@@ -1113,7 +1286,9 @@ class StageFailure(ContractError):
 
 
 def _payload_for(proposal: dict, *, config: dict, seeds: Sequence[int], targets, state_dir=None,
-                 save_final_state: bool = False) -> dict:
+                 save_final_state: bool = False,
+                 extract_start_year: int = ccs.EXTRACT_START_YEAR,
+                 extract_end_year: int = ccs.EXTRACT_END_YEAR) -> dict:
     return {
         "candidate_id": int(proposal["candidate_id"]), "batch": int(proposal["batch"]),
         "origin": proposal["origin"], "config": config,
@@ -1123,6 +1298,8 @@ def _payload_for(proposal: dict, *, config: dict, seeds: Sequence[int], targets,
         "target_years": [t.year for t in targets],
         "save_final_state": bool(save_final_state),
         "state_dir": str(state_dir) if state_dir is not None else "",
+        "extract_start_year": int(extract_start_year),
+        "extract_end_year": int(extract_end_year),
     }
 
 
@@ -1143,6 +1320,9 @@ def evaluate_candidates(
     executor_factory,
     clock: Callable[[], float],
     deadline: float | None,
+    simulation_start_year: int = ccs.SIMULATION_START_YEAR,
+    extract_start_year: int = ccs.EXTRACT_START_YEAR,
+    extract_end_year: int = ccs.EXTRACT_END_YEAR,
     save_final_state: bool = False,
     on_result: Callable[[dict], None] | None = None,
 ) -> dict:
@@ -1179,10 +1359,15 @@ def evaluate_candidates(
                     "launched_utc": now(),
                 })
                 dispatched.add(proposal["candidate_id"])
-                config = injected_config(base_config, proposal["params"], space_json)
+                config = injected_config(
+                    base_config, proposal["params"], space_json,
+                    simulation_start_year=simulation_start_year,
+                )
                 proposal = {**proposal, "injected_config_sha256": ccs.sha256_json(config)}
                 payload = _payload_for(proposal, config=config, seeds=seeds, targets=targets,
-                                       state_dir=state_dir, save_final_state=save_final_state)
+                                       state_dir=state_dir, save_final_state=save_final_state,
+                                       extract_start_year=extract_start_year,
+                                       extract_end_year=extract_end_year)
                 running[pool.submit(worker, payload)] = proposal
             if not running:
                 break
@@ -1377,7 +1562,10 @@ def run_search(
     else:
         generator.set_state(prepared["manifest"]["proposal_rng"]["state_after_initialisation"])
 
-    check = injection_checker(state["base_config"], space_json)
+    check = injection_checker(
+        state["base_config"], space_json,
+        simulation_start_year=plan.simulation_start_year,
+    )
     per_trajectory = smoke_result.get("mean_seconds_per_trajectory")
     if per_trajectory:
         estimated = ccs.DISCOVERY_TRAJECTORIES * per_trajectory / max(workers, 1)
@@ -1448,6 +1636,9 @@ def run_search(
                 space_json=space_json, targets=targets, seeds=plan.discovery_seeds,
                 budget=budget, workers=workers, completed=completed, dispatched=dispatched,
                 worker=worker, executor_factory=executor_factory, clock=clock, deadline=deadline,
+                simulation_start_year=plan.simulation_start_year,
+                extract_start_year=plan.extract_start_year,
+                extract_end_year=plan.extract_end_year,
                 on_result=lambda row: archive.add(ccs.build_record(
                     candidate_id=row["candidate_id"], batch=row["batch"], origin=row["origin"],
                     provenance=proposals_by_id[row["candidate_id"]].get("provenance", {}),
@@ -1796,7 +1987,9 @@ def confirm(
         base_config=state["base_config"], space_json=space_json, targets=targets,
         seeds=plan.confirmation_seeds, budget=budget, workers=workers, completed=completed,
         dispatched=dispatched, worker=worker, executor_factory=executor_factory, clock=clock,
-        deadline=None, save_final_state=True,
+        deadline=None, simulation_start_year=plan.simulation_start_year,
+        extract_start_year=plan.extract_start_year,
+        extract_end_year=plan.extract_end_year, save_final_state=True,
     )
     raw_records = [_raw_record(output_dir, p["candidate_id"]) for p in proposals]
     discovery_raw = {p["candidate_id"]: _raw_record(search["source"], p["candidate_id"])
