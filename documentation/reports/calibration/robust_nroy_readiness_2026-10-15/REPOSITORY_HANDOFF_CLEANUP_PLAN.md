@@ -20,11 +20,12 @@ vault, raw data, or literature library.
 The current tracked source has been separated from machine-local research
 artifacts without deleting evidence:
 
-- A fresh no-hardlink checkout, `hiv-prep-model-interface`, is clean, contains
-  590 tracked working-tree files, occupies about 34 MB including Git history,
-  and contains no
-  `outputs/` directory. This is the recommended starting point for interface
-  work and collaborator-facing source changes.
+- The tested no-hardlink checkout is now installed at the canonical local path
+  `hiv-prep-model`. It contains 584 tracked working-tree files and occupies
+  about 35 MB including Git history. Its ignored `outputs/` directory contains
+  only two symlinked historical inputs required for Option-B validation. This
+  is the recommended starting point for interface work and collaborator-facing
+  source changes.
 - The completed bounded Option-B rehearsal is preserved as a verified complete
   archive plus a readable report subset in the sibling artifact vault. The
   extracted 835-file, 321,536,969-byte working copy was removed only after a

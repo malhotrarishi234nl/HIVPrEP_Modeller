@@ -9,6 +9,9 @@ Git working directories. They are preserved in a sibling vault:
 /Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /hiv-prep-model-artifacts/
 ```
 
+The cleaned current source repository remains at the familiar sibling path
+`hiv-prep-model`.
+
 Start with the vault's `README.md`, `ARTIFACT_INDEX.csv`, and `SHA256SUMS`.
 The vault contains:
 
