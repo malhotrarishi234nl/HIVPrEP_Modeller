@@ -67,6 +67,12 @@ RESEARCH_EXECUTION_SCHEMA = "coupled_calibration_research_execution/1.0.0"
 RESEARCH_RUN_CLASS = "RESEARCH_E2E_NOT_PRODUCTION_ELIGIBLE"
 RESEARCH_ALLOWED_STAGES = ("prepare", "smoke", "search", "resume", "confirmation")
 
+# Reviewer-facing diagnostics. These labels never alter the frozen acceptance
+# rule or trigger automatic bound changes.
+PERCENT_ERROR_THRESHOLDS = (10.0, 20.0, 30.0)
+BOUNDARY_NEAR_FRACTION = 0.025
+BOUNDARY_WATCH_FRACTION = 0.10
+
 #: Modules whose content defines a result.  Frozen at preparation and re-verified
 #: before every stage that spends simulation budget.
 RUNTIME_MODULES = (
@@ -2716,15 +2722,27 @@ def write_search_outputs(output_dir: Path, archive: ccs.Archive, targets, *, sta
         summary.insert(0, "search_rank", range(1, len(summary) + 1))
     summary.to_csv(output_dir / "archive_summary.csv", index=False)
     _write_activity_and_boundary_diagnostics(output_dir, records, prepared)
+    _write_reviewer_diagnostics(
+        output_dir, records, targets, prepared["state"]["space"])
 
     residual_rows = []
     implausibility_rows = []
     for record in records:
         for i, target in enumerate(targets):
+            signed_percentage_error = _signed_percentage_error(
+                record.means[i], target.z)
+            absolute_percentage_error = (
+                abs(signed_percentage_error)
+                if math.isfinite(signed_percentage_error) else float("nan")
+            )
             residual_rows.append({
                 "candidate_id": record.candidate_id, "target_key": target.key,
                 "group": target.group, "observed_z": target.z,
                 "replicate_mean": float(record.means[i]),
+                "signed_percentage_error": signed_percentage_error,
+                "absolute_percentage_error": absolute_percentage_error,
+                "percentage_error_band": _percentage_error_band(
+                    absolute_percentage_error),
                 "sample_variance_ddof1": float(record.sample_variances[i]),
                 "frozen_non_process_variance_B": target.b_variance,
                 "signed_search_residual": float(record.residuals[i]),
@@ -2845,8 +2863,182 @@ def write_search_outputs(output_dir: Path, archive: ccs.Archive, targets, *, sta
                          "discovery_sensitivity_pass": by_id[entry["candidate_id"]].sensitivity_pass}
                         for entry in shortlist],
         })
-        write_search_report(output_dir, records, targets, manifest)
+        write_search_report(
+            output_dir, records, targets, manifest, prepared["state"]["space"])
     write_artifact_index(output_dir)
+
+
+def _signed_percentage_error(simulated: float, observed: float) -> float:
+    """Reviewer-facing percentage error; undefined when the target is zero."""
+    if not math.isfinite(float(observed)) or float(observed) == 0.0:
+        return float("nan")
+    return 100.0 * (float(simulated) - float(observed)) / abs(float(observed))
+
+
+def _percentage_error_band(absolute_percentage_error: float) -> str:
+    """Plain-language descriptive band; never an acceptance classification."""
+    value = float(absolute_percentage_error)
+    if not math.isfinite(value):
+        return "undefined"
+    if value <= PERCENT_ERROR_THRESHOLDS[0]:
+        return "within 10%"
+    if value <= PERCENT_ERROR_THRESHOLDS[1]:
+        return "10-20%"
+    if value <= PERCENT_ERROR_THRESHOLDS[2]:
+        return "20-30%"
+    return "over 30%"
+
+
+def _target_fit_frame(records, targets) -> pd.DataFrame:
+    columns = [
+        "candidate_id", "target_key", "group", "observed", "simulated_mean",
+        "signed_percentage_error", "absolute_percentage_error", "percentage_error_band",
+        "primary_implausibility", "primary_target_pass",
+    ]
+    rows = []
+    for record in records:
+        for i, target in enumerate(targets):
+            signed = _signed_percentage_error(record.means[i], target.z)
+            absolute = abs(signed) if math.isfinite(signed) else float("nan")
+            rows.append({
+                "candidate_id": record.candidate_id,
+                "target_key": target.key,
+                "group": target.group,
+                "observed": float(target.z),
+                "simulated_mean": float(record.means[i]),
+                "signed_percentage_error": signed,
+                "absolute_percentage_error": absolute,
+                "percentage_error_band": _percentage_error_band(absolute),
+                "primary_implausibility": float(record.primary.implausibility[i]),
+                "primary_target_pass": (
+                    float(record.primary.implausibility[i]) <= ccs.IMPLAUSIBILITY_CUTOFF
+                ),
+            })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _candidate_fit_summary_frame(records, targets) -> pd.DataFrame:
+    columns = [
+        "candidate_id", "primary_pass", "primary_i_max", "binding_target",
+        "mape_percent", "max_absolute_percentage_error", "n_percentage_errors_defined",
+        "n_within_10_percent", "n_within_20_percent", "n_within_30_percent",
+        "n_over_30_percent",
+    ]
+    target_frame = _target_fit_frame(records, targets)
+    rows = []
+    for record in records:
+        fit = target_frame[target_frame["candidate_id"] == record.candidate_id]
+        defined = fit[np.isfinite(fit["absolute_percentage_error"])]
+        absolute = defined["absolute_percentage_error"]
+        denominator = int(len(defined))
+        rows.append({
+            "candidate_id": record.candidate_id,
+            "primary_pass": record.primary_pass,
+            "primary_i_max": float(record.primary.i_max),
+            "binding_target": record.primary.binding_target,
+            "mape_percent": float(absolute.mean()) if denominator else float("nan"),
+            "max_absolute_percentage_error": (
+                float(absolute.max()) if denominator else float("nan")
+            ),
+            "n_percentage_errors_defined": denominator,
+            "n_within_10_percent": int((absolute <= 10.0).sum()),
+            "n_within_20_percent": int((absolute <= 20.0).sum()),
+            "n_within_30_percent": int((absolute <= 30.0).sum()),
+            "n_over_30_percent": int((absolute > 30.0).sum()),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _parameter_boundary_frame(records, space) -> pd.DataFrame:
+    columns = [
+        "candidate_id", "parameter", "value", "lower", "upper", "fraction_from_lower",
+        "fraction_from_upper", "nearest_bound", "distance_fraction_of_range",
+        "distance_percent_of_range", "proximity_label",
+    ]
+    rows = []
+    for record in records:
+        for index, name in enumerate(space.names):
+            value = float(record.params[name])
+            lower = float(space.lower[index])
+            upper = float(space.upper[index])
+            width = upper - lower
+            fraction_from_lower = (value - lower) / width
+            fraction_from_upper = (upper - value) / width
+            if fraction_from_lower < 0.0:
+                nearest = "lower"
+                distance = abs(fraction_from_lower)
+                label = "OUT OF BOUNDS"
+            elif fraction_from_upper < 0.0:
+                nearest = "upper"
+                distance = abs(fraction_from_upper)
+                label = "OUT OF BOUNDS"
+            else:
+                nearest = "lower" if fraction_from_lower <= fraction_from_upper else "upper"
+                distance = min(fraction_from_lower, fraction_from_upper)
+                if distance <= BOUNDARY_NEAR_FRACTION:
+                    label = "NEAR BOUND"
+                elif distance <= BOUNDARY_WATCH_FRACTION:
+                    label = "BOUNDARY WATCH"
+                else:
+                    label = "INTERIOR"
+            rows.append({
+                "candidate_id": record.candidate_id,
+                "parameter": name,
+                "value": value,
+                "lower": lower,
+                "upper": upper,
+                "fraction_from_lower": fraction_from_lower,
+                "fraction_from_upper": fraction_from_upper,
+                "nearest_bound": nearest,
+                "distance_fraction_of_range": distance,
+                "distance_percent_of_range": 100.0 * distance,
+                "proximity_label": label,
+            })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _candidate_boundary_summary_frame(records, space) -> pd.DataFrame:
+    columns = [
+        "candidate_id", "n_near_bound", "near_bound_parameters", "n_boundary_watch",
+        "boundary_watch_parameters",
+    ]
+    boundary = _parameter_boundary_frame(records, space)
+    rows = []
+    for record in records:
+        subset = boundary[boundary["candidate_id"] == record.candidate_id]
+        near = subset[subset["proximity_label"] == "NEAR BOUND"]
+        watch = subset[subset["proximity_label"] == "BOUNDARY WATCH"]
+        rows.append({
+            "candidate_id": record.candidate_id,
+            "n_near_bound": int(len(near)),
+            "near_bound_parameters": ";".join(near["parameter"].tolist()),
+            "n_boundary_watch": int(len(watch)),
+            "boundary_watch_parameters": ";".join(watch["parameter"].tolist()),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _review_reference_record(records):
+    """Pick one readable reference without changing scientific model selection."""
+    records = list(records)
+    if not records:
+        return None
+    passers = [record for record in records if record.primary_pass]
+    pool = passers or records
+    return min(pool, key=lambda record: (
+        record.primary.i_max, record.j, record.candidate_id
+    ))
+
+
+def _write_reviewer_diagnostics(output_dir: Path, records, targets, space) -> None:
+    _target_fit_frame(records, targets).to_csv(
+        Path(output_dir) / "target_fit_diagnostics.csv", index=False)
+    _candidate_fit_summary_frame(records, targets).merge(
+        _candidate_boundary_summary_frame(records, space),
+        on="candidate_id", validate="one_to_one",
+    ).to_csv(Path(output_dir) / "candidate_fit_summary.csv", index=False)
+    _parameter_boundary_frame(records, space).to_csv(
+        Path(output_dir) / "parameter_boundary_diagnostics.csv", index=False)
 
 
 def _write_activity_and_boundary_diagnostics(output_dir: Path, records, prepared: dict) -> None:
@@ -2913,12 +3105,19 @@ def _write_activity_and_boundary_diagnostics(output_dir: Path, records, prepared
     pd.DataFrame(stock_rows).to_csv(output_dir / "activity_stocks_top20.csv", index=False)
 
 
-def write_search_report(output_dir: Path, records, targets, manifest: dict) -> None:
+def write_search_report(output_dir: Path, records, targets, manifest: dict, space) -> None:
     ranked = sorted(records, key=ccs.ranking_key)
+    fit_summary = _candidate_fit_summary_frame(ranked, targets).set_index("candidate_id")
+    boundary_summary = _candidate_boundary_summary_frame(ranked, space).set_index("candidate_id")
     lines = [
         "# Coupled calibration search -- discovery result", "",
         f"Status: `{manifest['status']}`. Candidates evaluated: {manifest['n_candidates_evaluated']}. "
         f"Trajectories launched: {manifest['budget']['launched']} of {manifest['budget']['cap']}.", "",
+        "## How to read this report", "",
+        "Percentage error shows ordinary target-by-target closeness. `I_i` and `I_max` also "
+        "account for observation, discrepancy and simulation uncertainty; `I_max <= 3` is the "
+        "formal acceptance rule. `NEAR BOUND` and `BOUNDARY WATCH` flag parameters that may need "
+        "scientific review, but do not by themselves fail a candidate.", "",
         "`J` is a SEARCH RANKING statistic computed with a frozen non-process variance. It is not "
         "an acceptance rule, a likelihood or a posterior. Acceptance is the frozen 13-target "
         "primary maximum-implausibility rule with predictive process variance s^2(1+1/K), "
@@ -2927,25 +3126,80 @@ def write_search_report(output_dir: Path, records, targets, manifest: dict) -> N
         f"Sensitivity-only (0.2 discrepancy) candidates: {manifest['n_sensitivity_only']} "
         f"-- reported, never promoted.", "",
         "## Best twenty by search rank", "",
-        "| Rank | Candidate | Origin | J | mean R_G | max abs r | Primary I_max | Binding | Primary pass |",
-        "|---:|---:|---|---:|---:|---:|---:|---|---|",
+        "| Rank | Candidate | Origin | J | Primary I_max | Binding | Primary pass | "
+        "Fit within 10/20/30% | Boundary flags |",
+        "|---:|---:|---|---:|---:|---|---|---|---|",
     ]
     for rank, record in enumerate(ranked[:20], start=1):
+        fit = fit_summary.loc[record.candidate_id]
+        boundary = boundary_summary.loc[record.candidate_id]
         lines.append(
             f"| {rank} | {record.candidate_id} | {record.origin} | {record.j:.3f} | "
-            f"{record.mean_r:.3f} | {record.max_abs_residual:.3f} | {record.primary.i_max:.3f} | "
-            f"{record.primary.binding_target} | {'yes' if record.primary_pass else 'no'} |")
+            f"{record.primary.i_max:.3f} | {record.primary.binding_target} | "
+            f"{'yes' if record.primary_pass else 'no'} | "
+            f"{int(fit['n_within_10_percent'])}/{int(fit['n_within_20_percent'])}/"
+            f"{int(fit['n_within_30_percent'])} of {int(fit['n_percentage_errors_defined'])} | "
+            f"NEAR {int(boundary['n_near_bound'])}; "
+            f"WATCH {int(boundary['n_boundary_watch'])} |")
     lines += ["", "## Group statistics of the best candidate", ""]
     if ranked:
         best = ranked[0]
         lines += ["| Group | R_G |", "|---|---:|"]
         for group in ccs.GROUP_ORDER:
             lines.append(f"| {group} | {best.group_values[group]:.3f} |")
-        lines += ["", "### Signed search residuals of the best candidate", "",
-                  "| Target | Observed | Replicate mean | r (signed) |", "|---|---:|---:|---:|"]
-        for i, target in enumerate(targets):
-            lines.append(f"| {target.key} | {target.z:g} | {best.means[i]:.1f} | "
-                         f"{best.residuals[i]:+.3f} |")
+    reference = _review_reference_record(ranked)
+    if reference is not None:
+        reference_fit = fit_summary.loc[reference.candidate_id]
+        lines += [
+            "", f"## Reviewer-readable fit: reference candidate {reference.candidate_id}", "",
+            "The reference candidate is the primary passer with the smallest `I_max`; if no "
+            "candidate passes, it is the candidate with the smallest `I_max`. This display "
+            "choice does not select or promote a model.", "",
+            "Percentage error is descriptive and immediately interpretable. Implausibility "
+            "remains the formal uncertainty-aware acceptance statistic. Counts are cumulative.", "",
+            f"MAPE: **{reference_fit['mape_percent']:.1f}%**. Maximum absolute percentage error: "
+            f"**{reference_fit['max_absolute_percentage_error']:.1f}%**. Within 10/20/30%: "
+            f"**{int(reference_fit['n_within_10_percent'])}/"
+            f"{int(reference_fit['n_within_20_percent'])}/"
+            f"{int(reference_fit['n_within_30_percent'])} of "
+            f"{int(reference_fit['n_percentage_errors_defined'])}**.", "",
+            "| Target | Group | Observed | Simulated mean | Error | Fit band | I_i | I_i pass |",
+            "|---|---|---:|---:|---:|---|---:|---|",
+        ]
+        target_fit = _target_fit_frame([reference], targets)
+        for row in target_fit.itertuples(index=False):
+            percentage = (f"{row.signed_percentage_error:+.1f}%"
+                          if math.isfinite(row.signed_percentage_error) else "undefined")
+            lines.append(
+                f"| {row.target_key} | {row.group} | {row.observed:g} | "
+                f"{row.simulated_mean:.1f} | {percentage} | "
+                f"{row.percentage_error_band} | {row.primary_implausibility:.3f} | "
+                f"{'yes' if row.primary_target_pass else 'no'} |")
+
+        lines += [
+            "", "## Parameter-boundary diagnostics for the reference candidate", "",
+            f"`NEAR BOUND` means within {100 * BOUNDARY_NEAR_FRACTION:g}% of the declared "
+            f"range; `BOUNDARY WATCH` means more than {100 * BOUNDARY_NEAR_FRACTION:g}% "
+            f"but no more than {100 * BOUNDARY_WATCH_FRACTION:g}%. Proximity is diagnostic: "
+            "it is not automatic failure and does not authorize widening a bound.", "",
+        ]
+        boundary = _parameter_boundary_frame([reference], space)
+        boundary = boundary[boundary["proximity_label"] != "INTERIOR"].copy()
+        if boundary.empty:
+            lines.append("No parameter is within 10% of either declared bound.")
+        else:
+            severity = {"OUT OF BOUNDS": 0, "NEAR BOUND": 1, "BOUNDARY WATCH": 2}
+            boundary["severity"] = boundary["proximity_label"].map(severity)
+            boundary = boundary.sort_values(["severity", "distance_fraction_of_range", "parameter"])
+            lines += [
+                "| Label | Parameter | Value | Declared range | Nearest bound | Distance |",
+                "|---|---|---:|---|---|---:|",
+            ]
+            for row in boundary.itertuples(index=False):
+                lines.append(
+                    f"| {row.proximity_label} | {row.parameter} | {row.value:.6g} | "
+                    f"[{row.lower:.6g}, {row.upper:.6g}] | {row.nearest_bound} | "
+                    f"{row.distance_percent_of_range:.2f}% of range |")
     lines += ["", "## Limitations", ""] + [f"- {item}" for item in manifest["limitations"]]
     atomic_write_text(Path(output_dir) / "SEARCH_REPORT.md", "\n".join(lines) + "\n")
 
@@ -3127,12 +3381,26 @@ def confirm(
     for record in confirmed:
         discovery = discovery_raw[record.candidate_id]
         for i, target in enumerate(targets):
+            discovery_percentage_error = _signed_percentage_error(
+                discovery["means"][i], target.z)
+            confirmation_percentage_error = _signed_percentage_error(
+                record.means[i], target.z)
+            confirmation_absolute_percentage_error = (
+                abs(confirmation_percentage_error)
+                if math.isfinite(confirmation_percentage_error) else float("nan")
+            )
             paired_rows.append({
                 "candidate_id": record.candidate_id, "target_key": target.key,
                 "group": target.group, "observed_z": target.z,
                 "discovery_mean": float(discovery["means"][i]),
+                "discovery_signed_percentage_error": discovery_percentage_error,
                 "discovery_sample_variance": float(discovery["sample_variances"][i]),
                 "confirmation_mean": float(record.means[i]),
+                "confirmation_signed_percentage_error": confirmation_percentage_error,
+                "confirmation_absolute_percentage_error": (
+                    confirmation_absolute_percentage_error),
+                "confirmation_percentage_error_band": _percentage_error_band(
+                    confirmation_absolute_percentage_error),
                 "confirmation_sample_variance": float(record.sample_variances[i]),
                 "confirmation_signed_search_residual": float(record.residuals[i]),
                 "confirmation_primary_implausibility": record.primary.implausibility[i],
@@ -3160,6 +3428,7 @@ def confirm(
         })
     summary = pd.DataFrame(summary_rows)
     summary.to_csv(output_dir / "confirmation_summary.csv", index=False)
+    _write_reviewer_diagnostics(output_dir, confirmed, targets, space)
 
     stability, cross_validation = _confirmation_diagnostics(
         output_dir, raw_records, state, targets)
@@ -3202,7 +3471,7 @@ def confirm(
     else:
         manifest["stage_authorization"] = authorization
     dump_json(output_dir / "manifest.json", manifest)
-    write_decision_report(output_dir, confirmed, targets, manifest, search)
+    write_decision_report(output_dir, confirmed, targets, manifest, search, space)
     write_artifact_index(output_dir)
     return manifest
 
@@ -3280,9 +3549,13 @@ def _confirmation_diagnostics(output_dir: Path, raw_records, state, targets) -> 
     return ccs.json_safe(stability), cross_validation
 
 
-def write_decision_report(output_dir: Path, confirmed, targets, manifest: dict, search: dict) -> None:
+def write_decision_report(
+    output_dir: Path, confirmed, targets, manifest: dict, search: dict, space
+) -> None:
     ranked = sorted(confirmed, key=ccs.ranking_key)
     passers = [r for r in ranked if r.primary_pass]
+    fit_summary = _candidate_fit_summary_frame(ranked, targets).set_index("candidate_id")
+    boundary_summary = _candidate_boundary_summary_frame(ranked, space).set_index("candidate_id")
     search_manifest = search["manifest"]
     if passers:
         outcome = (f"**{len(passers)} shortlisted candidate(s) passed the primary 13-target rule on "
@@ -3306,6 +3579,11 @@ def write_decision_report(output_dir: Path, confirmed, targets, manifest: dict, 
         f"Confirmation: {manifest['n_candidates']} candidates x "
         f"{manifest['replicates']} fresh seeds "
         f"({manifest['budget']['launched']} trajectories).", "",
+        "## How to read this report", "",
+        "Percentage error shows ordinary target-by-target closeness. `I_i` and `I_max` also "
+        "account for observation, discrepancy and simulation uncertainty; `I_max <= 3` is the "
+        "formal acceptance rule. `NEAR BOUND` and `BOUNDARY WATCH` flag parameters that may need "
+        "scientific review, but do not by themselves fail a candidate.", "",
         "## Confirmation outcome per shortlisted candidate", "",
         "| Candidate | Shortlist provenance | Discovery pass | Confirmation I_max | Binding | "
         "Confirmation pass | Sensitivity (0.2) |",
@@ -3320,6 +3598,80 @@ def write_decision_report(output_dir: Path, confirmed, targets, manifest: dict, 
             f"{record.primary.i_max:.3f} | {record.primary.binding_target} | "
             f"{'yes' if record.primary_pass else 'no'} | "
             f"{'yes' if record.sensitivity_pass else 'no'} |")
+    lines += [
+        "", "## Reviewer-readable fit summary", "",
+        "Percentage error is descriptive and immediately interpretable. `I_max` remains the "
+        "formal uncertainty-aware acceptance statistic. The 10/20/30% counts are cumulative; "
+        "for example, the within-20% count includes targets already within 10%.", "",
+        "| Candidate | Confirmation pass | I_max | MAPE | Max abs error | Within 10% | "
+        "Within 20% | Within 30% | Over 30% | Boundary flags |",
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for record in ranked:
+        fit = fit_summary.loc[record.candidate_id]
+        boundary = boundary_summary.loc[record.candidate_id]
+        lines.append(
+            f"| {record.candidate_id} | {'yes' if record.primary_pass else 'no'} | "
+            f"{record.primary.i_max:.3f} | {fit['mape_percent']:.1f}% | "
+            f"{fit['max_absolute_percentage_error']:.1f}% | "
+            f"{int(fit['n_within_10_percent'])} | {int(fit['n_within_20_percent'])} | "
+            f"{int(fit['n_within_30_percent'])} | {int(fit['n_over_30_percent'])} | "
+            f"NEAR {int(boundary['n_near_bound'])}; "
+            f"WATCH {int(boundary['n_boundary_watch'])} |")
+
+    reference = _review_reference_record(ranked)
+    if reference is not None:
+        reference_fit = fit_summary.loc[reference.candidate_id]
+        lines += [
+            "", f"### Target-level fit: reference candidate {reference.candidate_id}", "",
+            "The reference candidate is the confirmed passer with the smallest `I_max`; if no "
+            "candidate passes, it is the candidate with the smallest `I_max`. This display "
+            "choice does not select or promote a model.", "",
+            f"MAPE: **{reference_fit['mape_percent']:.1f}%**. Maximum absolute percentage error: "
+            f"**{reference_fit['max_absolute_percentage_error']:.1f}%**. Within 10/20/30%: "
+            f"**{int(reference_fit['n_within_10_percent'])}/"
+            f"{int(reference_fit['n_within_20_percent'])}/"
+            f"{int(reference_fit['n_within_30_percent'])} of "
+            f"{int(reference_fit['n_percentage_errors_defined'])}**.", "",
+            "| Target | Group | Observed | Simulated mean | Error | Fit band | I_i | I_i pass |",
+            "|---|---|---:|---:|---:|---|---:|---|",
+        ]
+        target_fit = _target_fit_frame([reference], targets)
+        for row in target_fit.itertuples(index=False):
+            percentage = (f"{row.signed_percentage_error:+.1f}%"
+                          if math.isfinite(row.signed_percentage_error) else "undefined")
+            lines.append(
+                f"| {row.target_key} | {row.group} | {row.observed:g} | "
+                f"{row.simulated_mean:.1f} | {percentage} | "
+                f"{row.percentage_error_band} | {row.primary_implausibility:.3f} | "
+                f"{'yes' if row.primary_target_pass else 'no'} |")
+
+        lines += [
+            "", f"### Parameter-boundary diagnostics: reference candidate "
+            f"{reference.candidate_id}", "",
+            f"`NEAR BOUND` means within {100 * BOUNDARY_NEAR_FRACTION:g}% of the declared "
+            f"range; `BOUNDARY WATCH` means more than {100 * BOUNDARY_NEAR_FRACTION:g}% "
+            f"but no more than {100 * BOUNDARY_WATCH_FRACTION:g}%. Proximity is diagnostic: "
+            "it is not automatic failure and does not authorize widening a bound.", "",
+        ]
+        boundary = _parameter_boundary_frame([reference], space)
+        boundary = boundary[boundary["proximity_label"] != "INTERIOR"].copy()
+        if boundary.empty:
+            lines.append("No parameter is within 10% of either declared bound.")
+        else:
+            severity = {"OUT OF BOUNDS": 0, "NEAR BOUND": 1, "BOUNDARY WATCH": 2}
+            boundary["severity"] = boundary["proximity_label"].map(severity)
+            boundary = boundary.sort_values(["severity", "distance_fraction_of_range", "parameter"])
+            lines += [
+                "| Label | Parameter | Value | Declared range | Nearest bound | Distance |",
+                "|---|---|---:|---|---|---:|",
+            ]
+            for row in boundary.itertuples(index=False):
+                lines.append(
+                    f"| {row.proximity_label} | {row.parameter} | {row.value:.6g} | "
+                    f"[{row.lower:.6g}, {row.upper:.6g}] | {row.nearest_bound} | "
+                    f"{row.distance_percent_of_range:.2f}% of range |")
+
     lines += ["", "## Repeated signed conflicts", "",
               "Mean signed search residual across the shortlist, by target "
               "(positive = overprediction).", "",
@@ -3330,10 +3682,21 @@ def write_decision_report(output_dir: Path, confirmed, targets, manifest: dict, 
         agreement = float(max((values > 0).mean(), (values < 0).mean())) if values.size else float("nan")
         lines.append(f"| {target.key} | {target.group} | {target.z:g} | {values.mean():+.3f} | "
                      f"{agreement:.2f} |")
+    variance = manifest["variance_stability"]
+    cross_validation = manifest["cross_validation"]
     lines += ["", "## Variance stability", "",
-              f"```json\n{json.dumps(manifest['variance_stability'], indent=2)}\n```", "",
+              f"**{variance.get('n_variance_unstable', 'unknown')} of "
+              f"{manifest['n_candidates']} confirmed candidates** were flagged as sensitive "
+              "to the plausible simulation-variance range. This is a diagnostic warning, not "
+              "an acceptance override.", "",
+              "Technical details:", "",
+              f"```json\n{json.dumps(variance, indent=2)}\n```", "",
               "## Cross-validation", "",
-              f"```json\n{json.dumps(manifest['cross_validation'], indent=2)}\n```", "",
+              f"Status: **{cross_validation.get('status', 'unknown')}**; reported comparator "
+              f"rows: **{cross_validation.get('n_targets', 'not available')}**. These "
+              "comparisons never enter the frozen 13-target acceptance rule.", "",
+              "Technical details:", "",
+              f"```json\n{json.dumps(cross_validation, indent=2)}\n```", "",
               "## What happens next", "",
               "No second search is launched, no scientific bound is widened and no mechanism is "
               "added by this runner. A later comparator must name the remaining mismatch and "

@@ -13,6 +13,7 @@ import subprocess
 import sys
 from concurrent.futures import Future
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -1584,8 +1585,29 @@ def test_search_outputs_recompute_from_raw_replicates(small_search, targets):
     summary = pd.read_csv(search / "archive_summary.csv").set_index("candidate_id")
     implausibility = pd.read_csv(search / "per_target_implausibility.csv")
     residuals = pd.read_csv(search / "signed_search_residuals.csv")
+    target_fit = pd.read_csv(search / "target_fit_diagnostics.csv")
+    fit_summary = pd.read_csv(search / "candidate_fit_summary.csv")
+    boundary = pd.read_csv(search / "parameter_boundary_diagnostics.csv")
     raw_files = sorted((search / "raw").glob("candidate_*.json"))
     assert len(raw_files) == len(summary) == manifest["n_candidates_evaluated"]
+    assert len(target_fit) == len(summary) * ccs.N_TARGETS
+    assert len(fit_summary) == len(summary)
+    assert len(boundary) == len(summary) * sum(map(len, ccs.BLOCKS.values()))
+    assert set(target_fit["percentage_error_band"]) <= {
+        "within 10%", "10-20%", "20-30%", "over 30%", "undefined",
+    }
+    assert set(boundary["proximity_label"]) <= {
+        "NEAR BOUND", "BOUNDARY WATCH", "INTERIOR", "OUT OF BOUNDS",
+    }
+    assert {"n_within_10_percent", "n_within_20_percent", "n_within_30_percent",
+            "n_near_bound", "near_bound_parameters"} <= set(fit_summary.columns)
+    assert {"signed_percentage_error", "absolute_percentage_error",
+            "percentage_error_band"} <= set(residuals.columns)
+    report = (search / "SEARCH_REPORT.md").read_text()
+    assert "How to read this report" in report
+    assert "Reviewer-readable fit: reference candidate" in report
+    assert "Parameter-boundary diagnostics for the reference candidate" in report
+    assert "Fit within 10/20/30%" in report
     keys = [t.key for t in targets]
     for path in raw_files:
         raw = json.loads(path.read_text())
@@ -1620,6 +1642,38 @@ def test_search_outputs_recompute_from_raw_replicates(small_search, targets):
         theirs = implausibility[implausibility.candidate_id == cid].set_index("target_key")
         np.testing.assert_allclose([theirs.loc[k, "primary_implausibility"] for k in keys],
                                    primary.implausibility, rtol=1e-12, atol=0)
+
+
+@pytest.mark.parametrize(("value", "expected"), [
+    (10.0, "within 10%"),
+    (10.0001, "10-20%"),
+    (20.0001, "20-30%"),
+    (30.0001, "over 30%"),
+    (float("nan"), "undefined"),
+])
+def test_percentage_error_bands_are_descriptive_and_unambiguous(value, expected):
+    assert rcc._percentage_error_band(value) == expected
+
+
+def test_parameter_boundary_labels_cover_near_watch_and_interior():
+    space = SimpleNamespace(
+        names=("near", "watch", "interior", "outside"),
+        lower=np.zeros(4),
+        upper=np.ones(4),
+    )
+    record = SimpleNamespace(
+        candidate_id=7,
+        params={"near": 0.02, "watch": 0.05, "interior": 0.50, "outside": 1.03},
+    )
+    frame = rcc._parameter_boundary_frame([record], space).set_index("parameter")
+    assert frame.loc["near", "proximity_label"] == "NEAR BOUND"
+    assert frame.loc["watch", "proximity_label"] == "BOUNDARY WATCH"
+    assert frame.loc["interior", "proximity_label"] == "INTERIOR"
+    assert frame.loc["outside", "proximity_label"] == "OUT OF BOUNDS"
+    assert frame.loc["near", "nearest_bound"] == "lower"
+    assert frame.loc["near", "distance_percent_of_range"] == pytest.approx(2.0)
+    assert frame.loc["outside", "nearest_bound"] == "upper"
+    assert frame.loc["outside", "distance_percent_of_range"] == pytest.approx(3.0)
 
 
 def test_repository_crosscheck_artifact_agrees(small_search):
@@ -2040,6 +2094,18 @@ def test_confirmation_runs_the_frozen_shortlist_on_fresh_seeds(small_search, tmp
     paired = pd.read_csv(output / "paired_discovery_confirmation.csv")
     assert len(paired) == manifest["n_candidates"] * ccs.N_TARGETS
     assert (paired["discovery_mean"] != paired["confirmation_mean"]).any(), "fresh seeds must differ"
+    assert {"discovery_signed_percentage_error", "confirmation_signed_percentage_error",
+            "confirmation_absolute_percentage_error",
+            "confirmation_percentage_error_band"} <= set(paired.columns)
+
+    target_fit = pd.read_csv(output / "target_fit_diagnostics.csv")
+    fit_summary = pd.read_csv(output / "candidate_fit_summary.csv")
+    boundary = pd.read_csv(output / "parameter_boundary_diagnostics.csv")
+    assert len(target_fit) == manifest["n_candidates"] * ccs.N_TARGETS
+    assert len(fit_summary) == manifest["n_candidates"]
+    assert len(boundary) == (
+        manifest["n_candidates"] * sum(map(len, ccs.BLOCKS.values()))
+    )
 
     for path in (output / "raw").glob("candidate_*.json"):
         raw = json.loads(path.read_text())
@@ -2051,6 +2117,12 @@ def test_confirmation_runs_the_frozen_shortlist_on_fresh_seeds(small_search, tmp
 
     report = (output / "DECISION_REPORT.md").read_text()
     assert "decision report" in report.lower()
+    assert "How to read this report" in report
+    assert "Reviewer-readable fit summary" in report
+    assert "Target-level fit: reference candidate" in report
+    assert "Parameter-boundary diagnostics: reference candidate" in report
+    assert "Within 10%" in report
+    assert "Technical details" in report
     assert "a good numerical fit cannot validate its definition" in report
     assert manifest["cross_validation"]["status"] in ("scored", "unavailable")
     assert "n_variance_unstable" in manifest["variance_stability"]
