@@ -540,11 +540,24 @@ def ambient_probes(
     of declared directions that turned out feasible is reported as
     ``feasible_direction_coverage`` so that a one-sided neighbourhood is not
     mistaken for isolation, and ``exhausted`` records that the redraw budget
-    ran out.
+    ran out.  ``max_attempts`` is a hard total cap across all redraw batches;
+    because every accepted proposal needs one attempt, a cap below ``quota``
+    is an invalid design and fails before proposal generation.
     """
     if scale_semantics not in ("radius", "coordinate_bound"):
         raise ContractError(f"unknown ambient scale semantics {scale_semantics!r}")
-    outcome = KernelOutcome(kernel=nc.KERNEL_AMBIENT, anchor_id=anchor.anchor_id, quota=int(quota))
+    declared_quota = int(quota)
+    attempt_limit = int(max_attempts)
+    if attempt_limit < declared_quota:
+        raise ContractError(
+            f"ambient max_attempts {attempt_limit} cannot fill quota {declared_quota}: "
+            "at least one attempt is required per accepted proposal"
+        )
+    outcome = KernelOutcome(
+        kernel=nc.KERNEL_AMBIENT,
+        anchor_id=anchor.anchor_id,
+        quota=declared_quota,
+    )
     anchor_u = anchor.u(model)
     seen: dict[str, Proposal] = {}
     rng = design_rng(seed, "ambient", anchor.vector_hash, scale, generator, scale_semantics)
@@ -553,13 +566,14 @@ def ambient_probes(
     n_directions_tried = 0
     n_directions_feasible = 0
 
-    while len(outcome.accepted) < int(quota) and outcome.attempts < int(max_attempts):
-        remaining = int(quota) - len(outcome.accepted)
-        pool = generate_directions(rng, n, remaining * int(oversample), generator=generator)
-        picked = maximin_subset(pool, remaining)
+    while len(outcome.accepted) < declared_quota and outcome.attempts < attempt_limit:
+        remaining = declared_quota - len(outcome.accepted)
+        batch_size = min(remaining, attempt_limit - outcome.attempts)
+        pool = generate_directions(rng, n, batch_size * int(oversample), generator=generator)
+        picked = maximin_subset(pool, batch_size)
         progressed = False
         for direction in picked:
-            if len(outcome.accepted) >= int(quota):
+            if len(outcome.accepted) >= declared_quota or outcome.attempts >= attempt_limit:
                 break
             outcome.attempts += 1
             n_directions_tried += 1
@@ -581,13 +595,13 @@ def ambient_probes(
                 anchor_u=anchor_u, model=model,
             ):
                 progressed = True
-        if not progressed and outcome.attempts >= int(max_attempts):
+        if not progressed and outcome.attempts >= attempt_limit:
             break
 
     outcome.feasible_direction_coverage = (
         float(n_directions_feasible) / float(n_directions_tried) if n_directions_tried else None
     )
-    outcome.exhausted = len(outcome.accepted) < int(quota)
+    outcome.exhausted = len(outcome.accepted) < declared_quota
     return outcome
 
 

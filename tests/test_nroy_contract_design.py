@@ -545,6 +545,41 @@ def test_minimum_separation_is_enforced():
     assert nd.REASON_ANCHOR_SEPARATION in outcome.rejection_counts
 
 
+def test_ambient_attempt_budget_is_a_hard_cap_across_batches():
+    space = fx.m0_space()
+    anchor = nd.Anchor.build("A1", fx.interior_vector(space), space)
+    validator = nd.Validator(space=space.space, model=space)
+    outcome = nd.ambient_probes(
+        anchor, space, validator, stage=nc.STAGE_DISCOVERY, scale=0.025, quota=4,
+        generator="gaussian_unit_sphere", scale_semantics="radius", seed=5,
+        min_anchor_sep=0.05, min_neighbour_sep=1e-6, max_attempts=5,
+    )
+    # All proposals fail anchor separation.  The first batch uses four attempts;
+    # the second must stop after the single remaining attempt, not overshoot.
+    assert outcome.attempts == 5
+    assert len(outcome.rejected) == 5
+    assert not outcome.accepted
+    assert outcome.exhausted
+    assert [proposal.attempt_index for proposal in outcome.rejected] == list(range(1, 6))
+
+
+def test_ambient_attempt_budget_smaller_than_quota_fails_closed(monkeypatch):
+    space = fx.m0_space()
+    anchor = nd.Anchor.build("A1", fx.interior_vector(space), space)
+    validator = nd.Validator(space=space.space, model=space)
+
+    def fail_if_generation_starts(*_args, **_kwargs):
+        pytest.fail("undersized ambient budget must fail before proposal generation")
+
+    monkeypatch.setattr(nd, "generate_directions", fail_if_generation_starts)
+    with pytest.raises(ContractError, match="max_attempts 3 cannot fill quota 4"):
+        nd.ambient_probes(
+            anchor, space, validator, stage=nc.STAGE_DISCOVERY, scale=0.025, quota=4,
+            generator="gaussian_unit_sphere", scale_semantics="radius", seed=5,
+            min_anchor_sep=1e-6, min_neighbour_sep=1e-6, max_attempts=3,
+        )
+
+
 def test_direction_classes_collapse_collinear_moves():
     base = np.array([1.0, 0.0, 0.0])
     assert nd.direction_classes([base, base * 2.0, -base]) == 1
