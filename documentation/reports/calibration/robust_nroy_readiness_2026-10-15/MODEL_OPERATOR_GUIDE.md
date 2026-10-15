@@ -21,9 +21,11 @@ cp configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_
   configs/my_analysis_config.json
 ```
 
-Edit scientific parameter `value` fields in `configs/my_analysis_config.json`
-and record the purpose and source of every change. The model remains runnable
-without any calibration step.
+Edit only existing scientific parameter `value` payloads in
+`configs/my_analysis_config.json` and record the purpose and source of every
+change. Do not add, remove, or rename keys or list entries, and do not edit
+notes, sources, tiers, bounds, distribution metadata, or provenance. The model
+remains runnable without any calibration step.
 
 ## Validate without running the engine
 
@@ -81,13 +83,17 @@ For M1:
 ## Editable and protected inputs
 
 Ordinary analysis inputs may be changed in a copied config when the change is
-documented and scientifically justified. Examples include population,
-transmission, progression, intervention, and costing parameter `value` fields.
-The seed, model choice, M1 `p`, and output directory should be supplied on the
+documented and scientifically justified. Examples include existing population,
+transmission, progression, intervention, and costing parameter `value`
+payloads. The validator preserves their object/list shape and scalar JSON type.
+The seed, model choice, M1 `p`, and output directory must be supplied on the
 command line so the run intent is visible.
 
 Do not edit these protected shared-route fields:
 
+- any key name, list length, non-`value` field, `_readme`, `meta`,
+  `v13_14_diagnostic`, or `calibration_metadata` content;
+- any `run_control` or `output` field, including their `value` payloads;
 - `run_control.deterministic_mode.value` must remain `false`;
 - `stage_structured_diagnosis.enabled.value` must remain `false` in the saved
   shared config; `run_model.py` controls it on a runtime copy;
@@ -99,6 +105,7 @@ Do not edit these protected shared-route fields:
   collaborator inputs.
 
 The command fails with a plain `ERROR:` message if a protected field or model
-choice is invalid. M0 removes the optional M1 block from its runtime copy; M1
-explicitly enables the block and injects `p`. Neither route mutates the saved
-JSON file.
+choice is invalid. For a forbidden copy edit, the error names the first path
+and directs the operator to start from a fresh canonical copy. M0 removes the
+optional M1 block from its runtime copy; M1 explicitly enables the block and
+injects `p`. Neither route mutates the saved JSON file.

@@ -30,6 +30,12 @@ class OperatorConfigError(ValueError):
     """A plain-language problem in the collaborator-facing run request."""
 
 
+PROTECTED_ROOTS = {
+    "_readme", "meta", "run_control", "output", "v13_14_diagnostic",
+    "calibration_metadata",
+}
+
+
 def load_shared_config(path: str | Path) -> dict:
     """Load and validate the protected shared-config fields without an engine."""
     config_path = Path(path)
@@ -43,6 +49,20 @@ def load_shared_config(path: str | Path) -> dict:
         ) from exc
     if not isinstance(payload, dict):
         raise OperatorConfigError("config must contain one JSON object")
+
+    try:
+        canonical = json.loads(DEFAULT_CONFIG.read_text())
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise OperatorConfigError(
+            f"canonical config is unavailable or invalid: {DEFAULT_CONFIG}"
+        ) from exc
+    forbidden = _first_forbidden_edit(payload, canonical)
+    if forbidden is not None:
+        raise OperatorConfigError(
+            f"forbidden config edit at {_format_path(forbidden)}; collaborator "
+            "copies may change only existing scientific parameter value fields. "
+            f"Start from a fresh canonical copy: {DEFAULT_CONFIG}"
+        )
 
     deterministic = payload.get("run_control", {}).get("deterministic_mode")
     deterministic = extract_value(deterministic)
@@ -64,6 +84,88 @@ def load_shared_config(path: str | Path) -> dict:
             "is not safe to run"
         )
     return payload
+
+
+def _first_forbidden_edit(
+    candidate: Any, canonical: Any, path: tuple[str | int, ...] = (),
+    *, in_editable_value: bool = False,
+) -> tuple[str | int, ...] | None:
+    """Return the first non-operator edit while preserving JSON schema.
+
+    Existing ``value`` payloads outside protected roots and the M0/M1 routing
+    block are operator-editable. Object keys, list lengths, scalar types and
+    every non-``value`` field must remain canonical.
+    """
+    protected = _protected_path(path)
+    editable = in_editable_value and not protected
+
+    if isinstance(canonical, dict):
+        if not isinstance(candidate, dict):
+            return path
+        for key in canonical:
+            if key not in candidate:
+                return path + (key,)
+        for key in sorted(set(candidate).difference(canonical)):
+            return path + (key,)
+        for key, canonical_value in canonical.items():
+            child_path = path + (key,)
+            child_editable = editable or (
+                key == "value" and not _protected_path(child_path)
+            )
+            found = _first_forbidden_edit(
+                candidate[key], canonical_value, child_path,
+                in_editable_value=child_editable,
+            )
+            if found is not None:
+                return found
+        return None
+
+    if isinstance(canonical, list):
+        if not isinstance(candidate, list) or len(candidate) != len(canonical):
+            return path
+        for index, canonical_value in enumerate(canonical):
+            found = _first_forbidden_edit(
+                candidate[index], canonical_value, path + (index,),
+                in_editable_value=editable,
+            )
+            if found is not None:
+                return found
+        return None
+
+    if candidate == canonical:
+        return None
+    if editable and _same_json_scalar_type(candidate, canonical):
+        return None
+    return path
+
+
+def _protected_path(path: tuple[str | int, ...]) -> bool:
+    if path and path[0] in PROTECTED_ROOTS:
+        return True
+    profile = ssd.PROFILE_PATH
+    return len(path) >= len(profile) and tuple(path[:len(profile)]) == profile
+
+
+def _same_json_scalar_type(candidate: Any, canonical: Any) -> bool:
+    if isinstance(canonical, bool):
+        return isinstance(candidate, bool)
+    if isinstance(canonical, (int, float)):
+        return isinstance(candidate, (int, float)) and not isinstance(candidate, bool)
+    if canonical is None:
+        return candidate is None
+    return type(candidate) is type(canonical)
+
+
+def _format_path(path: tuple[str | int, ...]) -> str:
+    if not path:
+        return "<root>"
+    text = ""
+    for part in path:
+        if isinstance(part, int):
+            text += f"[{part}]"
+        else:
+            text += ("." if text else "") + part
+    return text
 
 
 def config_for_model(

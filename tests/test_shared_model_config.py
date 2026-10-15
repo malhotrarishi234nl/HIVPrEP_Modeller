@@ -30,6 +30,12 @@ def _has_profile(config: dict) -> bool:
     return True
 
 
+def _write_copy(tmp_path: Path, payload: dict) -> Path:
+    path = tmp_path / "collaborator_config.json"
+    path.write_text(json.dumps(payload, indent=2))
+    return path
+
+
 def test_shared_config_is_a_minimal_declared_derivative():
     source = json.loads(SOURCE.read_text())
     shared = json.loads(SHARED.read_text())
@@ -137,3 +143,67 @@ def test_operator_run_refuses_to_overwrite_a_nonempty_output(tmp_path, capsys):
         "--output-dir", str(output),
     ]) == 2
     assert "output directory is not empty" in capsys.readouterr().out
+
+
+def test_operator_copy_may_change_an_existing_scientific_value(tmp_path, capsys):
+    config = json.loads(SHARED.read_text())
+    config["transmission_model"]["disease"]["diagnosis"]["annual_rate"][
+        "value"
+    ] = 0.4
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 0
+    assert "VALID: M0" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("edit", "forbidden_path"),
+    [
+        (
+            lambda c: c["meta"]["version"].__setitem__("value", "changed"),
+            "meta.version.value",
+        ),
+        (
+            lambda c: c["population"].__setitem__(
+                "unexpected_parameter", {"value": 1.0}
+            ),
+            "population.unexpected_parameter",
+        ),
+        (
+            lambda c: c["transmission_model"]["disease"]["diagnosis"][
+                "annual_rate"
+            ].__setitem__("notes", "changed"),
+            "transmission_model.disease.diagnosis.annual_rate.notes",
+        ),
+        (
+            lambda c: c["run_control"]["seed"].__setitem__("value", 9001),
+            "run_control.seed.value",
+        ),
+        (
+            lambda c: c["output"]["directory"].__setitem__("value", "elsewhere"),
+            "output.directory.value",
+        ),
+        (
+            lambda c: c["transmission_model"]["disease"]["diagnosis"][
+                "stage_structured_diagnosis"
+            ]["symptom_start_year"].__setitem__("value", 1990),
+            (
+                "transmission_model.disease.diagnosis.stage_structured_diagnosis."
+                "symptom_start_year.value"
+            ),
+        ),
+    ],
+)
+def test_operator_copy_rejects_schema_metadata_and_runtime_edits(
+    tmp_path, capsys, edit, forbidden_path,
+):
+    config = json.loads(SHARED.read_text())
+    edit(config)
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 2
+    output = capsys.readouterr().out
+    assert f"forbidden config edit at {forbidden_path}" in output
+    assert "Start from a fresh canonical copy" in output

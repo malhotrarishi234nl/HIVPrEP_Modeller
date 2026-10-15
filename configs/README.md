@@ -45,8 +45,9 @@ The route is code-tested but is not a production approval.
 
 The collaborator route distinguishes:
 
-- **operator-editable:** approved scenario values, run seed, run count, and
-  exposed M0/M1 parameter/profile selections;
+- **operator-editable:** existing scientific parameter `value` payloads in a
+  copied config, plus seed, M0/M1 selection, M1 `p`, and output directory via
+  `run_model.py` command-line options;
 - **scientifically frozen:** target definitions/order, calibration bounds,
   acceptance rule, discrepancy and variance construction;
 - **provenance protected:** config/schema version, source hashes, code/runtime
@@ -54,6 +55,14 @@ The collaborator route distinguishes:
 
 Preflight must reject edits outside the supported surface instead of silently
 accepting or discarding them.
+
+The collaborator validator compares a supplied copy with the canonical
+candidate. Object keys, list lengths, JSON value types, and every field outside
+an existing scientific `value` payload must match. In particular, do not edit
+`meta`, `run_control`, `output`, `_readme`, diagnostic/calibration provenance,
+or the saved `stage_structured_diagnosis` block. A rejection names the first
+forbidden path; start again from a fresh canonical copy rather than repairing
+an uncertain schema by hand.
 
 `run_model.py` structurally validates the M1 symptom probability as a
 mathematical probability in `[0,1]`. That does not approve the entire interval
