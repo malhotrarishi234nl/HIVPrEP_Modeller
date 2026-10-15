@@ -134,10 +134,12 @@ interpreting skipped tests or running artifact/engine lanes.
 ## Ordinary model use
 
 The simulator accepts an ordinary configuration and does not require
-calibration machinery. The prepared, **unsigned and not production-ready**
-shared candidate is
-`configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json`.
-It is one stochastic config with an optional stage-structured diagnosis block:
+calibration machinery. Following the owner's Option B direction, the current
+**unsigned, unfitted, and not production-ready** shared starting config is
+`configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json`.
+It preserves the V13.22 mechanisms on a traceable 1980 initialization and must
+be recalibrated before any production promotion. It is one stochastic config
+with an optional stage-structured diagnosis block:
 
 - M0: optional M1 mechanism disabled;
 - M1: mechanism explicitly enabled and the additional probability injected;

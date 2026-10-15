@@ -22,9 +22,14 @@ Use the shared candidate as the source and give each analysis its own named
 copy. Do not edit the canonical file in place.
 
 ```bash
-cp configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json \
+cp configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json \
   configs/my_analysis_config.json
 ```
+
+The named file is the current Option B **recalibration starting point**, not an
+approved fitted model. It is suitable for mechanical validation and for a
+separately authorized calibration workflow; it is not yet eligible for real
+collaborator simulations.
 
 Edit only existing scientific parameter `value` payloads in
 `configs/my_analysis_config.json` and record the purpose and source of every

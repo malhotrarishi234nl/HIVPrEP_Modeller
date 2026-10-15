@@ -6,24 +6,27 @@
   direct inspection, adversarial mutation testing and remediation of the
   additional findings below. This accepts the fail-closed implementation, not
   the absent scientific inputs or any proposed production decision.
-- **Production readiness:** **not ready**. The production plan still contains
-  42 unsigned decisions. A stochastic shared M0/M1 derivative is now prepared,
-  but it inherits the source config's diagnostic 1975 backbone and explicitly
-  unvalidated period inputs; it cannot be selected or signed until those are
-  reconciled against the intended 1980 production backbone. There is also no
-  plan-bound config registry, measured pilot, priced-budget artifact,
-  production seed-disjointness audit, independently confirmed positive-`p` M1
-  anchor evidence, or production observed/base-variance evidence.
+- **Production readiness:** **not ready**. The production plan contains 43
+  unsigned decisions: 29 proposal-backed and 14 requiring new decisions, plus
+  a separate three-field signature gate. The owner selected Option B and a
+  hash-bound V13.22-on-1980 stochastic M0/M1 recalibration candidate is now
+  prepared, but it is deliberately unfitted, unvalidated, and not production
+  eligible. A new calibration and independent fit review remain mandatory.
+  The repository has strict validators and generators for the remaining
+  evidence, but no real approved acceptance package, complete seed audit,
+  identity result, measured pilot, priced budget, or independently confirmed
+  positive-`p` M1 evidence exists yet.
 - **Production simulations run during remediation:** none.
 
-Historical validation transcripts below retain the 43-decision count observed
-before the 2026-10-15 complete-pairwise graph correction. The current plan has
-42 unsigned decisions (28 proposal-backed, 14 without proposals) because the
-non-load-bearing graph neighbour-count decision was removed and the direct
-one-sided `alpha=0.05` variance rule now has an explicit proposal. References
-below to the earlier deterministic, non-M1-capable config proposal are likewise
-historical; the prepared shared derivative closes that mechanical route gap but
-does not close the 1975-versus-1980 scientific configuration decision.
+Validation transcripts below are preserved as dated evidence and may show
+earlier decision counts or configuration proposals. The current plan has 43
+unsigned decisions (29 proposal-backed, 14 without proposals): the
+non-load-bearing graph-neighbour-count decision was removed, the direct
+one-sided `alpha=0.05` variance rule received an explicit proposal, and the
+authoritative target-register content hash became a required decision. Earlier
+references to deterministic or 1975 production proposals are historical. The
+current Option B candidate closes the mechanical backbone choice only; it does
+not replace recalibration or scientific acceptance.
 
 ## Closed review findings
 
@@ -521,9 +524,11 @@ hash and exact 43-decision fail-closed result.
 
 - **Code acceptance: ACCEPT.** The current fail-closed robust-NROY code and the
   input/evidence preparation additions pass focused verification.
-- **Production readiness: NOT READY.** The 42 decisions remain unsigned; the
-  proposed base config remains deterministic and lacks the M1 diagnosis block;
-  no plan-bound registry, seed audit, identity evidence, measured pilot, priced
-  approval or independently confirmed positive-`p` M1 anchors exist. The
-  observed/B_i package must be regenerated after sign-off.
+- **Production readiness: NOT READY.** All 43 decisions remain unsigned. The
+  Option B candidate is stochastic and M1-capable but requires a new 1980
+  calibration and fit review; no complete approved seed audit, identity
+  evidence, measured pilot, priced approval, independently confirmed
+  positive-`p` M1 anchors, or approved production acceptance package exists.
+  The observed/B_i package must be regenerated, reviewed, approved, and frozen
+  after sign-off.
 
