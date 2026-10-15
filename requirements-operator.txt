@@ -1,0 +1,6 @@
+# Ordinary run_model.py / run_v3.py runtime environment.
+# Contract: CPython 3.11.x. These are the exact direct third-party runtime
+# dependencies; pip resolves their transitive dependencies.
+numpy==2.4.6
+pandas==3.0.5
+scipy==1.17.1

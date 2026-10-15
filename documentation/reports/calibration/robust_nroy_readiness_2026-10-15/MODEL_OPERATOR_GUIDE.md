@@ -18,9 +18,30 @@ importing the engine.
 
 ## Start from a copy
 
-Run every command in this guide from the repository root. First create the
-environment described in the root `README.md`; then confirm that both M0 and M1
-pass the validation commands below before requesting permission for a run.
+Run every command in this guide from the repository root. Create the dedicated
+operator environment with Python 3.11:
+
+```bash
+python3.11 --version
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements-operator.txt
+.venv/bin/python -c 'import sys, numpy, pandas, scipy; assert sys.version_info[:2] == (3, 11); print(sys.version.split()[0], numpy.__version__, pandas.__version__, scipy.__version__)'
+```
+
+The first command must report Python `3.11.x`; the last must print that Python
+version followed by the exact NumPy, pandas, and SciPy versions pinned in
+`requirements-operator.txt`. If either check fails, stop and contact the
+**Model Maintainer** before validating or running the model.
+
+This ordinary `run_model.py` M0/M1 route is source-only once those dependencies
+are installed. It does not need the external validation workbooks,
+`../data/raw/`, or `../literature/`. Calibration, robust-NROY, and
+data-validation are separate lanes and still require their documented,
+hash-pinned sibling inputs. Redistribution decisions for those inputs remain
+unresolved; do not copy them into a collaborator setup.
+
+Next confirm that both M0 and M1 pass the validation commands below before
+requesting permission for a run.
 
 Use the shared candidate as the source and give each analysis its own named
 copy. Do not edit the canonical file in place.
@@ -77,6 +98,16 @@ the seed must be an integer in `[0, 4294967295]`, the domain accepted by the
 NumPy/engine RNG.
 Validation-only also does not require production approval; its success is a
 mechanical preflight result, not permission to simulate.
+
+Successful validation ends with one of these exact messages:
+
+```text
+VALID: M0 config route; stochastic=true; engine was not constructed
+VALID: M1 config route; stochastic=true; engine was not constructed
+```
+
+Any `ERROR:` message, nonzero exit, traceback, or missing success line is a
+failure. Do not proceed to a real run.
 
 The CLI checks that `p` is a mathematical probability in `[0,1]`. That is a
 structural check, not approval of a scientific range. The robust-NROY plan
@@ -206,3 +237,24 @@ choice is invalid. For a forbidden copy edit, the error names the first path
 and directs the operator to start from a fresh canonical copy. M0 removes the
 optional M1 block from its runtime copy; M1 explicitly enables the block and
 injects `p`. Neither route mutates the saved JSON file.
+
+## Failure handoff
+
+Stop after a validation or run failure. Do not change protected fields, delete
+the output directory, or rerun with a different seed to make the failure
+disappear. Send the **Model Maintainer** this concise handoff:
+
+1. the exact command you ran, from the repository root;
+2. the config path and its hash (`shasum -a 256 configs/my_analysis_config.json`);
+3. the complete `ERROR:` text or traceback;
+4. the requested output path, whether `run_reproducibility_manifest.json`
+   exists there, and its `status` (`PREPARED`, `FAILED`, or `COMPLETE`), attaching
+   the manifest when present; and
+5. `git rev-parse HEAD` plus the version line printed by the environment check
+   above.
+
+If no output directory or manifest was created, say that explicitly; it often
+confirms that the command failed closed before engine import. The Model
+Maintainer owns technical triage and escalates scientific or approval questions
+to the **Scientific Approving Owner** rather than asking the operator to modify
+code or approval fields.

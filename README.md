@@ -88,15 +88,24 @@ and scientific provenance hashes. They will not be moved merely for tidiness.
 
 ## Environment
 
+For ordinary collaborator M0/M1 use, run these commands from the repository
+root with **Python 3.11**:
+
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -r requirements.txt
+python3.11 --version
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements-operator.txt
+.venv/bin/python -c 'import sys, numpy, pandas, scipy; assert sys.version_info[:2] == (3, 11); print(sys.version.split()[0], numpy.__version__, pandas.__version__, scipy.__version__)'
 ```
 
-Long-running/external experiment environments may additionally use
-`requirements-overnight.txt`. Record Python, NumPy, pandas, SciPy, platform,
-and machine versions with every production artifact.
+The last command must print Python `3.11.x` followed by the versions pinned in
+`requirements-operator.txt`. This small environment is sufficient for
+`run_model.py` and its `run_v3.py` engine route. Development, tests,
+calibration, robust-NROY, and long-running/external experiment lanes use their
+own documented dependencies; `requirements.txt` and
+`requirements-overnight.txt` are not the ordinary operator contract. Record
+Python, NumPy, pandas, SciPy, platform, and machine versions with every
+production artifact.
 
 ## External inputs
 
@@ -110,9 +119,13 @@ Active workflows currently expect sibling roots:
 
 Do not substitute similarly named files. Use the hashes and acquisition notes
 in [data/README.md](data/README.md) and
-[data/external_inputs.json](data/external_inputs.json). A source-only clone can
-run the portable test lane; external-data and artifact lanes require the
-documented mounted inputs.
+[data/external_inputs.json](data/external_inputs.json). An ordinary approved
+`run_model.py` M0/M1 run is source-only after the operator environment is
+installed: it does not read the external validation workbooks, raw-data sibling
+roots, or literature library. Calibration, robust-NROY, and data-validation
+lanes still require their documented hash-pinned sibling inputs. Their
+redistribution decisions remain unresolved, so do not copy or redistribute
+those external inputs merely to set up an ordinary model operator.
 
 ## Testing
 
