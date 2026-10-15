@@ -304,6 +304,43 @@ def csv_value(value: object) -> str:
     return str(value)
 
 
+def verify_live_records(
+    catalog_records: Iterable[Mapping[str, object]],
+    live_records: Iterable[Mapping[str, object]],
+) -> None:
+    """Fail when tracked rows no longer describe the live output snapshot."""
+    catalog_by_path = {
+        str(record["original_path"]): record for record in catalog_records
+    }
+    live_by_path = {
+        str(record["original_path"]): record for record in live_records
+    }
+    if set(catalog_by_path) != set(live_by_path):
+        missing = sorted(set(live_by_path) - set(catalog_by_path))
+        extra = sorted(set(catalog_by_path) - set(live_by_path))
+        raise ValueError(
+            f"catalog coverage mismatch; missing={missing}; extra={extra}"
+        )
+
+    drift: list[str] = []
+    for original_path in sorted(catalog_by_path):
+        catalog_record = catalog_by_path[original_path]
+        live_record = live_by_path[original_path]
+        changed_fields = [
+            field
+            for field in CATALOG_FIELDS
+            if catalog_record.get(field, "") != live_record.get(field, "")
+        ]
+        if changed_fields:
+            drift.append(f"{original_path}: {','.join(changed_fields)}")
+
+    if drift:
+        raise ValueError(
+            "catalog snapshot drift detected; review the live changes before "
+            f"rerunning --write: {'; '.join(drift)}"
+        )
+
+
 def write_catalog(
     records: list[dict[str, object]],
     outputs_root: Path,
@@ -342,6 +379,7 @@ def write_catalog(
 
 def verify_catalog(
     outputs_root: Path,
+    repo_root: Path,
     catalog_json: Path,
     catalog_csv: Path,
     overrides: Mapping[str, Mapping[str, object]],
@@ -397,8 +435,18 @@ def verify_catalog(
         raise ValueError("record_count does not match records")
     if int(payload["remaining_review_count"]) != counts.get("REVIEW_REQUIRED", 0):
         raise ValueError("remaining_review_count does not match records")
+
+    live_records = build_records(outputs_root, repo_root, overrides)
+    verify_live_records(records, live_records)
+    current_loose_files = loose_root_files(outputs_root)
+    if payload.get("loose_root_files") != current_loose_files:
+        raise ValueError(
+            "catalog snapshot drift detected in loose root files; review the live "
+            "changes before rerunning --write"
+        )
     print(
-        f"COVERAGE OK: {len(records)} top-level directories; "
+        f"SNAPSHOT OK: {len(records)} top-level directories; live metadata and "
+        "classifications match; "
         f"{counts.get('REVIEW_REQUIRED', 0)} REVIEW_REQUIRED; "
         f"{len(records) - counts.get('REVIEW_REQUIRED', 0)} terminally classified"
     )
@@ -426,7 +474,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.write:
         records = build_records(outputs_root, repo_root, overrides)
         write_catalog(records, outputs_root, args.catalog_json, args.catalog_csv)
-    verify_catalog(outputs_root, args.catalog_json, args.catalog_csv, overrides)
+    verify_catalog(
+        outputs_root,
+        repo_root,
+        args.catalog_json,
+        args.catalog_csv,
+        overrides,
+    )
     return 0
 
 

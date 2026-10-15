@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.build_artifact_catalog import CATALOG_FIELDS, verify_live_records
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_DIR = REPO_ROOT / "documentation" / "artifact_catalog"
@@ -112,3 +114,37 @@ def test_stale_readiness_lineages_are_explicitly_incompatible(
         record["scientific_status"] == "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS"
         for record in stale
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "changed_value"),
+    [
+        ("logical_size_bytes", 101),
+        ("file_count", 2),
+        ("manifest_sha256s", "manifest.json=changed"),
+        ("classification", "SUPERSEDED"),
+    ],
+)
+def test_live_snapshot_verification_rejects_drift(
+    field: str,
+    changed_value: object,
+) -> None:
+    catalog_record = {name: "" for name in CATALOG_FIELDS}
+    catalog_record.update(
+        original_path="outputs/calibration/example",
+        logical_size_bytes=100,
+        file_count=1,
+        manifest_sha256s="manifest.json=original",
+        classification="REVIEW_REQUIRED",
+    )
+    live_record = dict(catalog_record)
+    live_record[field] = changed_value
+
+    with pytest.raises(ValueError, match=field):
+        verify_live_records([catalog_record], [live_record])
+
+
+def test_live_snapshot_verification_accepts_exact_match() -> None:
+    record = {name: "" for name in CATALOG_FIELDS}
+    record["original_path"] = "outputs/suites/example"
+    verify_live_records([record], [dict(record)])

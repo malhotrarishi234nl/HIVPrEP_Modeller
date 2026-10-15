@@ -76,8 +76,14 @@ python3 tools/build_artifact_catalog.py \
   --check
 ```
 
-`--check` fails if any current top-level directory is missing or any catalog row
-is extra, if the CSV and JSON disagree, or if review flags and classification
-counts are inconsistent. The tool reads output files for metadata and manifest
-hashes only. It does not move, delete, rewrite, or reseal output artifacts, and
-it does not run the scientific engine.
+`--check` re-enumerates and remeasures the live directories. It fails if a
+directory or loose root file was added or removed; if sizes, file/directory
+counts, modification times, manifest paths or hashes, declared manifest fields,
+tracked references, or evidence-based classifications drifted; if the CSV and
+JSON disagree; or if review flags and classification counts are inconsistent.
+Success therefore means the tracked catalog is an exact current snapshot for
+the recorded fields, not merely that its path list is complete. When drift is
+reported, review it before deliberately running `--write` to accept a new
+snapshot. Neither mode validates scientific claims. The tool reads output files
+for metadata and manifest hashes only. It does not move, delete, rewrite, or
+reseal output artifacts, and it does not run the scientific engine.
