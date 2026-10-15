@@ -2,7 +2,7 @@
   "schema": "collaborator_parameter_contract/1.0.0",
   "canonical_config": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
   "canonical_config_without_approval_sha256": "d88e0ff837b6495508ce9af75d6dc20c09f609e11e6f4c300b5008446bc89175",
-  "approval_scope": "A production approval bound to this file's exact SHA-256 authorizes collaborator edits only at the listed JSON paths and only inside the listed closed intervals. It does not approve any other config edit, calibration claim, model variant, run design, or compute dispatch.",
+  "approval_scope": "This file is an unapproved code-safety contract until the canonical config and the complete editable domain receive scientific review. A future production approval bound to this file's exact SHA-256 authorizes collaborator edits only at the listed JSON paths and only inside the listed closed intervals. It does not approve any other config edit, calibration claim, model variant, run design, or compute dispatch.",
   "parameters": [
     {
       "path": "population.p_msm.value",
@@ -59,7 +59,7 @@
       "minimum": 0.0006,
       "maximum": 0.0011,
       "unit": "per-act probability",
-      "notes": "Literature-bounded chronic-stage route probability."
+      "notes": "Interval recorded by the canonical candidate; verify the scientific source and bound before approval."
     },
     {
       "path": "transmission_model.disease.transmission.advanced.beta_per_route.vaginal_ftm.chronic.value",
@@ -67,7 +67,7 @@
       "minimum": 0.0001,
       "maximum": 0.0014,
       "unit": "per-act probability",
-      "notes": "Literature-bounded chronic-stage route probability."
+      "notes": "Interval recorded by the canonical candidate; verify the scientific source and bound before approval."
     },
     {
       "path": "transmission_model.disease.transmission.advanced.beta_per_route.anal_receptive.chronic.value",
@@ -75,7 +75,7 @@
       "minimum": 0.0102,
       "maximum": 0.0186,
       "unit": "per-act probability",
-      "notes": "Literature-bounded chronic-stage route probability."
+      "notes": "Interval recorded by the canonical candidate; verify the scientific source and bound before approval."
     },
     {
       "path": "transmission_model.disease.transmission.advanced.beta_per_route.anal_insertive.chronic.value",
@@ -83,7 +83,7 @@
       "minimum": 0.0004,
       "maximum": 0.0028,
       "unit": "per-act probability",
-      "notes": "Literature-bounded chronic-stage route probability."
+      "notes": "Interval recorded by the canonical candidate; verify the scientific source and bound before approval."
     },
     {
       "path": "transmission_model.disease.transmission.advanced.stage_multiplier_acute.value",
@@ -91,7 +91,7 @@
       "minimum": 4.47,
       "maximum": 18.81,
       "unit": "relative risk",
-      "notes": "Literature-bounded acute-stage multiplier."
+      "notes": "Interval recorded by the canonical candidate; verify the scientific source and bound before approval."
     },
     {
       "path": "transmission_model.disease.transmission.advanced.stage_multiplier_aids.value",
@@ -99,7 +99,7 @@
       "minimum": 4.45,
       "maximum": 11.88,
       "unit": "relative risk",
-      "notes": "Literature-bounded AIDS-stage multiplier."
+      "notes": "Interval recorded by the canonical candidate; verify the scientific source and bound before approval."
     },
     {
       "path": "transmission_model.disease.transmission.advanced.msm_versatility.value",
@@ -107,7 +107,7 @@
       "minimum": 0.25,
       "maximum": 0.75,
       "unit": "proportion",
-      "notes": "Bounded MSM role-versatility parameter."
+      "notes": "Candidate-config uncertainty interval for MSM role versatility; requires scientific review before approval."
     },
     {
       "path": "transmission_model.disease.advanced.art_mortality_reduction.value",
@@ -115,7 +115,7 @@
       "minimum": 0.75,
       "maximum": 0.97,
       "unit": "proportional reduction",
-      "notes": "Uncertain, literature-bounded ART mortality effect."
+      "notes": "Candidate-config uncertainty interval for the ART mortality effect; verify the scientific source and bound before approval."
     },
     {
       "path": "interventions.oral_prep.uptake_rate.value",
@@ -155,7 +155,7 @@
       "minimum": 0.843,
       "maximum": 0.995,
       "unit": "proportional reduction",
-      "notes": "PURPOSE-2 uncertainty interval recorded by the canonical config."
+      "notes": "PURPOSE-2 interval recorded by the canonical candidate; verify the exact source and interpretation before approval."
     }
   ]
 }
