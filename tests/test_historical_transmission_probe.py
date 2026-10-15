@@ -5,10 +5,65 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import historical_transmission_probe as H
 import run_historical_transmission_probe as R
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def current_synthetic_source(monkeypatch, tmp_path):
+    """Checksum-valid current-code source with synthetic anchor rows."""
+    import run_history_matching as rhm
+
+    inputs = tmp_path / 'inputs'
+    inputs.mkdir()
+    source_paths = {
+        'base_config': ROOT / 'configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json',
+        'calib_space': ROOT / 'configs/calib_space_v13_15_1975_orientation_seed_abc_onart_two_era_20260916.json',
+        'target_register': ROOT / 'configs/hm_target_register_focused_20260916.json',
+    }
+    fixture_paths = {}
+    for name, source_path in source_paths.items():
+        fixture_path = inputs / source_path.name
+        fixture_path.write_bytes(source_path.read_bytes())
+        fixture_paths[name] = fixture_path
+
+    space = json.loads(fixture_paths['calib_space'].read_text())
+    bounds = {p['name']: (p['min'], p['max']) for p in space['parameters']}
+
+    def point(fraction):
+        return {name: float(lo + fraction * (hi - lo)) for name, (lo, hi) in bounds.items()}
+
+    source = tmp_path / 'synthetic_source'
+    wave = source / 'wave_01'
+    wave.mkdir(parents=True)
+    evaluated_path = wave / 'evaluated.csv'
+    pd.DataFrame([
+        {'design_id': R.previous.ANCHOR_A, **point(0.5)},
+        {'design_id': R.previous.ANCHOR_B, **point(0.4)},
+    ]).to_csv(evaluated_path, index=False)
+    manifest = {
+        'run_settings': {'v_ensemble_mode': 'predictive_local'},
+        'input_provenance': {
+            **{
+                name: {'path': str(path), 'sha256': R.previous.sha256(path)}
+                for name, path in fixture_paths.items()
+            },
+            'runtime': {'modules': rhm.repository_provenance()['modules']},
+        },
+        'artefacts': [{
+            'path': 'wave_01/evaluated.csv',
+            'bytes': evaluated_path.stat().st_size,
+            'sha256': R.previous.sha256(evaluated_path),
+        }],
+    }
+    (source / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    monkeypatch.setattr(R.previous, 'SOURCE', source)
+    return source
 
 
 def schedule(levels=(2., 4.)):
@@ -101,7 +156,15 @@ def test_readiness_rejects_annual_diagnoses_as_initial_stock():
     assert not H.check_initialisation_contract(c)['ready_for_initialisation_design']
 
 
-def test_prepare_real_inputs_is_read_only_and_never_constructs_engine(monkeypatch):
+def test_prepare_refuses_preserved_stale_source_without_constructing_engine(monkeypatch):
+    monkeypatch.setattr(H.SimulationEngineV3, '__init__', lambda *a, **k: pytest.fail('engine constructed'))
+    with pytest.raises(ValueError, match='Confirmation runtime differs from the source run'):
+        R.prepare()
+
+
+def test_prepare_current_synthetic_inputs_is_read_only_and_never_constructs_engine(
+    monkeypatch, current_synthetic_source
+):
     monkeypatch.setattr(H.SimulationEngineV3, '__init__', lambda *a, **k: pytest.fail('engine constructed'))
     report, _ = R.prepare()
     assert len(report['cells']) == 10 and len(report['targets']) == 15
