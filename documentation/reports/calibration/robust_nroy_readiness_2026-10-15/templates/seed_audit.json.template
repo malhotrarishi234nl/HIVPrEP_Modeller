@@ -2,19 +2,43 @@
   "schema": "robust_nroy_seed_audit/1.0.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
+  "deterministic": true,
   "generated_utc": null,
-  "command": null,
+  "command": "python tools/audit_robust_nroy_seeds.py --scope <approved-scope.json> [--candidate-blocks <candidate-blocks.json>]",
   "passed": null,
-  "plan_sha256": null,
-  "scientific_code_sha256": null,
-  "scientific_runtime": {},
-  "discovery": [],
-  "confirmation": [],
-  "proposal_rng": null,
-  "compared_seed_sources": [],
-  "source_hashes": {},
+  "scope_manifest": {
+    "path": null,
+    "sha256": null,
+    "owner_scope_status": "UNRESOLVED",
+    "source_coverage_status": "UNRESOLVED"
+  },
+  "source_inventory": {},
+  "parsed_prior_seeds": [],
+  "parsed_prior_seed_count": 0,
+  "ambiguous_references": {
+    "count": 0,
+    "examples": [],
+    "examples_truncated": 0
+  },
+  "unparseable_references": {
+    "count": 0,
+    "examples": [],
+    "examples_truncated": 0
+  },
+  "candidate_blocks": {
+    "status": "NOT_SUPPLIED",
+    "discovery": [],
+    "confirmation": [],
+    "proposal_rng": null,
+    "sha256": null
+  },
+  "disjointness": {
+    "status": "NOT_EVALUATED",
+    "reason": "candidate discovery, confirmation and proposal blocks were not supplied"
+  },
   "overlaps": [],
+  "unresolved": [],
   "limitations": [
-    "A passing audit must enumerate every searched manifest/register, not only the plan's known_used_elsewhere list."
+    "A passing audit must bind an owner-approved complete source scope, resolve ambiguous and unparseable references, and compare explicit candidate blocks against parsed prior seeds."
   ]
 }

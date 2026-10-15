@@ -102,11 +102,14 @@ not authorizations.
   --out <new-m1-discovery-dir>
 ```
 
-Pilot, pricing and seed-audit generation remain intentionally unimplemented as
-automatic “passed” commands: pilot measurements require authorization and real
-hardware; pricing requires current account data and approval; the seed audit
-must enumerate the agreed complete source set. The templates state the required
-bindings and cannot pass the production validator as stored.
+Pilot and pricing generation remain intentionally unimplemented as automatic
+“passed” commands: pilot measurements require authorization and real hardware,
+and pricing requires current account data and approval. The seed audit now has
+a read-only deterministic inventory tool, a proposed source-scope manifest, and
+an explicit incomplete artifact. It cannot pass until the owner approves the
+complete source scope, every ambiguity is resolved, and candidate discovery,
+confirmation, and proposal blocks are supplied. See
+`SEED_AUDIT_SCOPE_AND_GAPS.md`.
 
 ## Exact remaining approvals
 
@@ -121,8 +124,11 @@ bindings and cannot pass the production validator as stored.
    authoritative documentation.
 4. Approve retirement-only versus current-code rerun for the two stale
    historical lineages; no rerun is necessary merely to preserve history.
-5. Approve the complete seed-source scope, then reserve the five discovery and
-   20 confirmation seeds plus proposal RNG seed.
+5. Review `seed_source_scope.json`, reconcile any remote,
+   deleted, collaborator-held, binary, or otherwise excluded sources, resolve
+   the inventory's ambiguous/unparseable references, and approve the complete
+   seed-source scope. Only afterward supply candidate blocks for collision
+   checking; this task does not choose or reserve them.
 6. Separately authorize the identity gate.
 7. Separately authorize the measured pilot and approve its machine profile.
 8. Approve the priced budget derived from that pilot.

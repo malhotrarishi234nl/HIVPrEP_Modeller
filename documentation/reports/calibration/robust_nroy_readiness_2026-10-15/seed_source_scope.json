@@ -1,0 +1,59 @@
+{
+  "schema": "robust_nroy_seed_source_scope/1.0.0",
+  "status": "PROPOSED_NOT_APPROVED",
+  "owner_scope": {
+    "status": "UNRESOLVED",
+    "approved_by": null,
+    "approved_utc": null,
+    "scope_statement": ""
+  },
+  "source_coverage": {
+    "status": "UNRESOLVED",
+    "exclusions_reviewed": false,
+    "reason": "The repository and mounted project outputs have been inventoried conservatively, but the owner has not confirmed that they exhaust all historical execution locations or reviewed every excluded format."
+  },
+  "tracked_repository": {
+    "pathspecs": [
+      "configs",
+      "documentation"
+    ],
+    "rule": "Every git-tracked file under configs/ and documentation/ is inventoried. JSON and JSON templates are parsed structurally; CSV seed columns are parsed; textual seed mentions remain ambiguous; unsupported binary formats fail closed."
+  },
+  "outputs": {
+    "root": "outputs",
+    "root_scope": "Only the explicitly mounted project outputs/ tree; no parent directories, home-directory search, or unrelated private data.",
+    "json_basename_globs": [
+      "*design*.json",
+      "*manifest*.json",
+      "*metadata*.json",
+      "*plan*.json",
+      "*provenance*.json",
+      "*result*.json",
+      "*summary*.json",
+      "*validation*.json"
+    ],
+    "json_lines_basename_globs": [
+      "*dispatch*.jsonl",
+      "*proposals*.jsonl",
+      "*results*.jsonl"
+    ],
+    "text_extensions": [
+      ".log",
+      ".md",
+      ".py",
+      ".sh",
+      ".txt"
+    ],
+    "csv_rule": "Inspect every CSV header and parse only files with seed-like columns; files without seed-like columns are inventoried but not content-scanned.",
+    "max_scanned_file_bytes": 134217728
+  },
+  "evidence_example_limit": 250,
+  "parsed_seed_source_limit": 8,
+  "limitations": [
+    "The mounted outputs tree is not asserted to include deleted, remote, cloud, HPC, or collaborator-held runs.",
+    "Raw output JSON files whose basenames do not match the declared metadata patterns are inventoried but not content-scanned; many are large repeated candidate records.",
+    "Archives, spreadsheets, PDFs, NPZ files, images, and other binary formats are inventoried but not opened. Their seed provenance remains unresolved unless separately reviewed.",
+    "Textual seed mentions, ranges, formulas, and seed-like epidemiological parameter names are never silently converted into RNG seeds.",
+    "This inventory does not allocate, recommend, reserve, or authorize any seed block or model execution."
+  ]
+}

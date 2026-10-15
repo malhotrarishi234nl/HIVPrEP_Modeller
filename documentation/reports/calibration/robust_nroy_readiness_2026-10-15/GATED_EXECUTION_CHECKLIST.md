@@ -30,7 +30,13 @@ engine-running gate.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
 - [ ] Historical artifacts have an approved disposition; current claims exclude unrepeated stale lineages.
 - [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.
-- [ ] `robust_nroy_seed_audit/1.0.0` generated from all prior seed sources and passes with no overlaps.
+- [x] A read-only deterministic `robust_nroy_seed_audit/1.0.0` scanner,
+  explicit proposed source-scope manifest, and incomplete inventory artifact
+  exist; no seed was allocated and no engine was run.
+- [ ] The seed-source scope is owner-approved as exhaustive, all ambiguous and
+  unparseable references are resolved, explicit candidate discovery,
+  confirmation, and proposal blocks are supplied, and the audit proves no
+  internal or prior-source overlap.
 - [ ] Identity-gate run separately authorized, executed through the production route, and passed.
 - [ ] Measured-pilot run separately authorized and completed on the declared machine profile.
 - [ ] `robust_nroy_priced_budget/1.0.0` generated from the measured pilot, priced, and approved.
