@@ -17,6 +17,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import shlex
 import sys
 from datetime import datetime, timezone
@@ -46,6 +47,14 @@ def sha256(path: Path) -> str:
 def resolve(path: str | Path) -> Path:
     value = Path(path)
     return value if value.is_absolute() else ROOT / value
+
+
+def portable_path(path: Path) -> str:
+    """Record a path relative to the repository when possible."""
+    try:
+        return str(path.resolve().relative_to(ROOT.resolve()))
+    except ValueError:
+        return os.path.relpath(path.resolve(), ROOT.resolve())
 
 
 def proposal(raw: dict, dotted: str):
@@ -83,7 +92,14 @@ def generate(args: argparse.Namespace) -> int:
         target_order = tuple(plan.targets.frozen_order)
         base_config = resolve(plan.require("models.base_config"))
         m0_space = resolve(plan.require("models.m0.calib_space"))
-        status = "FINAL"
+        status = "FINAL" if getattr(args, "approve_for_production", False) else "FINAL_REVIEW_REQUIRED"
+
+    if getattr(args, "approve_for_production", False) and args.draft:
+        raise nc.ContractError("a pre-sign draft cannot be approved for production")
+    if getattr(args, "approve_for_production", False) and not str(
+        getattr(args, "approved_by", "") or ""
+    ).strip():
+        raise nc.ContractError("--approve-for-production requires --approved-by")
 
     if target_order != tuple(ccs.FROZEN_TARGET_ORDER):
         raise nc.ContractError(
@@ -120,6 +136,9 @@ def generate(args: argparse.Namespace) -> int:
         "schema": SCHEMA,
         "status": status,
         "production_eligible": status == "FINAL",
+        "approved": status == "FINAL",
+        "approved_by": str(getattr(args, "approved_by", "")).strip() if status == "FINAL" else None,
+        "approved_utc": datetime.now(timezone.utc).isoformat() if status == "FINAL" else None,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "command": command,
         "plan_sha256": sha256(plan_path),
@@ -134,12 +153,12 @@ def generate(args: argparse.Namespace) -> int:
             "added_exactly_once": True,
         },
         "source_bindings": {
-            "plan": {"path": str(plan_path), "sha256": sha256(plan_path)},
-            "base_config": {"path": str(base_config), "sha256": sha256(base_config)},
-            "m0_calibration_space": {"path": str(m0_space), "sha256": sha256(m0_space)},
-            "target_register": {"path": str(register_path), "sha256": sha256(register_path)},
-            "source_workbook": {"path": str(workbook_path), "sha256": sha256(workbook_path)},
-            "wave_plan": {"path": str(wave_plan_path), "sha256": sha256(wave_plan_path)},
+            "plan": {"path": portable_path(plan_path), "sha256": sha256(plan_path)},
+            "base_config": {"path": portable_path(base_config), "sha256": sha256(base_config)},
+            "m0_calibration_space": {"path": portable_path(m0_space), "sha256": sha256(m0_space)},
+            "target_register": {"path": portable_path(register_path), "sha256": sha256(register_path)},
+            "source_workbook": {"path": portable_path(workbook_path), "sha256": sha256(workbook_path)},
+            "wave_plan": {"path": portable_path(wave_plan_path), "sha256": sha256(wave_plan_path)},
         },
         "scientific_code_sha256": rn._code_sha256(),
         "scientific_runtime": nig.scientific_runtime_fingerprint(),
@@ -152,6 +171,7 @@ def generate(args: argparse.Namespace) -> int:
             "V_obs is underivable for several targets and contributes zero, biasing toward over-exclusion.",
             "The 10% target-relative model-discrepancy term is a declared assumption, not an estimate.",
             *(["This draft binds an unsigned plan and must be regenerated after sign-off."] if args.draft else []),
+            *(["This signed-plan package still requires explicit owner review and approval."] if status == "FINAL_REVIEW_REQUIRED" else []),
         ],
     }
     write_json(out / "acceptance_input_provenance.json", provenance)
@@ -165,6 +185,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wave-plan", default=str(DEFAULT_WAVE_PLAN))
     parser.add_argument("--out", required=True)
     parser.add_argument("--draft", action="store_true")
+    parser.add_argument(
+        "--approve-for-production", action="store_true",
+        help="mark a signed-plan package FINAL only after its component table was reviewed",
+    )
+    parser.add_argument(
+        "--approved-by", default="",
+        help="reviewer recorded when --approve-for-production is used",
+    )
     return parser.parse_args()
 
 

@@ -46,7 +46,7 @@ def test_unsigned_plan_can_only_generate_explicit_nonproduction_draft(tmp_path):
 
 
 def test_unsigned_plan_is_refused_for_final_evidence(tmp_path):
-    with pytest.raises(nc.UnsignedConfigError, match="42 required value"):
+    with pytest.raises(nc.UnsignedConfigError, match="43 required value"):
         prep.generate(args(tmp_path / "final", draft=False))
 
 
