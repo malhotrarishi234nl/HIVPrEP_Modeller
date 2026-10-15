@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "robust_nroy_seed_finding_resolutions/1.0.0",
+  "title": "Reviewed robust-NROY seed-finding resolutions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "scope_manifest_sha256",
+    "exact_resolutions",
+    "reviewed_rules",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {"const": "robust_nroy_seed_finding_resolutions/1.0.0"},
+    "status": {"enum": ["INCOMPLETE", "REVIEWED"]},
+    "scope_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "exact_resolutions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/exactResolution"}
+    },
+    "reviewed_rules": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/reviewedRule"}
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "review": {
+      "type": "object",
+      "properties": {
+        "reviewer": {"type": "string", "minLength": 1},
+        "reviewed_utc": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$"
+        },
+        "rationale": {"type": "string", "minLength": 1}
+      }
+    },
+    "exactResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_kind", "source", "location", "source_sha256", "value_sha256",
+        "classification", "rng_role", "rng_integers", "reviewer", "reviewed_utc",
+        "rationale"
+      ],
+      "properties": {
+        "finding_kind": {"enum": ["ambiguous", "unparseable"]},
+        "source": {"type": "string", "minLength": 1},
+        "location": {"type": "string", "minLength": 1},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "value_sha256": {"$ref": "#/$defs/sha256"},
+        "classification": {"enum": ["RNG", "NON_RNG"]},
+        "rng_role": {"type": ["string", "null"], "enum": ["simulation", "proposal_rng", "other_rng", null]},
+        "rng_integers": {"type": "array", "items": {"type": "integer"}, "uniqueItems": true},
+        "reviewer": {"type": "string", "minLength": 1},
+        "reviewed_utc": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$"},
+        "rationale": {"type": "string", "minLength": 1}
+      }
+    },
+    "selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "start_line", "end_line"],
+          "properties": {
+            "type": {"const": "line_range"},
+            "start_line": {"type": "integer", "minimum": 1},
+            "end_line": {"type": "integer", "minimum": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "prefix", "leaf_keys"],
+          "properties": {
+            "type": {"const": "json_pointer_subtree"},
+            "prefix": {"type": "string", "minLength": 2},
+            "leaf_keys": {
+              "type": "array", "minItems": 1, "maxItems": 50,
+              "uniqueItems": true, "items": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "column"],
+          "properties": {
+            "type": {"const": "csv_column"},
+            "column": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "reviewedRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id", "finding_kind", "source", "source_sha256", "selector",
+        "expected_match_count", "expected_matches_sha256", "classification",
+        "rng_role", "rng_integers_by_finding", "reviewer", "reviewed_utc",
+        "rationale"
+      ],
+      "properties": {
+        "rule_id": {"type": "string", "minLength": 1},
+        "finding_kind": {"enum": ["ambiguous", "unparseable"]},
+        "source": {"type": "string", "minLength": 1},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "selector": {"$ref": "#/$defs/selector"},
+        "expected_match_count": {"type": "integer", "minimum": 1},
+        "expected_matches_sha256": {"$ref": "#/$defs/sha256"},
+        "classification": {"enum": ["RNG", "NON_RNG"]},
+        "rng_role": {"type": ["string", "null"], "enum": ["simulation", "proposal_rng", "other_rng", null]},
+        "rng_integers_by_finding": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "integer"}
+          }
+        },
+        "reviewer": {"type": "string", "minLength": 1},
+        "reviewed_utc": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*Z$"},
+        "rationale": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

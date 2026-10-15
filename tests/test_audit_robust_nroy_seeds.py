@@ -15,7 +15,7 @@ SCOPE = ROOT / (
 )
 
 
-def _scope(*, complete: bool) -> dict:
+def _scope(*, complete: bool, evidence_sha256: str = "0" * 64) -> dict:
     return {
         "schema": audit.SCOPE_SCHEMA,
         "owner_scope": {
@@ -28,7 +28,26 @@ def _scope(*, complete: bool) -> dict:
             "status": "COMPLETE" if complete else "UNRESOLVED",
             "exclusions_reviewed": complete,
         },
-        "tracked_repository": {"pathspecs": ["configs", "documentation"]},
+        "tracked_repository": {
+            "pathspecs": ["."],
+            "text_extensions": [".md", ".py", ".sh", ".txt"],
+            "explicit_exclusions": [],
+        },
+        "external_execution_locations": [
+            {
+                "kind": kind,
+                "status": "COVERED" if complete else "UNRESOLVED",
+                "coverage_decision": "Covered by test fixture." if complete else "Review needed.",
+                "evidence": ([{
+                    "path": "external_review.json",
+                    "sha256": evidence_sha256,
+                    "description": "Hash-bound isolated-fixture review record.",
+                }] if complete else []),
+                "reviewer": "Test owner" if complete else None,
+                "reviewed_utc": "2026-10-15T00:00:00Z" if complete else None,
+            }
+            for kind in ("REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD")
+        ],
         "outputs": {
             "root": "outputs",
             "json_basename_globs": ["*manifest*.json"],
@@ -44,13 +63,18 @@ def _scope(*, complete: bool) -> dict:
 
 def _write_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, complete: bool = True):
     (tmp_path / "outputs").mkdir()
+    external_review = tmp_path / "external_review.json"
+    external_review.write_text(json.dumps({"review": "isolated fixture"}))
     config = tmp_path / "configs" / "prior.json"
     config.parent.mkdir()
     config.write_text(json.dumps({
         "seeds": {"discovery": [1, 2], "confirmation": [3], "proposal_rng": 9},
     }))
     scope_path = tmp_path / "scope.json"
-    scope_path.write_text(json.dumps(_scope(complete=complete)))
+    scope_path.write_text(json.dumps(_scope(
+        complete=complete,
+        evidence_sha256=audit.sha256_file(external_review),
+    )))
     monkeypatch.setattr(audit, "git_tracked_paths", lambda root, pathspecs: [config])
     return scope_path
 
@@ -64,6 +88,33 @@ def _candidate(tmp_path: Path, *, discovery=(10, 11), confirmation=(20, 21), pro
         "proposal_rng": proposal,
     }))
     return path
+
+
+def _resolution_document(scope_path: Path, *, exact=(), rules=(), status="REVIEWED"):
+    return {
+        "schema": audit.RESOLUTION_SCHEMA,
+        "status": status,
+        "scope_manifest_sha256": audit.sha256_file(scope_path),
+        "exact_resolutions": list(exact),
+        "reviewed_rules": list(rules),
+        "limitations": [],
+    }
+
+
+def _exact(example: dict, *, classification: str, integers=(), role=None):
+    return {
+        "finding_kind": "ambiguous",
+        "source": example["source"],
+        "location": example["location"],
+        "source_sha256": example["source_sha256"],
+        "value_sha256": example["value_sha256"],
+        "classification": classification,
+        "rng_role": role,
+        "rng_integers": list(integers),
+        "reviewer": "Test reviewer",
+        "reviewed_utc": "2026-10-15T12:00:00Z",
+        "rationale": "The fixture establishes the intended semantics.",
+    }
 
 
 def test_structured_scan_distinguishes_parsed_ambiguous_and_unparseable():
@@ -103,8 +154,14 @@ def test_complete_approved_scope_and_disjoint_candidates_can_prove_gate(
         tmp_path, monkeypatch):
     scope_path = _write_inputs(tmp_path, monkeypatch)
     candidate_path = _candidate(tmp_path)
-    first = audit.build_audit(tmp_path, scope_path, candidate_path)
-    second = audit.build_audit(tmp_path, scope_path, candidate_path)
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(scope_path)))
+    first = audit.build_audit(
+        tmp_path, scope_path, candidate_path, resolution_path=resolution_path
+    )
+    second = audit.build_audit(
+        tmp_path, scope_path, candidate_path, resolution_path=resolution_path
+    )
 
     assert first == second
     assert first["passed"] is False
@@ -158,3 +215,246 @@ def test_repository_scope_is_explicitly_unresolved():
     assert scope["source_coverage"]["status"] == "UNRESOLVED"
     assert scope["outputs"]["root"] == "outputs"
     assert "private data" in scope["outputs"]["root_scope"]
+    assert scope["tracked_repository"]["pathspecs"] == ["."]
+    assert {item["kind"] for item in scope["external_execution_locations"]} == {
+        "REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD",
+    }
+
+
+def test_exact_non_rng_resolution_requires_exact_hash_bound_match(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    config = tmp_path / "configs" / "prior.json"
+    config.write_text(json.dumps({"seed_prevalence": 0.004}))
+    first = audit.build_audit(tmp_path, scope_path)
+    example = first["ambiguous_references"]["examples"][0]
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(
+        scope_path, exact=[_exact(example, classification="NON_RNG")]
+    )))
+
+    result = audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+    assert result["ambiguous_references"]["detected_count"] == 1
+    assert result["ambiguous_references"]["count"] == 0
+    assert result["finding_resolutions"]["resolved_non_rng"] == 1
+    assert result["finding_resolutions"]["file_sha256"] == audit.sha256_file(
+        resolution_path
+    )
+    assert result["finding_resolutions"]["path"] == str(resolution_path)
+
+    payload = json.loads(resolution_path.read_text())
+    payload["exact_resolutions"][0]["value_sha256"] = "0" * 64
+    resolution_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="stale or missing"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+
+def test_resolved_rng_integer_joins_prior_seed_collision_check(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    config = tmp_path / "configs" / "prior.json"
+    config.write_text(json.dumps({"legacy_seed_label": "legacy RNG 444"}))
+    first = audit.build_audit(tmp_path, scope_path)
+    example = first["ambiguous_references"]["examples"][0]
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(
+        scope_path,
+        exact=[_exact(example, classification="RNG", integers=[444], role="simulation")],
+    )))
+
+    result = audit.build_audit(
+        tmp_path, scope_path, _candidate(tmp_path, discovery=(444, 445)),
+        resolution_path=resolution_path,
+    )
+    assert result["disjointness"]["checks"]["discovery_vs_prior"] == [444]
+    assert any(row["seed"] == 444 for row in result["parsed_prior_seeds"])
+
+
+def test_duplicate_exact_resolution_fails_closed(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    config = tmp_path / "configs" / "prior.json"
+    config.write_text(json.dumps({"seed_prevalence": 0.004}))
+    example = audit.build_audit(tmp_path, scope_path)["ambiguous_references"]["examples"][0]
+    decision = _exact(example, classification="NON_RNG")
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(
+        scope_path, exact=[decision, decision]
+    )))
+    with pytest.raises(ValueError, match="duplicate exact resolution"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+
+def test_reviewed_rule_rejects_wildcards_and_stale_match_digest(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    source = tmp_path / "documentation" / "prior.md"
+    source.parent.mkdir()
+    source.write_text("seed reference one\nseed reference two\n")
+    monkeypatch.setattr(audit, "git_tracked_paths", lambda root, pathspecs: [source])
+    first = audit.build_audit(tmp_path, scope_path)
+    examples = first["ambiguous_references"]["examples"]
+    base_rule = {
+        "rule_id": "review-lines-1-2",
+        "finding_kind": "ambiguous",
+        "source": "documentation/prior.md",
+        "source_sha256": examples[0]["source_sha256"],
+        "selector": {"type": "line_range", "start_line": 1, "end_line": 2},
+        "expected_match_count": 2,
+        "expected_matches_sha256": audit.canonical_sha256(sorted(
+            item["finding_id"] for item in examples
+        )),
+        "classification": "NON_RNG",
+        "rng_role": None,
+        "rng_integers_by_finding": {},
+        "reviewer": "Test reviewer",
+        "reviewed_utc": "2026-10-15T12:00:00Z",
+        "rationale": "Both exact lines are documentation, not RNG inputs.",
+    }
+    resolution_path = tmp_path / "resolutions.json"
+    wildcard_rule = dict(base_rule, source="documentation/*.md")
+    resolution_path.write_text(json.dumps(_resolution_document(
+        scope_path, rules=[wildcard_rule]
+    )))
+    with pytest.raises(ValueError, match="without wildcards"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+    stale_rule = dict(base_rule, expected_matches_sha256="f" * 64)
+    resolution_path.write_text(json.dumps(_resolution_document(
+        scope_path, rules=[stale_rule]
+    )))
+    with pytest.raises(ValueError, match="stale, missing, or overbroad"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+
+def test_unresolved_findings_remain_blockers_with_partial_review(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    config = tmp_path / "configs" / "prior.json"
+    config.write_text(json.dumps({"seed_alpha": 0.1, "seed_beta": 0.2}))
+    first = audit.build_audit(tmp_path, scope_path)
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(
+        scope_path,
+        exact=[_exact(first["ambiguous_references"]["examples"][0],
+                      classification="NON_RNG")],
+    )))
+    result = audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+    assert result["ambiguous_references"]["count"] == 1
+    assert result["passed"] is False
+    assert any("ambiguous seed-like" in item for item in result["unresolved"])
+
+
+@pytest.mark.parametrize("text", [
+    '{"seed": 1, "seed": 2}',
+    '{"seed": NaN}',
+    '{"seed": Infinity}',
+    '{"seed": -Infinity}',
+])
+def test_strict_json_rejects_duplicate_keys_and_nonfinite_numbers(text):
+    with pytest.raises(ValueError):
+        audit.strict_json_loads(text)
+
+
+@pytest.mark.parametrize(("text", "message"), [
+    ('{"seed": 1, "seed": 2}', "duplicate JSON object key"),
+    ('{"seed": NaN}', "non-finite JSON numeric literal"),
+])
+def test_invalid_scanned_json_becomes_unresolved_not_silent(tmp_path, text, message):
+    path = tmp_path / "bad.json"
+    path.write_text(text)
+    findings = audit.Findings()
+    audit.scan_json(path, "bad.json", findings)
+    assert findings.unparseable_total == 1
+    assert message in findings.unparseable_examples[0]["detail"]
+
+
+def test_scope_resolution_and_candidate_control_json_are_strict(tmp_path):
+    scope = tmp_path / "scope.json"
+    scope.write_text('{"schema":"x","schema":"y"}')
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        audit.load_scope(scope)
+
+    resolution = tmp_path / "resolution.json"
+    resolution.write_text('{"schema":"x","status":NaN}')
+    with pytest.raises(ValueError, match="non-finite JSON numeric literal"):
+        audit.load_resolutions(resolution, scope_sha256="0" * 64)
+
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text('{"schema":"x","proposal_rng":NaN}')
+    with pytest.raises(ValueError, match="non-finite JSON numeric literal"):
+        audit.load_candidate_blocks(candidate)
+
+
+def test_stale_tracked_exclusion_hash_is_fatal(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    payload = json.loads(scope_path.read_text())
+    payload["tracked_repository"]["explicit_exclusions"] = [{
+        "path": "configs/prior.json",
+        "sha256": "0" * 64,
+        "reason": "Test exclusion.",
+        "coverage_status": "REVIEWED_NON_SEED",
+    }]
+    scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="exclusion is stale"):
+        audit.build_audit(tmp_path, scope_path)
+
+
+def test_resolved_external_location_requires_evidence_reviewer_and_time(tmp_path):
+    scope_path = tmp_path / "scope.json"
+    payload = _scope(complete=True)
+    payload["external_execution_locations"][0]["evidence"] = []
+    scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="requires at least one hash-bound evidence file"):
+        audit.load_scope(scope_path)
+
+
+def test_resolved_external_location_requires_hash_bound_existing_evidence(tmp_path):
+    scope_path = tmp_path / "scope.json"
+    payload = _scope(complete=True, evidence_sha256="f" * 64)
+    scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="external evidence file is missing"):
+        audit.load_scope(scope_path, root=tmp_path)
+
+    evidence = tmp_path / "external_review.json"
+    evidence.write_text("reviewed bytes")
+    with pytest.raises(ValueError, match="external evidence hash is stale"):
+        audit.load_scope(scope_path, root=tmp_path)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("discovery", "10;11"),
+    ("confirmation", [20, True]),
+    ("proposal_rng", "30"),
+])
+def test_candidate_blocks_require_typed_integer_arrays_and_integer(
+        tmp_path, field, value):
+    candidate = {
+        "schema": audit.CANDIDATE_SCHEMA,
+        "discovery": [10, 11],
+        "confirmation": [20, 21],
+        "proposal_rng": 30,
+    }
+    candidate[field] = value
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(candidate))
+    with pytest.raises(ValueError, match="explicit integer"):
+        audit.load_candidate_blocks(path)
+
+
+def test_candidate_blocks_reject_extra_fields_and_record_raw_file_hash(tmp_path):
+    path = _candidate(tmp_path)
+    loaded = audit.load_candidate_blocks(path)
+    assert loaded is not None
+    assert loaded["file_sha256"] == audit.sha256_file(path)
+
+    payload = json.loads(path.read_text())
+    payload["comment"] = "not part of the typed contract"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="candidate seed blocks fields are invalid"):
+        audit.load_candidate_blocks(path)
+
+
+def test_resolution_scope_hash_mismatch_is_fatal(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    payload = _resolution_document(scope_path)
+    payload["scope_manifest_sha256"] = "f" * 64
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="scope manifest SHA-256 differs"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)

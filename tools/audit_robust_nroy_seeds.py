@@ -33,13 +33,24 @@ if str(ROOT) not in sys.path:
 
 import nroy_contract as nc  # noqa: E402
 
-SCHEMA = "robust_nroy_seed_audit/1.0.0"
-SCOPE_SCHEMA = "robust_nroy_seed_source_scope/1.0.0"
+SCHEMA = "robust_nroy_seed_audit/1.1.0"
+SCOPE_SCHEMA = "robust_nroy_seed_source_scope/1.1.0"
 CANDIDATE_SCHEMA = "robust_nroy_candidate_seed_blocks/1.0.0"
+RESOLUTION_SCHEMA = "robust_nroy_seed_finding_resolutions/1.0.0"
 
 INTEGER = re.compile(r"^[+-]?\d+$")
 SPLIT_INTEGER_LIST = re.compile(r"^[+-]?\d+(?:\s*[,;]\s*[+-]?\d+)+$")
 TEXT_SEED = re.compile(r"\bseed(?:s|ed|ing)?\b", re.IGNORECASE)
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+WILDCARD = re.compile(r"[*?\[\]]")
+
+RNG_ROLES = {"simulation", "proposal_rng", "other_rng"}
+FINDING_KINDS = {"ambiguous", "unparseable"}
+CLASSIFICATIONS = {"RNG", "NON_RNG"}
+DEFAULT_TRACKED_TEXT_EXTENSIONS = {
+    ".gitignore", ".html", ".ini", ".md", ".mjs", ".py", ".rst", ".sh",
+    ".toml", ".txt", ".yaml", ".yml",
+}
 
 PROPOSAL_FIELDS = {
     "proposal_rng", "proposal_rng_seed", "proposal_seed", "proposal_seeds",
@@ -72,6 +83,31 @@ def sha256_file(path: Path) -> str:
 def canonical_sha256(payload: Any) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return sha256_bytes(encoded)
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON numeric literal is forbidden: {value}")
+
+
+def _unique_json_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key is forbidden: {key!r}")
+        result[key] = value
+    return result
+
+
+def strict_json_loads(text: str) -> Any:
+    return json.loads(
+        text,
+        object_pairs_hook=_unique_json_object,
+        parse_constant=_reject_json_constant,
+    )
+
+
+def strict_json_load(path: Path) -> Any:
+    return strict_json_loads(path.read_text(encoding="utf-8"))
 
 
 def valid_utc_timestamp(value: object) -> bool:
@@ -156,6 +192,7 @@ class Findings:
         self.ambiguous_examples: list[dict[str, str]] = []
         self.unparseable_total = 0
         self.unparseable_examples: list[dict[str, str]] = []
+        self.records: list[dict[str, Any]] = []
 
     def add_seed(self, seed: int, role: str, source: str, location: str) -> None:
         row = self.parsed.setdefault(int(seed), {
@@ -171,19 +208,62 @@ class Findings:
             else:
                 row["source_count_truncated"] += 1
 
-    def _add_example(self, kind: str, source: str, location: str, detail: str) -> None:
+    def _add_example(self, kind: str, source: str, location: str, detail: str,
+                     value: Any = None) -> None:
         attr_total = f"{kind}_total"
         attr_examples = f"{kind}_examples"
         setattr(self, attr_total, getattr(self, attr_total) + 1)
+        if value is None:
+            value = {"scanner_detail": detail}
+        try:
+            value_hash = canonical_sha256(value)
+        except (TypeError, ValueError):
+            value_hash = canonical_sha256(str(value))
+        record: dict[str, Any] = {
+            "kind": kind,
+            "source": source,
+            "location": location,
+            "detail": detail,
+            "value_sha256": value_hash,
+            "source_sha256": None,
+            "finding_id": None,
+            "resolved": False,
+        }
+        self.records.append(record)
         examples = getattr(self, attr_examples)
         if len(examples) < self.example_limit:
-            examples.append({"source": source, "location": location, "detail": detail})
+            examples.append(record)
 
-    def add_ambiguous(self, source: str, location: str, detail: str) -> None:
-        self._add_example("ambiguous", source, location, detail)
+    def add_ambiguous(self, source: str, location: str, detail: str,
+                      value: Any = None) -> None:
+        self._add_example("ambiguous", source, location, detail, value)
 
-    def add_unparseable(self, source: str, location: str, detail: str) -> None:
-        self._add_example("unparseable", source, location, detail)
+    def add_unparseable(self, source: str, location: str, detail: str,
+                        value: Any = None) -> None:
+        self._add_example("unparseable", source, location, detail, value)
+
+    def bind_source_hashes(self, source_hashes: Mapping[str, str]) -> None:
+        """Bind each reviewable finding to the exact bytes that produced it."""
+        for row in self.records:
+            row["source_sha256"] = source_hashes.get(row["source"])
+            identity = {
+                "kind": row["kind"],
+                "source": row["source"],
+                "location": row["location"],
+                "source_sha256": row["source_sha256"],
+                "value_sha256": row["value_sha256"],
+            }
+            row["finding_id"] = canonical_sha256(identity)
+
+    def unresolved(self, kind: str) -> list[dict[str, Any]]:
+        return [row for row in self.records
+                if row["kind"] == kind and row["resolved"] is not True]
+
+    @staticmethod
+    def render_examples(rows: Sequence[Mapping[str, Any]], limit: int) -> list[dict[str, Any]]:
+        keys = ("finding_id", "source", "location", "source_sha256",
+                "value_sha256", "detail")
+        return [{key: row.get(key) for key in keys} for row in rows[:limit]]
 
     def render_parsed(self) -> list[dict[str, Any]]:
         rendered = []
@@ -216,12 +296,14 @@ def scan_structured(value: Any, *, source: str, findings: Findings,
                         source, _json_pointer(child_parts),
                         f"recognised {role} field is not an explicit integer or integer list: "
                         f"{_preview(item)}",
+                        item,
                     )
                 continue
             if _is_seed_like(child_parts) and role is None and not isinstance(child, Mapping):
                 findings.add_ambiguous(
                     source, _json_pointer(child_parts),
                     f"seed-like field has no declared RNG semantics: {_preview(child)}",
+                    child,
                 )
                 continue
             scan_structured(child, source=source, findings=findings, parts=child_parts)
@@ -234,9 +316,11 @@ def scan_structured(value: Any, *, source: str, findings: Findings,
 
 def scan_json(path: Path, relative: str, findings: Findings) -> None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        findings.add_unparseable(relative, "/", f"JSON parse failed: {exc}")
+        payload = strict_json_load(path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        findings.add_unparseable(
+            relative, "/", f"JSON parse failed: {exc}", {"parse_error": str(exc)}
+        )
         return
     scan_structured(payload, source=relative, findings=findings)
 
@@ -248,16 +332,19 @@ def scan_json_lines(path: Path, relative: str, findings: Findings) -> None:
                 if not line.strip():
                     continue
                 try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError as exc:
+                    payload = strict_json_loads(line)
+                except (json.JSONDecodeError, ValueError) as exc:
                     findings.add_unparseable(
-                        relative, f"line:{line_number}", f"JSON-line parse failed: {exc}"
+                        relative, f"line:{line_number}", f"JSON-line parse failed: {exc}",
+                        line.rstrip("\r\n"),
                     )
                     continue
                 scan_structured(payload, source=relative, findings=findings,
                                 parts=(f"line:{line_number}",))
     except (OSError, UnicodeDecodeError) as exc:
-        findings.add_unparseable(relative, "/", f"JSON-lines read failed: {exc}")
+        findings.add_unparseable(
+            relative, "/", f"JSON-lines read failed: {exc}", {"read_error": str(exc)}
+        )
 
 
 def seed_columns(fieldnames: Sequence[str] | None) -> list[str]:
@@ -281,6 +368,7 @@ def scan_csv(path: Path, relative: str, findings: Findings, *, force_text: bool 
                         relative, f"column:{column}",
                         "seed-like CSV column has no declared RNG semantics; its values were not "
                         "promoted to RNG seeds",
+                        {"column": column},
                     )
             for row_number, row in enumerate(reader, start=2):
                 for column in columns:
@@ -298,10 +386,13 @@ def scan_csv(path: Path, relative: str, findings: Findings, *, force_text: bool 
                                 relative, f"row:{row_number}/{column}",
                                 f"recognised {role} CSV value is not explicit integers: "
                                 f"{_preview(item)}",
+                                item,
                             )
             return True
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
-        findings.add_unparseable(relative, "/", f"CSV read failed: {exc}")
+        findings.add_unparseable(
+            relative, "/", f"CSV read failed: {exc}", {"read_error": str(exc)}
+        )
         return True
 
 
@@ -314,9 +405,12 @@ def scan_text(path: Path, relative: str, findings: Findings) -> None:
                         relative, f"line:{line_number}",
                         "textual seed reference requires owner interpretation: "
                         + " ".join(line.strip().split())[:180],
+                        line.rstrip("\r\n"),
                     )
     except (OSError, UnicodeDecodeError) as exc:
-        findings.add_unparseable(relative, "/", f"text read failed: {exc}")
+        findings.add_unparseable(
+            relative, "/", f"text read failed: {exc}", {"read_error": str(exc)}
+        )
 
 
 def git_tracked_paths(root: Path, pathspecs: Sequence[str]) -> list[Path]:
@@ -332,10 +426,15 @@ def _parser_kind(path: Path, *, output: bool, output_rules: Mapping[str, Any]) -
     if not output:
         if name.endswith(".json") or name.endswith(".json.template"):
             return "json"
+        if suffix in {".jsonl", ".ndjson"}:
+            return "json_lines"
         if suffix == ".csv":
             return "csv_text"
-        if name.endswith(".md.template") or suffix in {
-                ".md", ".txt", ".html", ".yaml", ".yml", ".toml"}:
+        text_extensions = set(output_rules.get(
+            "text_extensions", DEFAULT_TRACKED_TEXT_EXTENSIONS
+        ))
+        if name.endswith(".md.template") or suffix in text_extensions or \
+                (name == ".gitignore" and ".gitignore" in text_extensions):
             return "text"
         return "excluded"
     if suffix == ".json" and any(fnmatch.fnmatch(name, pattern.lower())
@@ -367,29 +466,59 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
     counts: dict[str, int] = {}
     max_bytes = int(scope["outputs"]["max_scanned_file_bytes"])
 
-    tracked = git_tracked_paths(root, scope["tracked_repository"]["pathspecs"])
+    tracked_rules = scope["tracked_repository"]
+    exclusions = {item["path"]: item for item in tracked_rules.get(
+        "explicit_exclusions", ())}
+    seen_exclusions: set[str] = set()
+    source_hashes: dict[str, str] = {}
+    tracked = git_tracked_paths(root, tracked_rules["pathspecs"])
     for path in sorted(tracked):
         relative = path.relative_to(root).as_posix()
-        kind = _parser_kind(path, output=False, output_rules={})
+        current_hash = sha256_file(path)
+        source_hashes[relative] = current_hash
+        if relative in exclusions:
+            exclusion = exclusions[relative]
+            seen_exclusions.add(relative)
+            kind = "excluded_declared"
+            inventory.append(_path_record(root, path, f"tracked:{kind}"))
+            counts[f"tracked:{kind}"] = counts.get(f"tracked:{kind}", 0) + 1
+            if current_hash != exclusion["sha256"]:
+                raise ValueError(
+                    "declared tracked-file exclusion is stale: "
+                    f"{relative} expected {exclusion['sha256']} but found {current_hash}"
+                )
+            continue
+        kind = _parser_kind(path, output=False, output_rules=tracked_rules)
         inventory.append(_path_record(root, path, f"tracked:{kind}"))
         counts[f"tracked:{kind}"] = counts.get(f"tracked:{kind}", 0) + 1
         if kind == "json":
             scan_json(path, relative, findings)
+        elif kind == "json_lines":
+            scan_json_lines(path, relative, findings)
         elif kind == "csv_text":
             scan_csv(path, relative, findings, force_text=True)
         elif kind == "text":
             scan_text(path, relative, findings)
         else:
             findings.add_unparseable(
-                relative, "/", "tracked config/document format is not parsed by this scanner"
+                relative, "/", "tracked file format is not parsed and lacks an exact exclusion",
+                {"suffix": path.suffix.lower()},
             )
             continue
         scanned_hashes.append({"path": relative, "sha256": sha256_file(path)})
 
+    missing_exclusions = sorted(set(exclusions) - seen_exclusions)
+    if missing_exclusions:
+        raise ValueError(
+            "tracked_repository.explicit_exclusions contains missing or untracked paths: "
+            + ", ".join(missing_exclusions)
+        )
+
     output_root = root / str(scope["outputs"]["root"])
     if not output_root.exists():
         findings.add_unparseable(
-            str(scope["outputs"]["root"]), "/", "declared mounted output root does not exist"
+            str(scope["outputs"]["root"]), "/", "declared mounted output root does not exist",
+            {"root": str(scope["outputs"]["root"])},
         )
     else:
         rules = scope["outputs"]
@@ -401,10 +530,15 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
             counts[f"output:{kind}"] = counts.get(f"output:{kind}", 0) + 1
             if kind == "excluded":
                 continue
+            # Even a selected file that is too large to parse must have a
+            # stable source identity so a later reviewed disposition can bind
+            # the exact bytes instead of an unresolvable path-only finding.
+            source_hashes[relative] = sha256_file(path)
             if record["bytes"] > max_bytes:
                 findings.add_unparseable(
                     relative, "/",
                     f"selected source exceeds max_scanned_file_bytes={max_bytes}",
+                    {"bytes": record["bytes"], "max_scanned_file_bytes": max_bytes},
                 )
                 continue
             if kind == "csv_probe":
@@ -420,7 +554,9 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
                 scan_json_lines(path, relative, findings)
             elif kind == "text":
                 scan_text(path, relative, findings)
-            scanned_hashes.append({"path": relative, "sha256": sha256_file(path)})
+            scanned_hashes.append({"path": relative, "sha256": source_hashes[relative]})
+
+    findings.bind_source_hashes(source_hashes)
 
     inventory_digest = canonical_sha256(inventory)
     scanned_digest = canonical_sha256(scanned_hashes)
@@ -435,8 +571,41 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
     }
 
 
-def load_scope(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _validate_external_evidence(
+        values: object, *, label: str, root: Path | None) -> None:
+    if not isinstance(values, list):
+        raise ValueError(f"{label} must be a list")
+    seen: set[str] = set()
+    required = {"path", "sha256", "description"}
+    for index, evidence in enumerate(values):
+        item_label = f"{label}[{index}]"
+        if not isinstance(evidence, Mapping) or set(evidence) != required:
+            raise ValueError(
+                f"{item_label} requires exactly path, sha256, and description"
+            )
+        source = _validate_exact_source(evidence["path"], f"{item_label}.path")
+        if source in seen:
+            raise ValueError(f"duplicate external evidence path: {source}")
+        seen.add(source)
+        if not SHA256.fullmatch(str(evidence["sha256"])):
+            raise ValueError(f"{item_label}.sha256 must be a lowercase SHA-256")
+        if not str(evidence["description"]).strip():
+            raise ValueError(f"{item_label}.description is required")
+        if root is not None:
+            resolved_root = root.resolve()
+            evidence_path = (resolved_root / source).resolve()
+            if not evidence_path.is_relative_to(resolved_root) or not evidence_path.is_file():
+                raise ValueError(f"external evidence file is missing: {source}")
+            actual = sha256_file(evidence_path)
+            if actual != evidence["sha256"]:
+                raise ValueError(
+                    f"external evidence hash is stale: {source} expected "
+                    f"{evidence['sha256']} but found {actual}"
+                )
+
+
+def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
+    payload = strict_json_load(path)
     if payload.get("schema") != SCOPE_SCHEMA:
         raise ValueError(f"scope schema must be {SCOPE_SCHEMA!r}")
     if payload.get("owner_scope", {}).get("status") not in {"UNRESOLVED", "APPROVED"}:
@@ -447,23 +616,385 @@ def load_scope(path: Path) -> dict[str, Any]:
         for field in ("approved_by", "approved_utc", "scope_statement"):
             if not str(payload["owner_scope"].get(field, "")).strip():
                 raise ValueError(f"approved owner scope requires owner_scope.{field}")
+        if not valid_utc_timestamp(payload["owner_scope"]["approved_utc"]):
+            raise ValueError("owner_scope.approved_utc must be an ISO-8601 UTC timestamp")
     if payload["source_coverage"]["status"] == "COMPLETE" and \
             payload["source_coverage"].get("exclusions_reviewed") is not True:
         raise ValueError("COMPLETE source coverage requires exclusions_reviewed=true")
+    tracked = payload.get("tracked_repository", {})
+    if not isinstance(tracked.get("pathspecs"), list) or not tracked["pathspecs"]:
+        raise ValueError("tracked_repository.pathspecs must be a non-empty list")
+    for pathspec in tracked["pathspecs"]:
+        text = str(pathspec)
+        if (not text or Path(text).is_absolute() or ".." in Path(text).parts
+                or WILDCARD.search(text) or text.startswith(":")):
+            raise ValueError(
+                "tracked_repository.pathspecs must be explicit repository-relative paths"
+            )
+    exclusions = tracked.get("explicit_exclusions", [])
+    if not isinstance(exclusions, list):
+        raise ValueError("tracked_repository.explicit_exclusions must be a list")
+    exclusion_paths: set[str] = set()
+    for item in exclusions:
+        required = {"path", "sha256", "reason", "coverage_status"}
+        if not isinstance(item, Mapping) or set(item) != required:
+            raise ValueError(
+                "each tracked exclusion requires exactly path, sha256, reason, coverage_status"
+            )
+        source = str(item["path"])
+        if (not source or Path(source).is_absolute() or ".." in Path(source).parts
+                or WILDCARD.search(source)):
+            raise ValueError("tracked exclusions must use exact repository-relative paths")
+        if source in exclusion_paths:
+            raise ValueError(f"duplicate tracked exclusion: {source}")
+        exclusion_paths.add(source)
+        if not SHA256.fullmatch(str(item["sha256"])):
+            raise ValueError(f"tracked exclusion has invalid SHA-256: {source}")
+        if item["coverage_status"] not in {"UNRESOLVED", "REVIEWED_NON_SEED"}:
+            raise ValueError(f"invalid tracked exclusion coverage_status: {source}")
+        if not str(item["reason"]).strip():
+            raise ValueError(f"tracked exclusion requires a reason: {source}")
+    locations = payload.get("external_execution_locations")
+    required_locations = {
+        "REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD"
+    }
+    if not isinstance(locations, list) or len(locations) != len(required_locations) or {
+            str(item.get("kind")) for item in locations if isinstance(item, Mapping)
+    } != required_locations:
+        raise ValueError(
+            "external_execution_locations must contain exactly REMOTE_HPC, CLOUD, "
+            "DELETED_LOCAL, and COLLABORATOR_HELD"
+        )
+    for item in locations:
+        if set(item) != {
+            "kind", "status", "coverage_decision", "evidence", "reviewer", "reviewed_utc"
+        }:
+            raise ValueError("external execution location records have an invalid shape")
+        if item["status"] not in {"UNRESOLVED", "COVERED", "REVIEWED_NONE"}:
+            raise ValueError(f"invalid external location status for {item['kind']}")
+        if not str(item["coverage_decision"]).strip():
+            raise ValueError(f"external location {item['kind']} requires a coverage decision")
+        _validate_external_evidence(
+            item["evidence"],
+            label=f"external location {item['kind']} evidence",
+            root=root,
+        )
+        if item["status"] != "UNRESOLVED":
+            if not item["evidence"]:
+                raise ValueError(
+                    f"resolved external location {item['kind']} requires at least one "
+                    "hash-bound evidence file"
+                )
+            if not str(item["reviewer"] or "").strip() or not valid_utc_timestamp(
+                    item["reviewed_utc"]):
+                raise ValueError(
+                    f"resolved external location {item['kind']} requires reviewer and UTC time"
+                )
+        elif item["reviewer"] is not None or item["reviewed_utc"] is not None:
+            raise ValueError(
+                f"unresolved external location {item['kind']} cannot imply completed review"
+            )
+    if payload["source_coverage"]["status"] == "COMPLETE":
+        if any(item["coverage_status"] != "REVIEWED_NON_SEED" for item in exclusions):
+            raise ValueError("COMPLETE source coverage requires every exclusion to be reviewed")
+        if any(item["status"] == "UNRESOLVED" for item in locations):
+            raise ValueError(
+                "COMPLETE source coverage cannot retain unresolved external locations"
+            )
+    outputs = payload.get("outputs")
+    if not isinstance(outputs, Mapping):
+        raise ValueError("outputs must be an object")
+    output_root = str(outputs.get("root", ""))
+    if (not output_root or Path(output_root).is_absolute()
+            or ".." in Path(output_root).parts or WILDCARD.search(output_root)):
+        raise ValueError("outputs.root must be an exact repository-relative path")
+    for field in ("json_basename_globs", "json_lines_basename_globs", "text_extensions"):
+        if (not isinstance(outputs.get(field), list)
+                or any(not isinstance(value, str) or not value
+                       for value in outputs[field])):
+            raise ValueError(f"outputs.{field} must be a list of non-empty strings")
+    max_bytes = outputs.get("max_scanned_file_bytes")
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
+        raise ValueError("outputs.max_scanned_file_bytes must be a positive integer")
     return payload
+
+
+def _require_exact_keys(value: Mapping[str, Any], required: set[str], label: str) -> None:
+    if set(value) != required:
+        missing = sorted(required - set(value))
+        extra = sorted(set(value) - required)
+        raise ValueError(f"{label} fields are invalid; missing={missing}, extra={extra}")
+
+
+def _validate_review_fields(item: Mapping[str, Any], label: str) -> None:
+    if not str(item.get("reviewer", "")).strip():
+        raise ValueError(f"{label}.reviewer is required")
+    if not valid_utc_timestamp(item.get("reviewed_utc")):
+        raise ValueError(f"{label}.reviewed_utc must be an ISO-8601 UTC timestamp")
+    if not str(item.get("rationale", "")).strip():
+        raise ValueError(f"{label}.rationale is required")
+
+
+def _validate_exact_source(source: object, label: str) -> str:
+    text = str(source)
+    if (not text or Path(text).is_absolute() or ".." in Path(text).parts
+            or WILDCARD.search(text)):
+        raise ValueError(f"{label} must be an exact repository-relative path without wildcards")
+    return text
+
+
+def _validate_rng_payload(item: Mapping[str, Any], label: str,
+                          *, mapping: bool = False) -> None:
+    classification = item.get("classification")
+    if classification not in CLASSIFICATIONS:
+        raise ValueError(f"{label}.classification must be RNG or NON_RNG")
+    role = item.get("rng_role")
+    values = item.get("rng_integers_by_finding") if mapping else item.get("rng_integers")
+    if classification == "NON_RNG":
+        if role is not None or values not in ({}, []):
+            raise ValueError(f"{label} NON_RNG decisions cannot carry RNG data")
+        return
+    if role not in RNG_ROLES:
+        raise ValueError(f"{label}.rng_role is invalid")
+    if mapping:
+        if not isinstance(values, Mapping) or not values:
+            raise ValueError(f"{label} RNG rule requires rng_integers_by_finding")
+        groups = values.values()
+    else:
+        if not isinstance(values, list) or not values:
+            raise ValueError(f"{label} RNG decision requires rng_integers")
+        groups = (values,)
+    for group in groups:
+        if (not isinstance(group, list) or not group
+                or any(isinstance(value, bool) or not isinstance(value, int)
+                       for value in group)
+                or len(group) != len(set(group))):
+            raise ValueError(f"{label} RNG integers must be non-empty unique integer lists")
+
+
+def load_resolutions(path: Path, *, scope_sha256: str) -> dict[str, Any]:
+    payload = strict_json_load(path)
+    _require_exact_keys(
+        payload,
+        {"schema", "status", "scope_manifest_sha256", "exact_resolutions",
+         "reviewed_rules", "limitations"},
+        "resolution document",
+    )
+    if payload.get("schema") != RESOLUTION_SCHEMA:
+        raise ValueError(f"resolution schema must be {RESOLUTION_SCHEMA!r}")
+    if payload.get("status") not in {"INCOMPLETE", "REVIEWED"}:
+        raise ValueError("resolution status must be INCOMPLETE or REVIEWED")
+    if payload.get("scope_manifest_sha256") != scope_sha256:
+        raise ValueError("resolution document is stale: scope manifest SHA-256 differs")
+    if not isinstance(payload["exact_resolutions"], list):
+        raise ValueError("exact_resolutions must be a list")
+    if not isinstance(payload["reviewed_rules"], list):
+        raise ValueError("reviewed_rules must be a list")
+    if not isinstance(payload["limitations"], list):
+        raise ValueError("resolution limitations must be a list")
+
+    exact_keys: set[tuple[Any, ...]] = set()
+    exact_required = {
+        "finding_kind", "source", "location", "source_sha256", "value_sha256",
+        "classification", "rng_role", "rng_integers", "reviewer", "reviewed_utc",
+        "rationale",
+    }
+    for index, item in enumerate(payload["exact_resolutions"]):
+        label = f"exact_resolutions[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{label} must be an object")
+        _require_exact_keys(item, exact_required, label)
+        if item["finding_kind"] not in FINDING_KINDS:
+            raise ValueError(f"{label}.finding_kind is invalid")
+        source = _validate_exact_source(item["source"], f"{label}.source")
+        if not str(item["location"]):
+            raise ValueError(f"{label}.location is required")
+        for field in ("source_sha256", "value_sha256"):
+            if not SHA256.fullmatch(str(item[field])):
+                raise ValueError(f"{label}.{field} must be a lowercase SHA-256")
+        _validate_review_fields(item, label)
+        _validate_rng_payload(item, label)
+        key = (item["finding_kind"], source, item["location"],
+               item["source_sha256"], item["value_sha256"])
+        if key in exact_keys:
+            raise ValueError(f"duplicate exact resolution at {source}#{item['location']}")
+        exact_keys.add(key)
+
+    rule_ids: set[str] = set()
+    rule_required = {
+        "rule_id", "finding_kind", "source", "source_sha256", "selector",
+        "expected_match_count", "expected_matches_sha256", "classification",
+        "rng_role", "rng_integers_by_finding", "reviewer", "reviewed_utc",
+        "rationale",
+    }
+    for index, item in enumerate(payload["reviewed_rules"]):
+        label = f"reviewed_rules[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{label} must be an object")
+        _require_exact_keys(item, rule_required, label)
+        rule_id = str(item["rule_id"])
+        if not rule_id or WILDCARD.search(rule_id) or rule_id in rule_ids:
+            raise ValueError(f"{label}.rule_id is empty, duplicated, or wildcarded")
+        rule_ids.add(rule_id)
+        if item["finding_kind"] not in FINDING_KINDS:
+            raise ValueError(f"{label}.finding_kind is invalid")
+        _validate_exact_source(item["source"], f"{label}.source")
+        if not SHA256.fullmatch(str(item["source_sha256"])):
+            raise ValueError(f"{label}.source_sha256 must be a lowercase SHA-256")
+        if (isinstance(item["expected_match_count"], bool)
+                or not isinstance(item["expected_match_count"], int)
+                or item["expected_match_count"] < 1):
+            raise ValueError(f"{label}.expected_match_count must be a positive integer")
+        if not SHA256.fullmatch(str(item["expected_matches_sha256"])):
+            raise ValueError(f"{label}.expected_matches_sha256 must be a lowercase SHA-256")
+        selector = item["selector"]
+        if not isinstance(selector, Mapping):
+            raise ValueError(f"{label}.selector must be an object")
+        selector_type = selector.get("type")
+        if selector_type == "line_range":
+            _require_exact_keys(selector, {"type", "start_line", "end_line"},
+                                f"{label}.selector")
+            start, end = selector["start_line"], selector["end_line"]
+            if (isinstance(start, bool) or isinstance(end, bool)
+                    or not isinstance(start, int) or not isinstance(end, int)
+                    or start < 1 or end < start or end - start + 1 > 1000):
+                raise ValueError(f"{label} line_range must span 1..1000 positive lines")
+        elif selector_type == "json_pointer_subtree":
+            _require_exact_keys(selector, {"type", "prefix", "leaf_keys"},
+                                f"{label}.selector")
+            prefix = str(selector["prefix"])
+            leaves = selector["leaf_keys"]
+            if (not prefix.startswith("/") or prefix == "/" or WILDCARD.search(prefix)
+                    or not isinstance(leaves, list) or not leaves or len(leaves) > 50
+                    or any(not str(leaf) or "/" in str(leaf) or WILDCARD.search(str(leaf))
+                           for leaf in leaves)
+                    or len(leaves) != len(set(map(str, leaves)))):
+                raise ValueError(f"{label} json_pointer_subtree selector is overbroad")
+        elif selector_type == "csv_column":
+            _require_exact_keys(selector, {"type", "column"}, f"{label}.selector")
+            column = str(selector["column"])
+            if not column or "/" in column or WILDCARD.search(column):
+                raise ValueError(f"{label} csv_column selector is invalid")
+        else:
+            raise ValueError(f"{label}.selector.type is invalid")
+        _validate_review_fields(item, label)
+        _validate_rng_payload(item, label, mapping=True)
+    return payload
+
+
+def _rule_matches(row: Mapping[str, Any], selector: Mapping[str, Any]) -> bool:
+    location = str(row["location"])
+    if selector["type"] == "line_range":
+        match = re.fullmatch(r"line:(\d+)", location)
+        return bool(match and selector["start_line"] <= int(match.group(1))
+                    <= selector["end_line"])
+    if selector["type"] == "json_pointer_subtree":
+        prefix = str(selector["prefix"]).rstrip("/")
+        if not (location == prefix or location.startswith(prefix + "/")):
+            return False
+        leaf = location.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+        return leaf in set(map(str, selector["leaf_keys"]))
+    column = str(selector["column"])
+    return location == f"column:{column}" or location.endswith(f"/{column}")
+
+
+def apply_resolutions(findings: Findings, payload: Mapping[str, Any] | None) -> dict[str, Any]:
+    if payload is None:
+        return {
+            "status": "NOT_SUPPLIED", "resolved_rng": 0, "resolved_non_rng": 0,
+            "unresolved": len(findings.records), "payload_sha256": None,
+        }
+    claimed: set[str] = set()
+    resolved_rng = 0
+    resolved_non_rng = 0
+
+    for item in payload["exact_resolutions"]:
+        matches = [row for row in findings.records if (
+            row["kind"] == item["finding_kind"]
+            and row["source"] == item["source"]
+            and row["location"] == item["location"]
+            and row["source_sha256"] == item["source_sha256"]
+            and row["value_sha256"] == item["value_sha256"]
+        )]
+        if len(matches) != 1:
+            raise ValueError(
+                "exact resolution is stale or missing: "
+                f"{item['source']}#{item['location']} matched {len(matches)} findings"
+            )
+        row = matches[0]
+        finding_id = str(row["finding_id"])
+        if finding_id in claimed:
+            raise ValueError(f"finding resolved more than once: {finding_id}")
+        claimed.add(finding_id)
+        row["resolved"] = True
+        if item["classification"] == "RNG":
+            for seed in item["rng_integers"]:
+                findings.add_seed(seed, item["rng_role"], row["source"], row["location"])
+            resolved_rng += 1
+        else:
+            resolved_non_rng += 1
+
+    for rule in payload["reviewed_rules"]:
+        matches = [row for row in findings.records if (
+            row["kind"] == rule["finding_kind"]
+            and row["source"] == rule["source"]
+            and row["source_sha256"] == rule["source_sha256"]
+            and _rule_matches(row, rule["selector"])
+        )]
+        ids = sorted(str(row["finding_id"]) for row in matches)
+        if (len(matches) != rule["expected_match_count"]
+                or canonical_sha256(ids) != rule["expected_matches_sha256"]):
+            raise ValueError(
+                f"reviewed rule {rule['rule_id']!r} is stale, missing, or overbroad; "
+                f"matched {len(matches)} findings"
+            )
+        if any(finding_id in claimed for finding_id in ids):
+            raise ValueError(f"reviewed rule {rule['rule_id']!r} overlaps another resolution")
+        claimed.update(ids)
+        rng_map = rule["rng_integers_by_finding"]
+        if rule["classification"] == "RNG" and set(rng_map) != set(ids):
+            raise ValueError(
+                f"reviewed RNG rule {rule['rule_id']!r} must map every exact finding id"
+            )
+        for row in matches:
+            row["resolved"] = True
+            if rule["classification"] == "RNG":
+                for seed in rng_map[str(row["finding_id"])]:
+                    findings.add_seed(seed, rule["rng_role"], row["source"], row["location"])
+                resolved_rng += 1
+            else:
+                resolved_non_rng += 1
+
+    return {
+        "status": payload["status"],
+        "resolved_rng": resolved_rng,
+        "resolved_non_rng": resolved_non_rng,
+        "unresolved": len(findings.records) - len(claimed),
+        "payload_sha256": canonical_sha256(payload),
+    }
 
 
 def load_candidate_blocks(path: Path | None) -> dict[str, Any] | None:
     if path is None:
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = strict_json_load(path)
+    _require_exact_keys(
+        payload,
+        {"schema", "discovery", "confirmation", "proposal_rng"},
+        "candidate seed blocks",
+    )
     if payload.get("schema") != CANDIDATE_SCHEMA:
         raise ValueError(f"candidate seed schema must be {CANDIDATE_SCHEMA!r}")
-    discovery, rejected_d = _parse_integer_values(payload.get("discovery"))
-    confirmation, rejected_c = _parse_integer_values(payload.get("confirmation"))
-    proposal, rejected_p = _parse_integer_values(payload.get("proposal_rng"))
-    if rejected_d or rejected_c or rejected_p or len(proposal) != 1:
-        raise ValueError("candidate blocks must contain explicit integer lists and one proposal_rng")
+    discovery = payload["discovery"]
+    confirmation = payload["confirmation"]
+    proposal = payload["proposal_rng"]
+    for field, values in (("discovery", discovery), ("confirmation", confirmation)):
+        if (not isinstance(values, list)
+                or any(isinstance(value, bool) or not isinstance(value, int)
+                       for value in values)):
+            raise ValueError(f"candidate {field} must be an explicit integer array")
+    if isinstance(proposal, bool) or not isinstance(proposal, int):
+        raise ValueError("candidate proposal_rng must be one explicit integer")
     if not discovery or not confirmation:
         raise ValueError("candidate discovery and confirmation blocks must be non-empty")
     if len(discovery) != len(set(discovery)) or len(confirmation) != len(set(confirmation)):
@@ -471,18 +1002,25 @@ def load_candidate_blocks(path: Path | None) -> dict[str, Any] | None:
     return {
         "discovery": discovery,
         "confirmation": confirmation,
-        "proposal_rng": proposal[0],
+        "proposal_rng": proposal,
         "sha256": canonical_sha256(payload),
+        "file_sha256": sha256_file(path),
     }
 
 
 def build_audit(root: Path, scope_path: Path,
                 candidate_path: Path | None = None, *,
                 plan_path: Path | None = None,
+                resolution_path: Path | None = None,
                 generated_utc: str | None = None) -> dict[str, Any]:
-    scope = load_scope(scope_path)
+    scope = load_scope(scope_path, root=root)
     candidates = load_candidate_blocks(candidate_path)
     findings, inventory = scan_scope(root, scope)
+    resolution_payload = (
+        load_resolutions(resolution_path, scope_sha256=sha256_file(scope_path))
+        if resolution_path is not None else None
+    )
+    resolution_summary = apply_resolutions(findings, resolution_payload)
     parsed = findings.render_parsed()
     prior = {row["seed"] for row in parsed}
 
@@ -491,13 +1029,27 @@ def build_audit(root: Path, scope_path: Path,
         unresolved.append("owner has not approved the complete seed-source scope")
     if scope["source_coverage"]["status"] != "COMPLETE":
         unresolved.append("source coverage remains declared UNRESOLVED")
-    if findings.ambiguous_total:
+    for item in scope["tracked_repository"].get("explicit_exclusions", ()):
+        if item["coverage_status"] != "REVIEWED_NON_SEED":
+            unresolved.append(f"tracked exclusion remains unresolved: {item['path']}")
+    for item in scope.get("external_execution_locations", ()):
+        if item["status"] == "UNRESOLVED":
+            unresolved.append(
+                f"external seed-source coverage remains unresolved: {item['kind']}"
+            )
+    if resolution_summary["status"] == "NOT_SUPPLIED":
+        unresolved.append("reviewed seed-finding resolution document was not supplied")
+    elif resolution_summary["status"] != "REVIEWED":
+        unresolved.append("seed-finding resolution document remains INCOMPLETE")
+    ambiguous_unresolved = findings.unresolved("ambiguous")
+    unparseable_unresolved = findings.unresolved("unparseable")
+    if ambiguous_unresolved:
         unresolved.append(
-            f"{findings.ambiguous_total} ambiguous seed-like references require review"
+            f"{len(ambiguous_unresolved)} ambiguous seed-like references require review"
         )
-    if findings.unparseable_total:
+    if unparseable_unresolved:
         unresolved.append(
-            f"{findings.unparseable_total} selected or tracked references were unparseable"
+            f"{len(unparseable_unresolved)} selected or tracked references were unparseable"
         )
     if inventory["excluded_output_files"] and not (
             scope["source_coverage"]["status"] == "COMPLETE" and
@@ -507,16 +1059,28 @@ def build_audit(root: Path, scope_path: Path,
             "content-scanned under the declared rules"
         )
 
+    candidate_relative = None
+    if candidate_path is not None:
+        candidate_relative = (
+            candidate_path.relative_to(root).as_posix()
+            if root.resolve() == ROOT.resolve() and candidate_path.is_relative_to(root)
+            else str(candidate_path)
+        )
     candidate_summary: dict[str, Any]
     overlap_rows: list[dict[str, Any]] = []
     if candidates is None:
-        candidate_summary = {"status": "NOT_SUPPLIED", "discovery": [],
-                             "confirmation": [], "proposal_rng": None, "sha256": None}
+        candidate_summary = {
+            "status": "NOT_SUPPLIED", "path": None, "file_sha256": None,
+            "discovery": [], "confirmation": [], "proposal_rng": None,
+            "sha256": None,
+        }
         disjointness = {"status": "NOT_EVALUATED", "reason":
                         "candidate discovery, confirmation and proposal blocks were not supplied"}
         unresolved.append("candidate seed blocks were not supplied; disjointness is not evaluated")
     else:
-        candidate_summary = {"status": "SUPPLIED", **candidates}
+        candidate_summary = {
+            "status": "SUPPLIED", "path": candidate_relative, **candidates,
+        }
         discovery = set(candidates["discovery"])
         confirmation = set(candidates["confirmation"])
         proposal = {candidates["proposal_rng"]}
@@ -577,6 +1141,13 @@ def build_audit(root: Path, scope_path: Path,
         if root.resolve() == ROOT.resolve() and scope_path.is_relative_to(root)
         else str(scope_path)
     )
+    resolution_relative = None
+    if resolution_path is not None:
+        resolution_relative = (
+            resolution_path.relative_to(root).as_posix()
+            if root.resolve() == ROOT.resolve() and resolution_path.is_relative_to(root)
+            else str(resolution_path)
+        )
     artifact = {
         "schema": SCHEMA,
         "status": "FINAL" if passed else "INCOMPLETE",
@@ -586,7 +1157,8 @@ def build_audit(root: Path, scope_path: Path,
         "generated_utc": generated_utc,
         "command": (
             f"python tools/audit_robust_nroy_seeds.py --scope {scope_relative}"
-            + (f" --candidate-blocks {candidate_path.name}" if candidate_path else "")
+            + (f" --resolutions {resolution_relative}" if resolution_relative else "")
+            + (f" --candidate-blocks {candidate_relative}" if candidate_relative else "")
             + (f" --plan {plan_path}" if plan_path else "")
             + (f" --generated-utc {generated_utc}" if generated_utc else "")
         ),
@@ -599,19 +1171,33 @@ def build_audit(root: Path, scope_path: Path,
             "source_coverage_status": scope["source_coverage"]["status"],
         },
         "source_inventory": inventory,
+        "finding_resolutions": {
+            "path": resolution_relative,
+            "file_sha256": sha256_file(resolution_path)
+            if resolution_path is not None else None,
+            **resolution_summary,
+        },
         "parsed_prior_seeds": parsed,
         "parsed_prior_seed_count": len(parsed),
         "ambiguous_references": {
-            "count": findings.ambiguous_total,
-            "examples": findings.ambiguous_examples,
-            "examples_truncated": max(0, findings.ambiguous_total -
-                                      len(findings.ambiguous_examples)),
+            "detected_count": findings.ambiguous_total,
+            "count": len(ambiguous_unresolved),
+            "resolved_count": findings.ambiguous_total - len(ambiguous_unresolved),
+            "examples": findings.render_examples(
+                ambiguous_unresolved, findings.example_limit
+            ),
+            "examples_truncated": max(0, len(ambiguous_unresolved) -
+                                      findings.example_limit),
         },
         "unparseable_references": {
-            "count": findings.unparseable_total,
-            "examples": findings.unparseable_examples,
-            "examples_truncated": max(0, findings.unparseable_total -
-                                      len(findings.unparseable_examples)),
+            "detected_count": findings.unparseable_total,
+            "count": len(unparseable_unresolved),
+            "resolved_count": findings.unparseable_total - len(unparseable_unresolved),
+            "examples": findings.render_examples(
+                unparseable_unresolved, findings.example_limit
+            ),
+            "examples_truncated": max(0, len(unparseable_unresolved) -
+                                      findings.example_limit),
         },
         "candidate_blocks": candidate_summary,
         "disjointness": disjointness,
@@ -626,6 +1212,10 @@ def build_audit(root: Path, scope_path: Path,
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scope", required=True, type=Path)
+    parser.add_argument(
+        "--resolutions", type=Path,
+        help="reviewed, scope-hash-bound classifications for ambiguous findings",
+    )
     parser.add_argument("--candidate-blocks", type=Path)
     parser.add_argument(
         "--plan", type=Path,
@@ -651,6 +1241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.scope.resolve(),
             args.candidate_blocks.resolve() if args.candidate_blocks else None,
             plan_path=args.plan.resolve() if args.plan else None,
+            resolution_path=args.resolutions.resolve() if args.resolutions else None,
             generated_utc=args.generated_utc,
         )
     except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:

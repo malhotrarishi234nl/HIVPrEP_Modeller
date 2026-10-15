@@ -859,6 +859,13 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
     }
     paths["priced_budget"].write_text(json.dumps(priced))
 
+    external_review = tmp_path / "seed_external_location_review.json"
+    external_review.write_text(json.dumps({"review": "isolated verification fixture"}))
+    external_evidence = [{
+        "path": external_review.name,
+        "sha256": ccs.sha256_file(external_review),
+        "description": "Hash-bound external-location review fixture.",
+    }]
     scope = tmp_path / "seed_scope.json"
     scope.write_text(json.dumps({
         "schema": seed_audit_tool.SCOPE_SCHEMA,
@@ -869,7 +876,49 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
             "scope_statement": "Every verification source is covered.",
         },
         "source_coverage": {"status": "COMPLETE", "exclusions_reviewed": True},
+        "tracked_repository": {
+            "pathspecs": ["."],
+            "text_extensions": [".json", ".md", ".py", ".txt"],
+            "explicit_exclusions": [],
+        },
+        "external_execution_locations": [
+            {
+                "kind": kind,
+                "status": "REVIEWED_NONE",
+                "coverage_decision": "No additional source exists in this fixture.",
+                "evidence": external_evidence,
+                "reviewer": "verification owner",
+                "reviewed_utc": "2026-10-15T00:00:00Z",
+            }
+            for kind in ("REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD")
+        ],
+        "outputs": {
+            "root": "outputs",
+            "json_basename_globs": ["*manifest*.json"],
+            "json_lines_basename_globs": ["*results*.jsonl"],
+            "text_extensions": [".md"],
+            "max_scanned_file_bytes": 1024 * 1024,
+        },
+        "limitations": [],
     }))
+    resolutions = tmp_path / "seed_finding_resolutions.json"
+    resolutions_payload = {
+        "schema": seed_audit_tool.RESOLUTION_SCHEMA,
+        "status": "REVIEWED",
+        "scope_manifest_sha256": ccs.sha256_file(scope),
+        "exact_resolutions": [],
+        "reviewed_rules": [],
+        "limitations": [],
+    }
+    resolutions.write_text(json.dumps(resolutions_payload))
+    candidate_source = tmp_path / "candidate_seed_blocks.json"
+    candidate_payload = {
+        "schema": seed_audit_tool.CANDIDATE_SCHEMA,
+        "discovery": list(plan.seeds.discovery),
+        "confirmation": list(plan.seeds.confirmation),
+        "proposal_rng": plan.seeds.proposal_rng,
+    }
+    candidate_source.write_text(json.dumps(candidate_payload))
     empty_checks = {
         key: [] for key in (
             "discovery_vs_confirmation", "proposal_vs_discovery",
@@ -878,7 +927,7 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         )
     }
     seed_audit = {
-        "schema": "robust_nroy_seed_audit/1.0.0",
+        "schema": seed_audit_tool.SCHEMA,
         "status": "FINAL",
         "production_eligible": True,
         "deterministic": True,
@@ -900,21 +949,27 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
             "scanned_files": 1,
             "excluded_output_files": 0,
         },
+        "finding_resolutions": {
+            "path": str(resolutions),
+            "file_sha256": ccs.sha256_file(resolutions),
+            "status": "REVIEWED",
+            "resolved_rng": 0,
+            "resolved_non_rng": 0,
+            "unresolved": 0,
+            "payload_sha256": seed_audit_tool.canonical_sha256(resolutions_payload),
+        },
         "parsed_prior_seeds": [],
         "parsed_prior_seed_count": 0,
-        "ambiguous_references": {"count": 0, "examples": [], "examples_truncated": 0},
-        "unparseable_references": {"count": 0, "examples": [], "examples_truncated": 0},
+        "ambiguous_references": {"detected_count": 0, "count": 0, "resolved_count": 0, "examples": [], "examples_truncated": 0},
+        "unparseable_references": {"detected_count": 0, "count": 0, "resolved_count": 0, "examples": [], "examples_truncated": 0},
         "candidate_blocks": {
             "status": "SUPPLIED",
+            "path": str(candidate_source),
+            "file_sha256": ccs.sha256_file(candidate_source),
             "discovery": list(plan.seeds.discovery),
             "confirmation": list(plan.seeds.confirmation),
             "proposal_rng": plan.seeds.proposal_rng,
-            "sha256": seed_audit_tool.canonical_sha256({
-                "schema": seed_audit_tool.CANDIDATE_SCHEMA,
-                "discovery": list(plan.seeds.discovery),
-                "confirmation": list(plan.seeds.confirmation),
-                "proposal_rng": plan.seeds.proposal_rng,
-            }),
+            "sha256": seed_audit_tool.canonical_sha256(candidate_payload),
         },
         "disjointness": {"status": "PROVEN", "checks": empty_checks, "reason": None},
         "overlaps": [],
@@ -935,6 +990,75 @@ def test_production_readiness_reconciles_every_evidence_template(tmp_path):
         if not problem.startswith("the production M1 config route failed:")
     ]
     assert evidence_problems == []
+
+
+def _reseal_seed_audit(path: Path, payload: dict) -> None:
+    payload.pop("artifact_sha256", None)
+    payload["artifact_sha256"] = seed_audit_tool.canonical_sha256(payload)
+    path.write_text(json.dumps(payload))
+
+
+def test_production_readiness_strictly_rejects_duplicate_seed_audit_keys(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    audit_path = paths["seed_disjointness_audit"]
+    original = audit_path.read_text()
+    audit_path.write_text('{"schema":"forged-duplicate",' + original.lstrip()[1:])
+
+    assert any(
+        "duplicate JSON object key" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_production_readiness_strictly_rejects_nonfinite_seed_audit_json(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    audit_path = paths["seed_disjointness_audit"]
+    original = audit_path.read_text()
+    audit_path.write_text('{"nonfinite":NaN,' + original.lstrip()[1:])
+
+    assert any(
+        "non-finite JSON numeric literal is forbidden" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_record", "duplicate_field", "expected_problem"),
+    (
+        ("scope_manifest", '"schema":"forged-duplicate",',
+         "scope manifest is invalid"),
+        ("finding_resolutions", '"status":"forged-duplicate",',
+         "resolution document is invalid"),
+        ("candidate_blocks", '"proposal_rng":999999,',
+         "candidate-block file is invalid"),
+    ),
+)
+def test_production_readiness_strictly_reloads_raw_seed_evidence(
+        tmp_path, source_record, duplicate_field, expected_problem):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    audit_path = paths["seed_disjointness_audit"]
+    audit = json.loads(audit_path.read_text())
+    record = audit[source_record]
+    source_path = Path(record["path"])
+    original = source_path.read_text()
+    source_path.write_text("{" + duplicate_field + original.lstrip()[1:])
+
+    if source_record == "scope_manifest":
+        record["sha256"] = ccs.sha256_file(source_path)
+    else:
+        record["file_sha256"] = ccs.sha256_file(source_path)
+    _reseal_seed_audit(audit_path, audit)
+
+    assert any(
+        expected_problem in problem and "duplicate JSON object key" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
 
 
 @pytest.mark.parametrize(
@@ -1354,6 +1478,13 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
     prior = tmp_path / "prior_seed_source.json"
     prior.write_text(json.dumps({"seeds": {"simulation_seeds": [1, 2, 3]}}))
     (tmp_path / "outputs").mkdir()
+    external_review = tmp_path / "seed_external_location_review.json"
+    external_review.write_text(json.dumps({"review": "isolated verification fixture"}))
+    external_evidence = [{
+        "path": external_review.name,
+        "sha256": ccs.sha256_file(external_review),
+        "description": "Hash-bound external-location review fixture.",
+    }]
     scope = tmp_path / "approved_seed_scope.json"
     scope.write_text(json.dumps({
         "schema": seed_audit_tool.SCOPE_SCHEMA,
@@ -1364,7 +1495,22 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
             "scope_statement": "Every test seed source is covered.",
         },
         "source_coverage": {"status": "COMPLETE", "exclusions_reviewed": True},
-        "tracked_repository": {"pathspecs": ["prior_seed_source.json"]},
+        "tracked_repository": {
+            "pathspecs": ["prior_seed_source.json"],
+            "text_extensions": [".md", ".py", ".txt"],
+            "explicit_exclusions": [],
+        },
+        "external_execution_locations": [
+            {
+                "kind": kind,
+                "status": "COVERED",
+                "coverage_decision": "Covered by the isolated verification fixture.",
+                "evidence": external_evidence,
+                "reviewer": "verification owner",
+                "reviewed_utc": "2026-10-15T00:00:00Z",
+            }
+            for kind in ("REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD")
+        ],
         "outputs": {
             "root": "outputs",
             "json_basename_globs": ["*manifest*.json"],
@@ -1383,6 +1529,15 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
         "confirmation": list(plan.seeds.confirmation),
         "proposal_rng": plan.seeds.proposal_rng,
     }))
+    resolutions = tmp_path / "reviewed_seed_resolutions.json"
+    resolutions.write_text(json.dumps({
+        "schema": seed_audit_tool.RESOLUTION_SCHEMA,
+        "status": "REVIEWED",
+        "scope_manifest_sha256": ccs.sha256_file(scope),
+        "exact_resolutions": [],
+        "reviewed_rules": [],
+        "limitations": [],
+    }))
     monkeypatch.setattr(
         seed_audit_tool, "git_tracked_paths", lambda _root, _pathspecs: [prior]
     )
@@ -1391,6 +1546,7 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
         scope,
         candidate_blocks,
         plan_path=plan_path,
+        resolution_path=resolutions,
         generated_utc="2026-10-15T00:00:00Z",
     )
     assert generated["status"] == "FINAL"
@@ -1406,6 +1562,7 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
         scope,
         mismatched_path,
         plan_path=plan_path,
+        resolution_path=resolutions,
         generated_utc="2026-10-15T00:00:00Z",
     )
     assert mismatched["status"] == "INCOMPLETE"

@@ -185,11 +185,16 @@ artifact fails if its formula, source inputs, stage coverage, plan caps, row
 totals or workflow totals differ from recomputation. The separate identity, positive-p anchor,
 pilot itself and downstream policy/PSA costs are not hidden inside these six
 robust-NROY stage rows and must be costed under their own authorization where
-applicable. The seed audit now has
-a read-only deterministic inventory tool, a proposed source-scope manifest, and
-an explicit incomplete artifact. It cannot pass until the owner approves the
-complete source scope, every ambiguity is resolved, and candidate discovery,
-confirmation, and proposal blocks are supplied. See
+applicable.
+
+The seed audit now has
+a read-only deterministic v1.1 inventory tool, a proposed all-tracked-file
+source-scope manifest, and a strict hash-bound reviewed-resolution contract.
+The committed v1.0 mounted-output artifact remains historical until v1.1 is
+regenerated where that private output tree is present. The gate cannot pass
+until the owner approves the complete source scope, every ambiguity has an
+exact reviewed RNG/NON_RNG disposition, and candidate discovery, confirmation,
+and proposal blocks are supplied. See
 `SEED_AUDIT_SCOPE_AND_GAPS.md`.
 
 ## Exact remaining approvals

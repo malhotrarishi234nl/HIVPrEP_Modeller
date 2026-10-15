@@ -91,6 +91,7 @@ import nroy_identity_gate as nig
 import nroy_report as nrp
 import stage_structured_diagnosis as ssd
 from coupled_calibration_search import ContractError
+from tools import audit_robust_nroy_seeds as seed_audit_tool
 
 ROOT = Path(__file__).resolve().parent
 
@@ -1005,12 +1006,11 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         if path is None:
             continue
         try:
-            payload = (
-                _load_strict_json(path)
-                if key in {"measured_pilot", "priced_budget"}
-                else json.loads(path.read_text())
-            )
-        except (OSError, json.JSONDecodeError, ContractError) as exc:
+            if key in {"measured_pilot", "priced_budget"}:
+                payload = _load_strict_json(path)
+            else:
+                payload = seed_audit_tool.strict_json_load(path)
+        except (OSError, json.JSONDecodeError, ContractError, ValueError) as exc:
             problems.append(f"production prerequisite {key!r} is not strict JSON: {exc}")
             continue
         if not isinstance(payload, Mapping):
@@ -1019,7 +1019,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         required_schema = {
             "measured_pilot": MEASURED_PILOT_SCHEMA,
             "priced_budget": PRICED_BUDGET_SCHEMA,
-            "seed_disjointness_audit": "robust_nroy_seed_audit/1.0.0",
+            "seed_disjointness_audit": "robust_nroy_seed_audit/1.1.0",
         }[key]
         if str(payload.get("schema", "")) != required_schema:
             problems.append(
@@ -1071,12 +1071,22 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 problems.append("the seed-disjointness audit scope-manifest hash is stale")
             else:
                 try:
-                    scope_payload = json.loads(scope_path.read_text())
-                except (OSError, json.JSONDecodeError):
+                    scope_root = (
+                        ROOT if scope_path.resolve().is_relative_to(ROOT.resolve())
+                        else scope_path.parent
+                    )
+                    scope_payload = seed_audit_tool.load_scope(
+                        scope_path, root=scope_root
+                    )
+                except (OSError, json.JSONDecodeError, ValueError) as exc:
                     scope_payload = None
+                    problems.append(
+                        "the seed-disjointness scope manifest is invalid: "
+                        f"{exc}"
+                    )
                 if not isinstance(scope_payload, Mapping) or scope_payload.get(
                     "schema"
-                ) != "robust_nroy_seed_source_scope/1.0.0":
+                ) != "robust_nroy_seed_source_scope/1.1.0":
                     problems.append("the seed-disjointness scope manifest has no current schema")
                 else:
                     owner_scope = scope_payload.get("owner_scope")
@@ -1099,6 +1109,44 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 problems.append("the seed-disjointness audit scope is not owner-approved")
             if scope.get("source_coverage_status") != "COMPLETE":
                 problems.append("the seed-disjointness audit source coverage is incomplete")
+        resolutions = audit.get("finding_resolutions")
+        if not isinstance(resolutions, Mapping):
+            problems.append("the seed-disjointness audit has no finding_resolutions")
+        else:
+            resolution_path = _evidence_path(resolutions.get("path"))
+            if resolution_path is None or not resolution_path.is_file():
+                problems.append("the seed-disjointness resolution document is missing")
+            elif str(resolutions.get("file_sha256", "")) != ccs.sha256_file(
+                    resolution_path):
+                problems.append("the seed-disjointness resolution-file hash is stale")
+            else:
+                try:
+                    scope_record = audit.get("scope_manifest")
+                    scope_sha256 = (
+                        str(scope_record.get("sha256", ""))
+                        if isinstance(scope_record, Mapping) else ""
+                    )
+                    resolution_payload = seed_audit_tool.load_resolutions(
+                        resolution_path,
+                        scope_sha256=scope_sha256,
+                    )
+                except (OSError, json.JSONDecodeError, ValueError) as exc:
+                    problems.append(
+                        "the seed-disjointness resolution document is invalid: "
+                        f"{exc}"
+                    )
+                else:
+                    if resolutions.get("payload_sha256") != \
+                            seed_audit_tool.canonical_sha256(resolution_payload):
+                        problems.append(
+                            "the seed-disjointness resolution payload hash is stale"
+                        )
+            if resolutions.get("status") != "REVIEWED":
+                problems.append("the seed-disjointness resolutions are not reviewed")
+            if resolutions.get("unresolved") != 0:
+                problems.append("the seed-disjointness resolutions leave findings unresolved")
+            if not _is_sha256(resolutions.get("payload_sha256")):
+                problems.append("the seed-disjointness resolution payload hash is invalid")
         inventory = audit.get("source_inventory")
         if not isinstance(inventory, Mapping):
             problems.append("the seed-disjointness audit has no source inventory")
@@ -1157,6 +1205,27 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         else:
             if candidate_blocks.get("status") != "SUPPLIED":
                 problems.append("the seed-disjointness audit candidate blocks are not supplied")
+            candidate_path = _evidence_path(candidate_blocks.get("path"))
+            if candidate_path is None or not candidate_path.is_file():
+                problems.append("the seed-disjointness candidate-block file is missing")
+            elif str(candidate_blocks.get("file_sha256", "")) != ccs.sha256_file(
+                    candidate_path):
+                problems.append("the seed-disjointness candidate-block file hash is stale")
+            else:
+                try:
+                    candidate_payload = seed_audit_tool.load_candidate_blocks(candidate_path)
+                except (OSError, json.JSONDecodeError, ValueError) as exc:
+                    problems.append(
+                        "the seed-disjointness candidate-block file is invalid: "
+                        f"{exc}"
+                    )
+                else:
+                    for field in ("discovery", "confirmation", "proposal_rng", "sha256"):
+                        if candidate_blocks.get(field) != candidate_payload.get(field):
+                            problems.append(
+                                "the seed-disjointness candidate-block provenance is stale"
+                            )
+                            break
             try:
                 discovery = tuple(int(seed) for seed in candidate_blocks.get("discovery", ()))
                 confirmation = tuple(

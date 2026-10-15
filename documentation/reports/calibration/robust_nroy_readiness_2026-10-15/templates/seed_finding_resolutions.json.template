@@ -1,0 +1,13 @@
+{
+  "schema": "robust_nroy_seed_finding_resolutions/1.0.0",
+  "status": "INCOMPLETE",
+  "scope_manifest_sha256": "d56a2e9ea3ea93b47ff991392b43f7d4e8bc2b1ce22846f7b44d1a22f19d3143",
+  "exact_resolutions": [],
+  "reviewed_rules": [],
+  "limitations": [
+    "INCOMPLETE TEMPLATE ONLY. No finding has been classified and this document cannot close the seed gate.",
+    "Copy a finding's exact kind, source, location, source_sha256 and value_sha256 from a freshly generated audit. Do not infer or edit those bindings.",
+    "RNG decisions must state the exact integer or integers and role; NON_RNG decisions must carry null rng_role and no RNG integers.",
+    "Reviewed rules may use only the bounded selector types in the schema and must bind the exact matched finding count and canonical matched-ID SHA-256."
+  ]
+}
