@@ -104,7 +104,7 @@ bindings and cannot pass the production validator as stored.
 
 ## Exact remaining approvals
 
-1. Assign owners and decide/sign the 42 register rows.
+1. Rishi Malhotra reviews and signs the 42 owner-assigned register rows.
 2. Review and approve the prepared minimal stochastic M0/M1 config derivative;
    code-route tests do not replace the identity gate or scientific review.
 3. Choose whether a full preserved backlog edition should be restored as

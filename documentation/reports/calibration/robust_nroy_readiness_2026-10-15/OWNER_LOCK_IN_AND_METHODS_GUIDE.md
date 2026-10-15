@@ -9,7 +9,8 @@ production plan or an authorization to run the scientific engine.
 All scientific, methods, provenance, compute, and final-approval decisions are
 owned by the thesis owner, Rishi Malhotra. Named reviewer roles in the decision
 register describe the kind of review required; they do not imply that another
-person owns the work.
+person owns the work. The decision register records Rishi Malhotra as owner of
+all 42 rows; every row remains unsigned until it is reviewed on its merits.
 
 ## Design principle
 
