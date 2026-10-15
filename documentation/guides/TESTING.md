@@ -49,6 +49,9 @@ counts and the tested Git commit or bundle hash.
 
 Purpose: verify target/workbook loaders, raw-data schemas, and literature pins.
 It requires the exact mounted files from `data/external_inputs.json`.
+The robust-NROY acceptance-input checks specifically require both the exact
+`DiseaseData.xlsx` workbook and the hash-pinned ignored
+`candidate_newest_vetted_20260916.json`; mounting only one is incomplete.
 
 Absence of an external input is an environment/setup result, not evidence that
 the corresponding scientific test passed.

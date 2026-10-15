@@ -977,11 +977,17 @@ def _load_analysis_run_sheet(
         raise OperatorConfigError(
             "analysis run sheet output_directory must be an absolute path"
         )
+    canonical_authorized_path = authorized_path.resolve()
+    if authorized_path != canonical_authorized_path:
+        raise OperatorConfigError(
+            "analysis run sheet output_directory must be canonical and must not "
+            "contain symlink or '..' aliases"
+        )
     requested_path = Path(output_dir).resolve()
-    if authorized_path.resolve() != requested_path:
+    if canonical_authorized_path != requested_path:
         raise OperatorConfigError(
             "analysis run sheet output_directory does not match --output-dir "
-            f"({authorized_path.resolve()} != {requested_path})"
+            f"({canonical_authorized_path} != {requested_path})"
         )
 
     for field in ("scientific_approved_by", "dispatch_authorized_by"):
@@ -1059,7 +1065,15 @@ def write_reproducibility_bundle(
     effective_bytes = _json_bytes(dict(effective_config))
 
     output_path = Path(output_dir)
+    if output_path != output_path.resolve():
+        raise OperatorConfigError(
+            "internal output directory must be the canonical authorized path"
+        )
     output_path.mkdir(parents=True, exist_ok=True)
+    if output_path != output_path.resolve():
+        raise OperatorConfigError(
+            "output directory acquired a symlink alias before provenance was written"
+        )
     effective_path = output_path / EFFECTIVE_CONFIG_FILENAME
     run_sheet_snapshot_path = output_path / RUN_SHEET_SNAPSHOT_FILENAME
     manifest_path = output_path / RUN_MANIFEST_FILENAME
@@ -1287,9 +1301,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         args.seed = _validate_seed(args.seed, required=not args.validate_only)
         base, input_config_sha256 = _load_shared_config_and_hash(args.config)
+        output_path = (
+            None if args.output_dir is None else Path(args.output_dir).resolve()
+        )
         runtime = config_for_model(
             base, model=args.model,
-            aids_symptom_annual_probability=args.p, output_dir=args.output_dir,
+            aids_symptom_annual_probability=args.p, output_dir=output_path,
         )
         # Re-check the shaped config through ConfigReader.  M0 deliberately has
         # no optional block; M1 must remain enabled after translation.
@@ -1309,7 +1326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise OperatorConfigError(
                 "--output-dir is required for a run so results are not silently discarded"
             )
-        output_path = Path(args.output_dir)
+        assert output_path is not None
         if output_path.exists() and not output_path.is_dir():
             raise OperatorConfigError(f"output path is not a directory: {output_path}")
         if output_path.is_dir() and any(output_path.iterdir()):
@@ -1377,7 +1394,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         engine = SimulationEngineV3(runtime, seed=args.seed)
         engine.run(run_number=1)
-        scientific_output = _verify_protected_scientific_output(args.output_dir)
+        scientific_output = _verify_protected_scientific_output(output_path)
     except Exception as exc:
         finalize_run_manifest(
             manifest_path, status="FAILED", failure_type=type(exc).__name__
@@ -1390,7 +1407,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         manifest_path, status="COMPLETE", scientific_output=scientific_output
     )
     print(
-        f"COMPLETE: {args.model} results written to {args.output_dir}; "
+        f"COMPLETE: {args.model} results written to {output_path}; "
         f"reproducibility manifest: {manifest_path}"
     )
     return 0

@@ -57,7 +57,7 @@ Collaborator edits are limited to the numeric paths and closed intervals in
 `configs/collaborator_parameter_contract.json`; production approval must bind
 that file's exact SHA-256, the scientific source aggregate, and the exact
 operator-requirements file. Each approved analysis run sheet authorizes exactly
-one model, `p` value, uint32 seed, and absolute output destination. A separate
+one model, `p` value, uint32 seed, and canonical absolute output destination. A separate
 sheet is required for every additional invocation; this runner does not claim
 to enforce cross-model pairing or an analysis-wide replication design.
 

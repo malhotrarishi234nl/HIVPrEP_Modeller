@@ -159,7 +159,7 @@ completed sheet with the reviewed analysis record, for example as
 `operator_configs/my_analysis_run_sheet.json`. It binds the exact analysis
 config, collaborator parameter contract, scientific source aggregate, operator
 requirements, M0/M1 choice, exact M1 `p` (or `null` for M0), exactly one uint32
-seed, and the exact absolute output directory. It also requires a named,
+seed, and the exact canonical absolute output directory. It also requires a named,
 timezone-stamped
 scientific approval and a separate named, timezone-stamped dispatch
 authorization. These are separate records even if governance permits one
@@ -281,11 +281,13 @@ reviewed commit/bundle and supply a separately approved analysis run sheet.
 Reviewers must reconcile the run manifest's config and Git hashes to that
 release. Neither the block alone nor possession of a runnable copy proves
 scientific acceptance or dispatch authorization. The separate run sheet is
-mandatory for every actual invocation; its sole seed must equal `--seed`, and
-its absolute output destination must resolve to the same path as
-`--output-dir`. Because that directory must initially be empty and the runner
-writes its sealed sheet and manifest before engine import, the same dispatch
-cannot be replayed into that destination.
+mandatory for every actual invocation; its sole seed must equal `--seed`. The
+sheet must use the canonical absolute output path—a symlink or `..` spelling is
+rejected—while a relative CLI path is resolved once to that same destination
+and the canonical path is then used for validation, provenance, engine output,
+and final verification. Because that directory must initially be empty and the
+runner writes its sealed sheet and manifest before engine import, the same
+dispatch cannot be replayed into that destination.
 
 ## Editable and protected inputs
 

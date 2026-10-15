@@ -59,9 +59,10 @@
 - `MODEL_OPERATOR_GUIDE.md`: parameter-focused, no-Python-edit commands for
   explicit standalone M0/M1 validation and execution, with protected fields.
 - `COLLABORATOR_ANALYSIS_RUN_SHEET.json.template`: deliberately incomplete
-  typed authorization record binding one reviewed config, model, p/null, seed
-  set, scientific code, operator requirements, scientific approval, and the
-  later dispatch authorization. Actual runs seal a byte-exact copy.
+  typed authorization record binding one reviewed config, model, p/null,
+  single uint32 seed, canonical absolute output destination, scientific code,
+  operator requirements, scientific approval, and the later dispatch
+  authorization. Actual runs seal a byte-exact copy.
 
 ## Acceptance-input provenance
 

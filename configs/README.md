@@ -99,16 +99,17 @@ effective-config snapshot plus a reproducibility manifest in the new output
 directory. The approval binds the exact editable contract, scientific source
 aggregate, and operator requirements; binding the contract means the approver
 reviewed the whole listed parameter domain. The run sheet binds the exact
-analysis config, M0/M1 choice, M1 `p`/M0 `null`, and complete seed list, with a
-separate dispatch record. A collaborator cannot promote a copied config by
-adding or editing either approval artifact.
+analysis config, M0/M1 choice, M1 `p`/M0 `null`, one uint32 seed, and one
+canonical absolute output destination, with a separate dispatch record. One
+sheet authorizes one invocation. A collaborator cannot promote a copied config
+by adding or editing either approval artifact.
 
 After a maintainer promotes the canonical config, discard any copy made before
 promotion. Make a fresh copy of the approved canonical, reapply only the
-reviewed parameter diff, and validate again. Use only the seed list and number
-of trajectories declared by the approved analysis run sheet; the CLI accepts
-integer seeds in `[0, 4294967295]` and each trajectory needs a new output
-directory.
+reviewed parameter diff, and validate again. Use only the single seed and
+canonical output destination declared by that invocation's approved analysis
+run sheet; the CLI accepts integer seeds in `[0, 4294967295]`. Every additional
+trajectory requires a separately approved sheet and a new output directory.
 
 `run_model.py` structurally validates the M1 symptom probability as a
 mathematical probability in `[0,1]`. That does not approve the entire interval

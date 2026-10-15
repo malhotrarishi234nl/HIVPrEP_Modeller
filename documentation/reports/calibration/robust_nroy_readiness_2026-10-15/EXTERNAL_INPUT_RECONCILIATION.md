@@ -8,6 +8,7 @@ was copied over a current source.
 | `Validation /HIV Data UNAIDS/ZIP Files/netherlands_estimates_2025.csv` | `../data/raw/validation/HIV Data UNAIDS/ZIP Files/netherlands_estimates_2025.csv` | `e5104b6f89c47d65687e42bcf00c2f33d0503f7b22ac0ee869bcb96d6a8e5c56` | Available elsewhere; intentionally external/raw | `calib_data_loader.default_unaids_path` now follows the sibling-data contract documented in `.gitignore`. |
 | `Validation /HMD_NL_Pop.txt` | `../data/raw/validation/HMD_NL_Pop.txt` | `17461a86c04bdebcb0ffbb1a1ea58fb1fee6044bf1425ed54ac902199f517c18` | Available elsewhere; intentionally external/raw | Default loader and diagnostic paths now use the canonical sibling store. |
 | `Validation /Migration_Net.csv` | `../data/raw/validation/Migration_Net.csv` | `4caff391be60aec230f6131a3c0716825fbdd5cbabc7b3a59c52f10811d4636a` | Available elsewhere; intentionally external/raw | Default loader and demographic-audit paths now use the canonical sibling store. |
+| target-register retained candidate | `outputs/calibration/rivm_aids_vintage_audit_20260916/candidate_newest_vetted_20260916.json` | `16be90cb791f02e5e69f4d7836ee1f0c0ffa8dff9d57c28d8b494a6923e12f03` (52,967 bytes) | Available in the ignored artifact mount; intentionally absent from a source-only clone | Declared in `data/external_inputs.json`. Acceptance-input and placeholder-readiness tests run only when this exact dependency and `DiseaseData.xlsx` are both mounted; absence yields an explicit external-data skip, never a pass. |
 | root `1980_test.json` | `configs/1980_test.json` | `936dc7d1a50cc4107884715f62a0b83ee5af33afc925f1234387358658b9c1fe` | Available in repository; tracked at intended moved location | Current runner defaults and tests now use `configs/1980_test.json`. Archive copies differ and were not restored. |
 | `documentation/BACKLOG.md` | Three preserved copies outside current Git history | See `documentation/BACKLOG.md` | Available externally, but authoritative edition unresolved; not recoverable from this repository's Git history | Added a provenance pointer containing the verified `BACKLOG-25` entry. Selecting/restoring a full edition remains a documentation-owner decision. |
 | diagnosis-triangulation pinned PDFs | `../literature/` (11 exact pinned files) | Existing per-file pins in `run_diagnosis_triangulation_orchestration.py` all pass | Available elsewhere; intentionally external literature library | No code change. The isolated clone was given read-only access to the canonical sibling root; module result: 46 passed. |
@@ -28,6 +29,11 @@ In a `git clone --no-hardlinks` snapshot with the current dirty source overlaid:
 
 The skips are the no-engine guard doing its job; no production or identity
 trajectory ran.
+
+The current target-register lane has two separate external prerequisites:
+`../data/raw/validation/DiseaseData.xlsx` and the ignored retained candidate
+listed above. Mount and hash-check both for the external-data lane. A
+source-only clone intentionally carries neither and reports explicit skips.
 
 The final guarded repository-wide result with all canonical sibling inputs
 available was `2589 passed, 29 failed, 284 skipped` with no errors. The 29

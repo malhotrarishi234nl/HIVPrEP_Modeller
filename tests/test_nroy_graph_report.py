@@ -36,8 +36,16 @@ from coupled_calibration_search import ContractError  # noqa: E402
 from tools import audit_robust_nroy_seeds as seed_audit_tool  # noqa: E402
 
 EXTERNAL_WORKBOOK = (ROOT / "../data/raw/validation/DiseaseData.xlsx").resolve()
-EXTERNAL_WORKBOOK_REASON = (
-    "external-data lane requires ../data/raw/validation/DiseaseData.xlsx"
+EXTERNAL_TARGET_CANDIDATE = ROOT / (
+    "outputs/calibration/rivm_aids_vintage_audit_20260916/"
+    "candidate_newest_vetted_20260916.json"
+)
+EXTERNAL_ACCEPTANCE_INPUTS_PRESENT = (
+    EXTERNAL_WORKBOOK.is_file() and EXTERNAL_TARGET_CANDIDATE.is_file()
+)
+EXTERNAL_ACCEPTANCE_INPUTS_REASON = (
+    "external-data lane requires DiseaseData.xlsx and the hash-pinned "
+    "candidate_newest_vetted_20260916.json"
 )
 
 #: The only bridge pass rule the implementation provides; the plan signs it and
@@ -1645,7 +1653,10 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
     assert evidence_problems == []
 
 
-@pytest.mark.skipif(not EXTERNAL_WORKBOOK.is_file(), reason=EXTERNAL_WORKBOOK_REASON)
+@pytest.mark.skipif(
+    not EXTERNAL_ACCEPTANCE_INPUTS_PRESENT,
+    reason=EXTERNAL_ACCEPTANCE_INPUTS_REASON,
+)
 def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evidence(
     tmp_path, capsys,
 ):

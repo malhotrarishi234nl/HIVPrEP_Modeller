@@ -655,6 +655,38 @@ def test_analysis_run_sheet_binds_one_exact_output_destination(tmp_path):
         )
 
 
+def test_analysis_run_sheet_rejects_a_symlink_spelling_for_output(tmp_path):
+    authorized = tmp_path / "authorized-output"
+    authorized.mkdir()
+    alias = tmp_path / "output-alias"
+    alias.symlink_to(authorized, target_is_directory=True)
+    sheet = _write_run_sheet(
+        tmp_path, config_path=SHARED, output_dir=authorized
+    )
+    payload = json.loads(sheet.read_text())
+    payload["output_directory"] = str(alias.absolute())
+    sheet.write_text(json.dumps(payload))
+    bindings = run_model.production_approval_binding_values()
+    with pytest.raises(
+        run_model.OperatorConfigError,
+        match="must be canonical and must not contain symlink",
+    ):
+        run_model._load_analysis_run_sheet(
+            sheet,
+            input_config_sha256=hashlib.sha256(SHARED.read_bytes()).hexdigest(),
+            parameter_contract_sha256=bindings[
+                "collaborator_parameter_contract_sha256"
+            ],
+            scientific_files_sha256=bindings["scientific_files_sha256"],
+            requirements_operator_sha256=bindings["requirements_operator_sha256"],
+            model="M0",
+            p=None,
+            seed=42001,
+            output_dir=authorized,
+            production_approved_utc="2026-10-15T09:00:00Z",
+        )
+
+
 def test_operator_copy_may_change_a_bounded_contract_parameter(tmp_path, capsys):
     config = json.loads(SHARED.read_text())
     config["transmission_model"]["disease"]["transmission"]["advanced"][
@@ -907,6 +939,57 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     ]["value"] == 0.6
     assert effective["production_approval"] == _production_approval()
     assert "reproducibility manifest" in capsys.readouterr().out
+
+
+def test_output_symlink_retarget_cannot_divert_an_authorized_run(
+    tmp_path, monkeypatch,
+):
+    authorized = tmp_path / "authorized-real-output"
+    diverted = tmp_path / "diverted-output"
+    authorized.mkdir()
+    diverted.mkdir()
+    alias = tmp_path / "operator-output-alias"
+    alias.symlink_to(authorized, target_is_directory=True)
+
+    approved = _write_approved_canonical(tmp_path)
+    monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
+    run_sheet = _write_run_sheet(
+        tmp_path, config_path=approved, model="M0", seeds=[42004],
+        output_dir=authorized,
+    )
+    original_load_sheet = run_model._load_analysis_run_sheet
+
+    def load_then_retarget(*args, **kwargs):
+        result = original_load_sheet(*args, **kwargs)
+        alias.unlink()
+        alias.symlink_to(diverted, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(run_model, "_load_analysis_run_sheet", load_then_retarget)
+
+    class FakeEngine:
+        def __init__(self, config, seed):
+            self.output_dir = Path(config["output"]["directory"]["value"])
+
+        def run(self, run_number):
+            (self.output_dir / run_model.PROTECTED_SCIENTIFIC_OUTPUT).write_text(
+                "year,new_infections\n1980,1\n"
+            )
+
+    monkeypatch.setitem(
+        sys.modules, "run_v3", types.SimpleNamespace(SimulationEngineV3=FakeEngine)
+    )
+    _allow_test_runtime(monkeypatch)
+    times = iter(("2026-10-15T10:00:00+00:00", "2026-10-15T10:01:00+00:00"))
+    monkeypatch.setattr(run_model, "_utc_now", lambda: next(times))
+
+    assert run_model.main([
+        "--config", str(approved), "--model", "M0", "--seed", "42004",
+        "--output-dir", str(alias), "--run-sheet", str(run_sheet),
+    ]) == 0
+    assert (authorized / run_model.RUN_MANIFEST_FILENAME).is_file()
+    assert (authorized / run_model.PROTECTED_SCIENTIFIC_OUTPUT).is_file()
+    assert list(diverted.iterdir()) == []
 
 
 def test_fake_engine_return_without_scientific_output_marks_manifest_failed(
