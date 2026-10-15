@@ -2218,13 +2218,13 @@ def command_prepare(args: argparse.Namespace) -> int:
         # local assessment the graph was built from.
         ne.atomic_write_frame(out / "local_support.csv", parent_support)
         eligible = sum(1 for value in nas.node_eligibility(nodes).values() if value)
-        extra = {
+        extra.update({
             "n_nodes": len(nodes),
             "n_eligible_nodes": eligible,
             "n_candidate_edges": len(edges),
             "n_minimal_edges": len(minimal),
             "bridge_fractions": list(plan.bridge_fractions()),
-        }
+        })
         print(f"  graph: {len(nodes)} node(s), {eligible} eligible, "
               f"{len(edges)} proposed edge(s), {len(minimal)} in the minimal set")
     else:

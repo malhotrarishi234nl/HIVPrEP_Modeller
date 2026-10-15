@@ -635,6 +635,103 @@ def test_bridges_use_the_reserved_confirmation_seed_block(tmp_path):
     assert not set(units["seed"].astype(int)) & set(harness.plan.seeds.discovery)
 
 
+def test_m1_bridges_preserve_prerequisite_lineage_through_evaluate_preflight(
+    tmp_path,
+):
+    """The bridges graph metadata may not erase the sealed M1 gate identity."""
+    harness = Harness(tmp_path, model=nc.MODEL_M1)
+    parent = tmp_path / "minimal_m1_confirmation_parent"
+    parent.mkdir()
+    acceptance = runner._freeze_acceptance_package(
+        parent, runner._validate_declared_acceptance_package(harness.plan)
+    )
+    prerequisites = harness.plan.get("production_prerequisites")
+    gate_source = Path(prerequisites["identity_gate"])
+    gate_path = parent / runner.nig.GATE_FILENAME
+    gate_path.write_bytes(gate_source.read_bytes())
+    gate = json.loads(gate_path.read_text())
+    gate_sha = ccs.sha256_file(gate_path)
+
+    anchors = ne.read_frame_exact(harness.anchors)
+    anchors["vector_hash"] = [
+        nc.vector_hash(
+            {name: float(row[name]) for name in harness.space.names},
+            names=harness.space.names,
+        )
+        for _, row in anchors.iterrows()
+    ]
+    ne.atomic_write_frame(parent / "anchors.csv", anchors)
+    ne.atomic_write_frame(parent / "local_support.csv", pd.DataFrame([
+        {
+            "candidate_id": str(row["candidate_id"]),
+            "endpoint_confirmed": True,
+            "local_support_label": nc.LABEL_BROADLY_SUPPORTED,
+            "eligible_for_representation": True,
+        }
+        for _, row in anchors.iterrows()
+    ]))
+    parent_ledger = ne.Ledger(
+        stage=nc.STAGE_CONFIRMATION, model=nc.MODEL_M1, units=()
+    )
+    parent_ledger.save(parent)
+    ne.write_stage_manifest(
+        parent,
+        stage=nc.STAGE_CONFIRMATION,
+        model=nc.MODEL_M1,
+        status=nc.STATUS_COMPLETE,
+        ledger=parent_ledger,
+        contract=harness.plan.manifest_contract(),
+        parent_manifest=None,
+        extra={
+            "acceptance_input_identity": acceptance[
+                "acceptance_input_identity"
+            ],
+            "acceptance_package_identity": acceptance,
+            "identity_gate_source": str(gate_source),
+            "identity_gate_source_sha256": gate_sha,
+            "identity_gate_sha256": gate_sha,
+            "identity_gate_schema": gate["schema"],
+        },
+    )
+    harness.dirs[nc.STAGE_CONFIRMATION] = parent
+    bridges = harness.prepare(nc.STAGE_BRIDGES, parent=nc.STAGE_CONFIRMATION)
+
+    lineage_fields = (
+        "identity_gate_source",
+        "identity_gate_source_sha256",
+        "identity_gate_sha256",
+        "identity_gate_schema",
+    )
+    manifests = {
+        nc.STAGE_CONFIRMATION: json.loads((parent / "manifest.json").read_text()),
+        nc.STAGE_BRIDGES: json.loads((bridges / "manifest.json").read_text()),
+    }
+    parent_lineage = {
+        field: manifests[nc.STAGE_CONFIRMATION]["extra"][field]
+        for field in lineage_fields
+    }
+    assert {
+        field: manifests[nc.STAGE_BRIDGES]["extra"][field]
+        for field in lineage_fields
+    } == parent_lineage
+    assert (
+        manifests[nc.STAGE_BRIDGES]["extra"]["acceptance_package_identity"]
+        == manifests[nc.STAGE_CONFIRMATION]["extra"][
+            "acceptance_package_identity"
+        ]
+    )
+
+    # A sparse shard still executes the complete immutable-artifact,
+    # acceptance-package, identity-gate and M1 prerequisite preflight. Before
+    # the fix, bridges failed here because graph metadata assignment deleted
+    # the identity-gate manifest fields.
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path),
+        "--stage-dir", str(bridges), "--shard", "9999", "--of", "10000",
+        "--evaluator", "surrogate",
+    ]) == 0
+
+
 # ==========================================================================
 # Regions: verdicts, components, representatives
 # ==========================================================================
