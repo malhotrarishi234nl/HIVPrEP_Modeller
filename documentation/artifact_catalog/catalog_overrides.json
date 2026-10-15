@@ -1,0 +1,257 @@
+{
+  "schema_version": "artifact_catalog_overrides/1.0.0",
+  "overrides": {
+    "outputs/calibration/_superseded": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The directory is explicitly designated _superseded and contains the pre-freeze revision of the current diagnosis-triangulation package.",
+      "evidence_source": "outputs/calibration/_superseded/diagnosis_triangulation_orchestration_20260922__prefreeze_rev0",
+      "superseded_by": "outputs/calibration/diagnosis_triangulation_orchestration_20260922"
+    },
+    "outputs/calibration/a18_remedy_probes_20260912_210713": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play explicitly identifies this attempt as superseded and says not to cite it.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a18_remedy_probes_20260912_211631"
+    },
+    "outputs/calibration/a20_process_decomposition_analysis_20260912_231601": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_INCOMPLETE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play identifies this as an incomplete chart attempt and says not to cite it.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a20_process_decomposition_analysis_20260912_231933"
+    },
+    "outputs/calibration/a20_process_decomposition_analysis_20260912_231650": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_INCOMPLETE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play identifies this as an incomplete chart attempt and says not to cite it.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a20_process_decomposition_analysis_20260912_231933"
+    },
+    "outputs/calibration/a22_background_mortality_grouping_20260913_224437": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play explicitly identifies this directory as superseded.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a22_background_mortality_grouping_20260913_225630"
+    },
+    "outputs/calibration/a5a_epidemiological_seed_variability_20260910_161500": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_PRE_CRN",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play says the 2026-09-10 runs are pre-CRN and directs readers to use the 2026-09-11 run.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a5a_epidemiological_seed_variability_20260911_042330"
+    },
+    "outputs/calibration/a5a_epidemiological_seed_variability_20260910_162000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_PRE_CRN",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play says the 2026-09-10 runs are pre-CRN and directs readers to use the 2026-09-11 run.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a5a_epidemiological_seed_variability_20260911_042330"
+    },
+    "outputs/calibration/art_interpolation_shape_audit_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this artifact inherits a stale module map and cannot support current-code geometry claims.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/coupled_20260918_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "Its top-level manifest explicitly records stage=prepare and status=PREPARED.",
+      "evidence_source": "outputs/calibration/coupled_20260918_prepared/manifest.json"
+    },
+    "outputs/calibration/coupled_forecast_windows_20260921_confirmation": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this confirmation inherits a stale search lineage and cannot establish current anchors.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/coupled_forecast_windows_20260921_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "Its top-level manifest explicitly records stage=prepare and status=PREPARED.",
+      "evidence_source": "outputs/calibration/coupled_forecast_windows_20260921_prepared/manifest.json"
+    },
+    "outputs/calibration/coupled_forecast_windows_20260921_search": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves a stale six-module map; this cannot be loaded as a current search or parent.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/coupled_unordered_orientation_20260921_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "Its top-level manifest explicitly records stage=prepare and status=PREPARED.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_20260921_prepared/manifest.json"
+    },
+    "outputs/calibration/coupled_unordered_orientation_activity_20260921_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "Its top-level manifest explicitly records stage=prepare and status=PREPARED.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_activity_20260921_prepared/manifest.json"
+    },
+    "outputs/calibration/forecast_readiness_confirmation_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this artifact inherits the stale forecast-search lineage.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/historical_transmission_prepared_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this preparation inherits a stale five-module lineage; historical retention takes precedence over its PREPARED_NOT_RUN manifest status.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/hm_focused_diagnoses_then_aids_20260916": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves a stale five-module map; this cannot be treated as a current history-matching source.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/hm_joint_fit_comparison_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this comparison inherits the stale focused history-matching lineage.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/msm_beta_response_audit_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this artifact inherits a stale module map and cannot support current-code response claims.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/post2015_stock_flow_decomposition_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this artifact inherits a stale module map and current interpretation is refused.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/post2019_diagnosis_disruption_audit_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this artifact inherits a stale module map and cannot support current-code diagnosis claims.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/recent_mechanism_audit_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this mechanism audit inherits a stale module map.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/temporal_diagnosis_shape_audit_20260921": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The readiness audit proves this temporal audit inherits a stale module map and cannot support current-code temporal claims.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/hta_results/a16_stochastic_headline_20260911_030204": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_INCOMPLETE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The project state-of-play explicitly calls this a superseded incomplete attempt and says not to cite it.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a16_stochastic_headline_20260911_030744"
+    },
+    "outputs/suites/conference_overnight_20260929_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The directory contains preparation scripts and a plan, not run results.",
+      "evidence_source": "outputs/suites/conference_overnight_20260929_prepared/overnight_plan.json"
+    },
+    "outputs/suites/conference_overnight_h4d_20260929_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The conference guide identifies this as a prepared launch package; it contains scripts and a plan, not run results.",
+      "evidence_source": "documentation/guides/CONFERENCE_OVERNIGHT_SUITE.md"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration and setup script select revision 6; this earlier planned revision is retained only as design history.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;tools/setup_overnight_vm.sh",
+      "superseded_by": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev1": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration and setup script select revision 6; this earlier planned revision is retained only as design history.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;tools/setup_overnight_vm.sh",
+      "superseded_by": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev2": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration and setup script select revision 6; this earlier planned revision is retained only as design history.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;tools/setup_overnight_vm.sh",
+      "superseded_by": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev3": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration and setup script select revision 6; this earlier planned revision is retained only as design history.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;tools/setup_overnight_vm.sh",
+      "superseded_by": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev4": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration and setup script select revision 6; this earlier planned revision is retained only as design history.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;tools/setup_overnight_vm.sh",
+      "superseded_by": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev5": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DESIGN_HISTORY_ONLY",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration and setup script select revision 6; this earlier planned revision is retained only as design history.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;tools/setup_overnight_vm.sh",
+      "superseded_by": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    },
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The current conference configuration selects revision 6, but every row in its run ledger is PLANNED rather than executed.",
+      "evidence_source": "configs/suites/conference_overnight_20260929.json;outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6/run_ledger.csv"
+    },
+    "outputs/suites/prep_policy_suite_20260929_prepared": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "DESIGN_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The directory is a tested policy-preparation package containing plans/configs, not scientific run results.",
+      "evidence_source": "tests/test_overnight_matrix_harness.py;outputs/suites/prep_policy_suite_20260929_prepared/plan.json"
+    }
+  }
+}
