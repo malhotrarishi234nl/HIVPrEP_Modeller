@@ -4,6 +4,8 @@
 
 - Production-readiness status and evidence:
   `reports/calibration/robust_nroy_readiness_2026-10-15/README.md`
+- Requirement-by-requirement completion evidence and exact open conditions:
+  `reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_READINESS_CLOSURE_MATRIX.md`
 - Production-backbone evidence and the selected Option B 1980 recalibration direction:
   `reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md`
 - Ordered launch gates:
