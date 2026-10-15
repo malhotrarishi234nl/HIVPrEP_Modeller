@@ -78,6 +78,7 @@ def _acceptance_inputs(tmp_path: Path, *, confirming: bool) -> tuple[Path, Path]
     the positive paths are genuinely driven.  ``confirming=False`` keeps the
     everything-fails case, which is what the negative labels need.
     """
+    tmp_path.mkdir(parents=True, exist_ok=True)
     if confirming:
         observed = {name: 105.0 for name in TARGETS}
         base_variance = {name: 10000.0 for name in TARGETS}
@@ -139,7 +140,15 @@ class Harness:
         self.model = model
         self.confirming = bool(confirming)
         self.evaluator = str(evaluator)
-        self.plan_path = fx.write_signed_plan(tmp_path, **overrides)
+        self.observed, self.variance = _acceptance_inputs(
+            tmp_path, confirming=self.confirming
+        )
+        self.plan_path = fx.write_signed_plan(
+            tmp_path,
+            acceptance_observed=self.observed,
+            acceptance_variance=self.variance,
+            **overrides,
+        )
         self.plan = nc.FrozenPlan.load(self.plan_path, root=ROOT)
         self.space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
         self.anchors = (
@@ -148,9 +157,6 @@ class Harness:
                 tmp_path / "anchors.csv", self.space,
                 prefix="M1P" if model == nc.MODEL_M1 else "A",
             )
-        )
-        self.observed, self.variance = _acceptance_inputs(
-            tmp_path, confirming=self.confirming
         )
         self.dirs: dict[str, Path] = {}
         self.m0_source: Harness | None = None
@@ -768,6 +774,79 @@ def _chain_to_a_prepared_child(tmp_path: Path) -> Harness:
     return harness
 
 
+def test_prepare_seals_the_reviewed_acceptance_package(tmp_path):
+    harness = Harness(tmp_path)
+    stage = harness.prepare(nc.STAGE_DISCOVERY)
+    manifest = json.loads((stage / "manifest.json").read_text())
+    indexed = {
+        row["path"] for row in json.loads((stage / "artifacts.json").read_text())["files"]
+    }
+    expected = {
+        runner.nai.PROVENANCE_FILENAME,
+        runner.nai.OBSERVED_FILENAME,
+        runner.nai.BASE_VARIANCE_FILENAME,
+        runner.nai.COMPONENT_FILENAME,
+        runner.FROZEN_ACCEPTANCE_IDENTITY_FILENAME,
+    }
+    assert expected <= indexed
+    package = manifest["extra"]["acceptance_package_identity"]
+    assert package["acceptance_input_identity"] == manifest["extra"][
+        "acceptance_input_identity"
+    ]
+    assert package["approved_by"].startswith("verification-suite-fixture")
+
+
+def test_evaluate_refuses_a_rewritten_sealed_acceptance_input(tmp_path):
+    harness = Harness(tmp_path)
+    stage = harness.prepare(nc.STAGE_DISCOVERY)
+    observed = json.loads((stage / runner.nai.OBSERVED_FILENAME).read_text())
+    observed[TARGETS[0]] += 1.0
+    (stage / runner.nai.OBSERVED_FILENAME).write_text(json.dumps(observed))
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path),
+        "--stage-dir", str(stage), "--shard", "0", "--of", "1",
+        "--evaluator", "surrogate",
+    ]) == 1
+    assert not (stage / "results").exists()
+
+
+def test_merge_consumes_sealed_inputs_without_cli_paths(tmp_path):
+    harness = Harness(tmp_path)
+    stage = harness.prepare(nc.STAGE_DISCOVERY)
+    harness.evaluate(nc.STAGE_DISCOVERY)
+    assert runner.main([
+        "merge", "--plan", str(harness.plan_path), "--stage-dir", str(stage),
+    ]) == 0
+    assert (stage / "candidate_scores.csv").exists()
+
+
+def test_prepare_refuses_a_review_required_acceptance_package(tmp_path, capsys):
+    harness = Harness(tmp_path)
+    provenance = Path(
+        json.loads(harness.plan_path.read_text())["production_prerequisites"][
+            "acceptance_inputs"
+        ]
+    )
+    payload = json.loads(provenance.read_text())
+    payload.update({
+        "status": "FINAL_REVIEW_REQUIRED",
+        "production_eligible": False,
+        "approved": False,
+        "approved_by": None,
+        "approved_utc": None,
+    })
+    provenance.write_text(json.dumps(payload))
+    assert runner.main([
+        "prepare", "--plan", str(harness.plan_path),
+        "--out", str(tmp_path / "refused_stage"),
+        "--model", nc.MODEL_M0, "--stage", nc.STAGE_DISCOVERY,
+        "--anchors", str(harness.anchors),
+    ]) == 1
+    reason = _refused_because(capsys)
+    assert "status must equal 'FINAL'" in reason
+    assert not (tmp_path / "refused_stage").exists()
+
+
 def test_the_parent_acceptance_identity_is_frozen_into_the_child_at_prepare(tmp_path):
     """The freeze itself: complete, and covering every field the spec names."""
     harness = _chain_to_a_prepared_child(tmp_path)
@@ -782,6 +861,9 @@ def test_the_parent_acceptance_identity_is_frozen_into_the_child_at_prepare(tmp_
         (harness.dirs[nc.STAGE_DISCOVERY] / "manifest.json").read_text()
     )
     assert parent_manifest["extra"]["acceptance_input_identity"] == identity
+    assert frozen["acceptance_package_identity"] == parent_manifest["extra"][
+        "acceptance_package_identity"
+    ]
     # And it is covered by the child's own artifact index, so it cannot be
     # quietly edited later.
     index = json.loads((child / "artifacts.json").read_text())
@@ -1905,6 +1987,7 @@ def test_prepared_work_and_identity_gate_cover_the_production_dependency_surface
     }
     assert required <= set(runner.CODE_FILES)
     assert required <= set(nig.GATE_CODE_MODULES)
+    assert "nroy_acceptance_inputs.py" in runner.CODE_FILES
 
 
 def test_m1_cli_embeds_every_confirmed_m0_vector_at_exact_zero(tmp_path):

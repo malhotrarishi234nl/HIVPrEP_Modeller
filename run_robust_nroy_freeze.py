@@ -4,7 +4,7 @@
     .venv/bin/python run_robust_nroy_freeze.py validate  --plan configs/robust_nroy_freeze_production.json
     .venv/bin/python run_robust_nroy_freeze.py prepare   --plan <plan> --out <dir> --anchors <csv>
     .venv/bin/python run_robust_nroy_freeze.py evaluate  --stage-dir <dir> --shard 0 --of 4
-    .venv/bin/python run_robust_nroy_freeze.py merge     --stage-dir <dir> --observed <json> --base-variance <json>
+    .venv/bin/python run_robust_nroy_freeze.py merge     --stage-dir <dir>
     .venv/bin/python run_robust_nroy_freeze.py classify  --stage-dir <dir>
     .venv/bin/python run_robust_nroy_freeze.py regions   --parent-dir <bridges dir> --out <dir>
     .venv/bin/python run_robust_nroy_freeze.py diagnose  --stage-dir <dir>
@@ -47,7 +47,11 @@ Nothing else here starts a simulation on its own.
   and is refused unless the plan is signed *and* ``--i-have-priced-the-budget``
   is passed, because the production spec requires a priced trajectory budget
   and a measured pilot before launch.
-* Every stage beyond the first freezes its parent's complete
+* ``prepare`` validates the approved FINAL acceptance package named by the
+  signed plan and seals its exact observed values, base variance, component
+  budget and review provenance into the stage. Workers revalidate that seal;
+  ``merge`` cannot substitute late inputs.
+* Every stage beyond the first also freezes its parent's complete
   **acceptance-input identity** at ``prepare`` -- target order, target-register
   hash, observed-value hash, base-variance hash, discrepancy, scoring version
   and acceptance rule -- and ``merge``, ``classify`` and ``regions`` each fail
@@ -77,6 +81,7 @@ import pandas as pd
 
 import coupled_calibration_search as ccs
 import nroy_assess as nas
+import nroy_acceptance_inputs as nai
 import nroy_contract as nc
 import nroy_design as nd
 import nroy_execution as ne
@@ -96,6 +101,8 @@ QUESTION = (
 
 M1_ANCHOR_EVIDENCE_SCHEMA = "robust_nroy_m1_anchor_confirmation/1.0.0"
 M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
+FROZEN_ACCEPTANCE_IDENTITY_SCHEMA = "robust_nroy_frozen_acceptance_identity/1.0.0"
+FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
 
 
 # ==========================================================================
@@ -240,7 +247,10 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             "production_prerequisites is missing from the signed plan"
         ]
     paths: dict[str, Path] = {}
-    for key in ("config_registry", "measured_pilot", "priced_budget", "seed_disjointness_audit"):
+    for key in (
+        "config_registry", "acceptance_inputs", "measured_pilot", "priced_budget",
+        "seed_disjointness_audit",
+    ):
         declared = prerequisites.get(key)
         candidate = Path(str(declared)) if declared else None
         if candidate is not None and not candidate.is_absolute():
@@ -307,6 +317,19 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 problems.append("CONFIG_REGISTRY.md generated UTC is missing or invalid")
             if not _valid_iso_date(bindings.get("review date")):
                 problems.append("CONFIG_REGISTRY.md review date is missing or invalid")
+
+    acceptance_path = paths.get("acceptance_inputs")
+    if acceptance_path is not None:
+        try:
+            nai.validate_package(
+                plan,
+                acceptance_path,
+                root=ROOT,
+                scientific_code_sha256=_code_sha256(),
+                scientific_runtime=nig.scientific_runtime_fingerprint(),
+            )
+        except ContractError as exc:
+            problems.append(f"production prerequisite 'acceptance_inputs' failed: {exc}")
 
     loaded: dict[str, Mapping] = {}
     for key in ("measured_pilot", "priced_budget", "seed_disjointness_audit"):
@@ -690,6 +713,127 @@ def command_validate(args: argparse.Namespace) -> int:
 # Acceptance-input identity: one acceptance basis per lineage
 # ==========================================================================
 
+def _normalised_acceptance_package(validated: Mapping) -> dict:
+    """Return the path-independent identity of a validated input package."""
+    payload = validated["payload"]
+    return {
+        "schema": FROZEN_ACCEPTANCE_IDENTITY_SCHEMA,
+        "plan_sha256": str(payload["plan_sha256"]),
+        "approved_by": str(payload["approved_by"]),
+        "approved_utc": str(payload["approved_utc"]),
+        "provenance_sha256": str(validated["provenance_sha256"]),
+        "observed_sha256": str(validated["observed_sha256"]),
+        "base_variance_sha256": str(validated["base_variance_sha256"]),
+        "component_table_sha256": str(validated["component_table_sha256"]),
+        "acceptance_input_identity": nc.json_safe(
+            validated["acceptance_input_identity"]
+        ),
+    }
+
+
+def _validate_declared_acceptance_package(plan: nc.FrozenPlan) -> dict:
+    """Validate the signed plan's approved FINAL package before preparation."""
+    prerequisites = plan.get("production_prerequisites")
+    if not isinstance(prerequisites, Mapping) or not prerequisites.get(
+        "acceptance_inputs"
+    ):
+        raise ContractError(
+            "the signed plan declares no production_prerequisites.acceptance_inputs; "
+            "observed values and non-process variances must be reviewed before prepare"
+        )
+    return nai.validate_package(
+        plan,
+        prerequisites["acceptance_inputs"],
+        root=ROOT,
+        scientific_code_sha256=_code_sha256(),
+        scientific_runtime=nig.scientific_runtime_fingerprint(),
+    )
+
+
+def _freeze_acceptance_package(out: Path, validated: Mapping) -> dict:
+    """Copy exact reviewed inputs into a stage and write their normalised identity."""
+    payload = validated["payload"]
+    expected_outputs = {
+        "observed_values": nai.OBSERVED_FILENAME,
+        "base_variance": nai.BASE_VARIANCE_FILENAME,
+        "component_table": nai.COMPONENT_FILENAME,
+    }
+    for key, filename in expected_outputs.items():
+        declared = Path(str(payload["outputs"][key]["path"]))
+        if declared != Path(filename):
+            raise ContractError(
+                f"approved acceptance package must use canonical output path {filename!r}; "
+                f"found {str(declared)!r}"
+            )
+    sources = {
+        nai.PROVENANCE_FILENAME: Path(validated["provenance_path"]),
+        nai.OBSERVED_FILENAME: Path(validated["observed_path"]),
+        nai.BASE_VARIANCE_FILENAME: Path(validated["base_variance_path"]),
+        nai.COMPONENT_FILENAME: Path(validated["component_table_path"]),
+    }
+    for filename, source in sources.items():
+        target = out / filename
+        if target.exists():
+            raise ContractError(
+                f"refusing to replace existing frozen acceptance input: {target}"
+            )
+        shutil.copyfile(source, target)
+    identity = _normalised_acceptance_package(validated)
+    ne.atomic_write_json(out / FROZEN_ACCEPTANCE_IDENTITY_FILENAME, identity)
+    return identity
+
+
+def _recorded_acceptance_package_identity(manifest: Mapping) -> dict | None:
+    extra = manifest.get("extra") or {}
+    recorded = extra.get("acceptance_package_identity")
+    return dict(recorded) if recorded else None
+
+
+def _validate_frozen_acceptance_package(
+    stage_dir: Path, plan: nc.FrozenPlan, *, what: str, manifest: Mapping | None = None
+) -> dict:
+    """Revalidate the sealed package and its normalised identity in a stage."""
+    stage_dir = Path(stage_dir)
+    validated = nai.validate_package(
+        plan,
+        stage_dir / nai.PROVENANCE_FILENAME,
+        root=ROOT,
+        scientific_code_sha256=_code_sha256(),
+        scientific_runtime=nig.scientific_runtime_fingerprint(),
+    )
+    expected = _normalised_acceptance_package(validated)
+    identity_path = stage_dir / FROZEN_ACCEPTANCE_IDENTITY_FILENAME
+    try:
+        frozen = json.loads(identity_path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(
+            f"{what}: frozen acceptance identity is missing or invalid: "
+            f"{identity_path}: {exc}"
+        ) from exc
+    if nc.json_safe(frozen) != nc.json_safe(expected):
+        raise ContractError(
+            f"{what}: {identity_path.name} does not match the sealed acceptance files"
+        )
+    if manifest is None:
+        manifest = json.loads((stage_dir / "manifest.json").read_text())
+    recorded = _recorded_acceptance_package_identity(manifest)
+    if recorded is None:
+        raise ContractError(
+            f"{what}: stage manifest records no acceptance_package_identity"
+        )
+    if nc.json_safe(recorded) != nc.json_safe(expected):
+        raise ContractError(
+            f"{what}: manifest acceptance_package_identity does not match the sealed package"
+        )
+    recorded_acceptance = _recorded_acceptance_identity(manifest)
+    if nc.json_safe(recorded_acceptance) != nc.json_safe(
+        expected["acceptance_input_identity"]
+    ):
+        raise ContractError(
+            f"{what}: manifest acceptance_input_identity does not match the sealed package"
+        )
+    return expected
+
 #: Name of the file a child stage writes at ``prepare`` to freeze its parent's
 #: complete acceptance-input identity.  It is written before the manifest, so
 #: it is covered by the stage's own artifact index and cannot be edited later
@@ -698,14 +842,15 @@ PARENT_IDENTITY_FILENAME = "parent_acceptance_identity.json"
 
 
 def _recorded_acceptance_identity(manifest: Mapping) -> dict | None:
-    """The acceptance-input identity a stage recorded at its own merge."""
+    """The acceptance-input identity a stage sealed at prepare."""
     extra = manifest.get("extra") or {}
     recorded = extra.get("acceptance_input_identity")
     return dict(recorded) if recorded else None
 
 
 def _freeze_parent_acceptance_identity(
-    out: Path, parent_manifest: Mapping, *, parent_dir: Path
+    out: Path, parent_manifest: Mapping, *, parent_dir: Path,
+    current_package_identity: Mapping,
 ) -> dict:
     """Freeze the parent's complete acceptance-input identity into the child.
 
@@ -725,17 +870,30 @@ def _freeze_parent_acceptance_identity(
         raise ContractError(
             f"the parent stage at {parent_dir} records no acceptance-input identity, so "
             "there is nothing for this stage to freeze and no way to show the two share "
-            "one acceptance basis. Re-run 'merge' on the parent with --observed and "
-            "--base-variance under the current code."
+            "one acceptance basis. Re-prepare the parent under the current code."
+        )
+    package_identity = _recorded_acceptance_package_identity(parent_manifest)
+    if not package_identity:
+        raise ContractError(
+            f"the parent stage at {parent_dir} records no acceptance_package_identity; "
+            "its observed values, base variances, component budget and review provenance "
+            "cannot be shown to match this child"
+        )
+    if nc.json_safe(package_identity) != nc.json_safe(current_package_identity):
+        raise ContractError(
+            f"the approved acceptance package for this child differs from the sealed "
+            f"package used by its parent at {parent_dir}"
         )
     ne.atomic_write_json(out / PARENT_IDENTITY_FILENAME, {
         "frozen_from": str(parent_dir),
         "parent_stage": str(parent_manifest.get("stage") or ""),
         "parent_manifest_sha256": ccs.sha256_json(nc.json_safe(parent_manifest)),
         "acceptance_input_identity": identity,
+        "acceptance_package_identity": package_identity,
         "meaning": (
-            "the parent's complete acceptance-input identity, frozen at prepare. This "
-            "stage's merge, classification and edge verdicts must all match it exactly."
+            "the parent's complete acceptance-input and reviewed-package identities, "
+            "frozen at prepare. This stage's merge, classification and edge verdicts "
+            "must all match them exactly."
         ),
     })
     return identity
@@ -767,6 +925,21 @@ def _frozen_parent_acceptance_identity(stage_dir: Path) -> dict | None:
     return dict(identity)
 
 
+def _frozen_parent_acceptance_package_identity(stage_dir: Path) -> dict | None:
+    """The complete reviewed package identity frozen from a parent, if present."""
+    path = Path(stage_dir) / PARENT_IDENTITY_FILENAME
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    identity = payload.get("acceptance_package_identity")
+    if not identity:
+        raise ContractError(
+            f"{path} records no acceptance_package_identity; refusing a lineage whose "
+            "component budget or review provenance could have changed"
+        )
+    return dict(identity)
+
+
 def _assert_acceptance_basis(
     stage_dir: Path, manifest: Mapping, plan: nc.FrozenPlan, *, what: str
 ) -> dict:
@@ -785,12 +958,15 @@ def _assert_acceptance_basis(
     acceptance inputs were hashed, and nothing can establish what it was
     scored against.
     """
+    package_identity = _validate_frozen_acceptance_package(
+        stage_dir, plan, what=what, manifest=manifest
+    )
     recorded = _recorded_acceptance_identity(manifest)
     if not recorded:
         raise ContractError(
             f"{stage_dir} records no acceptance-input identity, so what its scores mean "
-            "cannot be established. Re-run 'merge' with --observed and --base-variance "
-            f"before {what}."
+            "cannot be established. Re-prepare the stage with an approved acceptance "
+            f"package before {what}."
         )
     nc.assert_acceptance_identity(
         plan.plan_acceptance_fields(), recorded,
@@ -803,6 +979,13 @@ def _assert_acceptance_basis(
             frozen_parent, recorded,
             what=f"{what}: this stage against its frozen parent identity",
         )
+    frozen_parent_package = _frozen_parent_acceptance_package_identity(stage_dir)
+    if frozen_parent_package is not None and nc.json_safe(
+        frozen_parent_package
+    ) != nc.json_safe(package_identity):
+        raise ContractError(
+            f"{what}: this stage's reviewed acceptance package differs from its parent"
+        )
     return recorded
 
 
@@ -814,6 +997,9 @@ def _validate_stage_artifacts(
     immutable = {
         "ledger_units.csv", "ledger_meta.json", "design_proposals.csv",
         "design_vectors.csv", "anchors.csv", "kernel_outcomes.csv",
+        nai.PROVENANCE_FILENAME, nai.OBSERVED_FILENAME,
+        nai.BASE_VARIANCE_FILENAME, nai.COMPONENT_FILENAME,
+        FROZEN_ACCEPTANCE_IDENTITY_FILENAME,
     }
     manifest = json.loads((Path(stage_dir) / "manifest.json").read_text())
     if (
@@ -1447,6 +1633,7 @@ def _parent_tables(parent_dir: Path, model: nc.ModelSpace) -> tuple[pd.DataFrame
 
 def command_prepare(args: argparse.Namespace) -> int:
     plan = nc.FrozenPlan.load(args.plan)
+    validated_acceptance = _validate_declared_acceptance_package(plan)
     spaces = _model_spaces(plan)
     model = spaces[args.model]
     is_bridges = args.stage == nc.STAGE_BRIDGES
@@ -1563,6 +1750,9 @@ def command_prepare(args: argparse.Namespace) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    acceptance_package_identity = _freeze_acceptance_package(
+        out, validated_acceptance
+    )
 
     extra: dict = {}
     if is_bridges:
@@ -1803,7 +1993,8 @@ def command_prepare(args: argparse.Namespace) -> int:
             args.parent_dir or args.m0_confirmed_dir
         )
         frozen_identity = _freeze_parent_acceptance_identity(
-            out, parent_manifest, parent_dir=identity_parent_dir
+            out, parent_manifest, parent_dir=identity_parent_dir,
+            current_package_identity=acceptance_package_identity,
         )
     if args.stage == nc.STAGE_PROMOTION:
         parent_scores = ne.read_frame_exact(
@@ -1820,7 +2011,10 @@ def command_prepare(args: argparse.Namespace) -> int:
             extra={
                 "n_anchors": len(anchors), "n_proposals": len(proposals),
                 "allocation_only": True,
-                "acceptance_input_identity": frozen_identity,
+                "acceptance_input_identity": acceptance_package_identity[
+                    "acceptance_input_identity"
+                ],
+                "acceptance_package_identity": acceptance_package_identity,
                 "selected_parent_candidate_ids": [p.design_id for p in proposals],
                 "selected_parent_vector_hashes": [p.vector_hash for p in proposals],
             },
@@ -1834,6 +2028,10 @@ def command_prepare(args: argparse.Namespace) -> int:
         parent_manifest=parent_manifest,
         extra={
             "n_anchors": len(anchors), "n_proposals": len(proposals),
+            "acceptance_input_identity": acceptance_package_identity[
+                "acceptance_input_identity"
+            ],
+            "acceptance_package_identity": acceptance_package_identity,
             **({"parent_acceptance_identity": frozen_identity} if frozen_identity else {}),
             **extra,
         },
@@ -1855,7 +2053,8 @@ def command_prepare(args: argparse.Namespace) -> int:
 #: at prepare, re-checked by every worker, and recorded in the manifest.
 CODE_FILES = (
     "run_robust_nroy_freeze.py", "nroy_contract.py", "nroy_design.py",
-    "nroy_execution.py", "nroy_graph.py", "nroy_assess.py", "run_v3.py",
+    "nroy_execution.py", "nroy_graph.py", "nroy_assess.py",
+    "nroy_acceptance_inputs.py", "run_v3.py",
     "run_lhs_calibration.py", "calib_extractor.py", "hm_target_register.py",
     "stage_structured_diagnosis.py", "stochastic_allocation.py", "counter_based_rng.py",
     # Direct and transitive production-engine dependencies.  Omitting one of
@@ -2294,6 +2493,9 @@ def _command_evaluate_locked(args: argparse.Namespace) -> int:
     manifest = json.loads((stage_dir / "manifest.json").read_text())
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
     _assert_plan_matches_manifest(plan, manifest, what="evaluate")
+    _validate_frozen_acceptance_package(
+        stage_dir, plan, what="evaluate", manifest=manifest
+    )
     shard_label = f"shard_{args.shard:03d}_of_{args.of:03d}"
     # We now own this shard for the full command lifetime.  Repair only its
     # possible unterminated crash tail, then convert any prior RUNNING event
@@ -2787,6 +2989,16 @@ def command_merge(args: argparse.Namespace) -> int:
             fields=nc.PLAN_DERIVED_ACCEPTANCE_FIELDS,
         )
     _assert_plan_matches_manifest(plan, manifest, what="merge")
+    package_identity = _validate_frozen_acceptance_package(
+        stage_dir, plan, what="merge", manifest=manifest
+    )
+    frozen_parent_package = _frozen_parent_acceptance_package_identity(stage_dir)
+    if frozen_parent_package is not None and nc.json_safe(
+        frozen_parent_package
+    ) != nc.json_safe(package_identity):
+        raise ContractError(
+            "merge: this stage's reviewed acceptance package differs from its parent"
+        )
     ledger = ne.Ledger.load(stage_dir)
 
     results = _read_shards(stage_dir, plan.targets)
@@ -2799,56 +3011,73 @@ def command_merge(args: argparse.Namespace) -> int:
     seed_frame = ne.merge_seed_results(
         ledger, results, targets=plan.targets, expect_complete=complete
     )
-    # These are the numerator and denominator of every implausibility, so a
-    # merge that quietly skipped them would publish a COMPLETE, parentable
-    # stage containing no acceptance arithmetic at all. Both are required, and
-    # both are validated against the frozen target contract and hashed into
-    # the manifest.
-    if not (args.observed and args.base_variance):
-        raise ContractError(
-            "--observed and --base-variance are both required: they are the observed "
-            "target values z_i and the frozen non-process variance B_i, i.e. the "
-            "numerator and denominator of every implausibility. Refusing to merge a "
-            "stage with no acceptance arithmetic."
-        )
-    observed = json.loads(Path(args.observed).read_text())
-    base_variance = json.loads(Path(args.base_variance).read_text())
+    # The numerator and denominator of every implausibility were reviewed and
+    # sealed at prepare.  Merge consumes only those stage-local copies.  The
+    # legacy CLI paths remain optional compatibility assertions for operators
+    # migrating old scripts; they can never substitute new bytes.
+    observed_path = stage_dir / nai.OBSERVED_FILENAME
+    variance_path = stage_dir / nai.BASE_VARIANCE_FILENAME
+    if args.observed:
+        try:
+            asserted_observed_hash = ccs.sha256_file(args.observed)
+        except OSError as exc:
+            raise ContractError(
+                f"--observed compatibility assertion cannot be read: {exc}"
+            ) from exc
+        if asserted_observed_hash != package_identity["observed_sha256"]:
+            raise ContractError(
+                "observed_sha256 compatibility assertion failed: --observed contains "
+                "different observed target values than the package sealed at prepare"
+            )
+    if args.base_variance:
+        try:
+            asserted_variance_hash = ccs.sha256_file(args.base_variance)
+        except OSError as exc:
+            raise ContractError(
+                f"--base-variance compatibility assertion cannot be read: {exc}"
+            ) from exc
+        if asserted_variance_hash != package_identity["base_variance_sha256"]:
+            raise ContractError(
+                "base_variance_sha256 compatibility assertion failed: --base-variance "
+                "contains different base variances than the package sealed at prepare"
+            )
+    observed = json.loads(observed_path.read_text())
+    base_variance = json.loads(variance_path.read_text())
     plan.targets.assert_order(
         sorted(observed, key=lambda name: list(plan.targets.frozen_order).index(name))
         if set(observed) == set(plan.targets.frozen_order) else list(observed),
-        what="--observed",
+        what="sealed observed values",
     )
     plan.targets.assert_order(
         sorted(base_variance, key=lambda name: list(plan.targets.frozen_order).index(name))
         if set(base_variance) == set(plan.targets.frozen_order) else list(base_variance),
-        what="--base-variance",
+        what="sealed base variance",
     )
     bad_observed = sorted(
         k for k, v in observed.items() if not np.isfinite(float(v))
     )
     if bad_observed:
         raise ContractError(
-            f"--observed must contain finite numeric values; non-finite for {bad_observed}"
+            f"sealed observed values must be finite; non-finite for {bad_observed}"
         )
     bad = sorted(
         k for k, v in base_variance.items()
         if not np.isfinite(float(v)) or not float(v) > 0.0
     )
     if bad:
-        raise ContractError(f"--base-variance must be strictly positive; non-positive for {bad}")
+        raise ContractError(
+            f"sealed base variance must be strictly positive; non-positive for {bad}"
+        )
     target_inputs_sha256 = {
-        "observed": ccs.sha256_file(args.observed),
-        "base_variance": ccs.sha256_file(args.base_variance),
+        "observed": package_identity["observed_sha256"],
+        "base_variance": package_identity["base_variance_sha256"],
     }
     # The complete acceptance-input identity, and the comparison that closes
     # the cross-stage hole: a child merged against different observed values or
     # different base variances than its confirmation parent would publish
     # support labels and edge verdicts on a different acceptance basis, and
     # nothing used to notice. The parent's identity was frozen at prepare.
-    identity = plan.acceptance_identity(
-        observed_sha256=target_inputs_sha256["observed"],
-        base_variance_sha256=target_inputs_sha256["base_variance"],
-    )
+    identity = dict(package_identity["acceptance_input_identity"])
     frozen_parent = frozen_parent_for_plan
     if frozen_parent is not None:
         nc.assert_acceptance_identity(
@@ -3085,7 +3314,7 @@ def command_classify(args: argparse.Namespace) -> int:
     if scores is None:
         raise ContractError(
             f"{stage_dir} has no candidate_scores.csv, so no acceptance decision exists "
-            "to classify. Run 'merge' with --observed and --base-variance first."
+            "to classify. Run 'merge' so it scores the sealed acceptance inputs first."
         )
     # Before any label is written: these scores must have been produced on the
     # same acceptance basis as the parent they descend from, and on the one the
@@ -3211,6 +3440,7 @@ def command_regions(args: argparse.Namespace) -> int:
     parent_dir = _stage_directory(args.parent_dir)
     parent_manifest = json.loads((parent_dir / "manifest.json").read_text())
     plan = nc.FrozenPlan.load(args.plan or parent_manifest["contract"]["plan_path"])
+    validated_acceptance = _validate_declared_acceptance_package(plan)
     model = _model_spaces(plan)[str(parent_manifest["model"])]
 
     validated = ne.validate_parent_stage(
@@ -3283,6 +3513,9 @@ def command_regions(args: argparse.Namespace) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    acceptance_package_identity = _freeze_acceptance_package(
+        out, validated_acceptance
+    )
     tables = ng.graph_tables(nas.edges_from_table(edges_frame), minimal, verdicts, groups)
     ne.atomic_write_frame(out / "candidate_edges.csv", tables["candidate_edges"])
     ne.atomic_write_frame(out / "edge_verdicts.csv", tables["edge_verdicts"])
@@ -3318,13 +3551,17 @@ def command_regions(args: argparse.Namespace) -> int:
     # by construction rather than an unfinished one.
     empty = ne.Ledger(stage=nc.STAGE_REGIONS, model=model.model, units=())
     empty.save(out)
-    _freeze_parent_acceptance_identity(out, validated, parent_dir=parent_dir)
+    _freeze_parent_acceptance_identity(
+        out, validated, parent_dir=parent_dir,
+        current_package_identity=acceptance_package_identity,
+    )
     ne.write_stage_manifest(
         out, stage=nc.STAGE_REGIONS, model=model.model, status=nc.STATUS_COMPLETE,
         ledger=empty, contract=plan.manifest_contract(),
         parent_manifest=validated,
         extra={
             "acceptance_input_identity": identity,
+            "acceptance_package_identity": acceptance_package_identity,
             "n_nodes": len(node_ids),
             "n_minimal_edges": len(minimal),
             "n_sampled_path_supported_edges": sum(1 for v in verdicts if v.supported),
@@ -3606,8 +3843,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("merge", help="validate and consolidate shard outputs")
     p.add_argument("--plan", default=None)
     p.add_argument("--stage-dir", required=True)
-    p.add_argument("--observed", default=None, help="JSON mapping target -> observed value")
-    p.add_argument("--base-variance", default=None, help="JSON mapping target -> frozen B_i")
+    p.add_argument(
+        "--observed", default=None,
+        help="optional compatibility assertion: must hash-match the observed values "
+             "sealed into the stage at prepare",
+    )
+    p.add_argument(
+        "--base-variance", default=None,
+        help="optional compatibility assertion: must hash-match frozen B_i sealed into "
+             "the stage at prepare",
+    )
     p.set_defaults(func=command_merge)
 
     p = sub.add_parser("classify", help="local-support labels and the p coverage profile")

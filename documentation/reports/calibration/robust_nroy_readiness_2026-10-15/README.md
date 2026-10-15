@@ -66,11 +66,29 @@ After sign-off, regenerate rather than promote the pre-sign draft:
 ```bash
 .venv/bin/python tools/prepare_robust_nroy_acceptance_inputs.py \
   --plan <signed-plan.json> \
-  --out <new-empty-evidence-directory>
+  --out <new-empty-review-directory>
 ```
 
-The command refuses an unsigned plan unless `--draft` is explicit and refuses
-to overwrite a non-empty directory.
+Review the generated component table. The command above deliberately writes a
+`FINAL_REVIEW_REQUIRED` package, which cannot prepare work. After approval,
+regenerate into a second empty directory and record the reviewer explicitly:
+
+```bash
+.venv/bin/python tools/prepare_robust_nroy_acceptance_inputs.py \
+  --plan <signed-plan.json> \
+  --out <new-empty-approved-directory> \
+  --approve-for-production \
+  --approved-by "<reviewer name>"
+```
+
+The generator refuses an unsigned plan unless `--draft` is explicit and
+refuses to overwrite a non-empty directory. `prepare` then validates the
+approved `FINAL` package declared by
+`production_prerequisites.acceptance_inputs` and seals exact copies of the
+observed values, base variances, component budget, and provenance into every
+stage. `evaluate` revalidates those sealed inputs. `merge` consumes only the
+stage copies; its optional `--observed` and `--base-variance` arguments are
+hash assertions for older scripts, not replacement inputs.
 
 The preserved `acceptance_inputs_pre_sign/` files remain bound to the earlier
 plan hash `7d113408...` and original deterministic config proposal. The proposal

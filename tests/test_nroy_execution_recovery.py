@@ -46,7 +46,11 @@ def _ledger(*units: ne.WorkUnit) -> ne.Ledger:
 
 
 def _prepared_cli_stage(tmp_path: Path) -> tuple[Path, Path]:
-    plan_path = fx.write_signed_plan(tmp_path)
+    observed = {name: 105.0 for name in ccs.FROZEN_TARGET_ORDER}
+    variance = {name: 10000.0 for name in ccs.FROZEN_TARGET_ORDER}
+    plan_path = fx.write_signed_plan(
+        tmp_path, acceptance_observed=observed, acceptance_variance=variance
+    )
     space = fx.m0_space()
     anchors = tmp_path / "anchors.csv"
     pd.DataFrame([
@@ -518,14 +522,8 @@ def test_postmerge_scores_cannot_be_mutated_or_silently_reindexed(tmp_path):
         "evaluate", "--plan", str(plan_path), "--stage-dir", str(stage),
         "--shard", "0", "--of", "1", "--evaluator", "surrogate",
     ]) == 0
-    observed = tmp_path / "observed.json"
-    variance = tmp_path / "variance.json"
-    target_names = nc.FrozenPlan.load(plan_path, root=fx.ROOT).targets.frozen_order
-    observed.write_text(json.dumps({name: 105.0 for name in target_names}))
-    variance.write_text(json.dumps({name: 10000.0 for name in target_names}))
     assert runner.main([
         "merge", "--plan", str(plan_path), "--stage-dir", str(stage),
-        "--observed", str(observed), "--base-variance", str(variance),
     ]) == 0
 
     scores_path = stage / "candidate_scores.csv"

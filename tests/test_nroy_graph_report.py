@@ -1369,13 +1369,8 @@ def test_the_p_config_path_must_be_signed(tmp_path):
         fx.signed_plan(tmp_path, **{"p_parameter.config_path": "UNSIGNED"})
 
 
-def test_merge_refuses_without_the_acceptance_inputs(tmp_path, capsys):
-    """z_i and B_i are the numerator and denominator of every implausibility.
-
-    Previously `merge` skipped scoring silently when the flags were omitted and
-    still published a COMPLETE, parentable stage containing no acceptance
-    arithmetic, while RUN_AUDIT.md reported recomputation as "NOT verified".
-    """
+def test_merge_uses_the_acceptance_inputs_sealed_at_prepare(tmp_path):
+    """Omitting legacy flags cannot omit the already-sealed arithmetic."""
     plan_path = fx.write_signed_plan(tmp_path)
     space = fx.m0_space()
     anchors = _write_anchors(tmp_path / "anchors.csv", space)
@@ -1389,12 +1384,13 @@ def test_merge_refuses_without_the_acceptance_inputs(tmp_path, capsys):
         "--shard", "0", "--of", "1", "--evaluator", "surrogate",
     ]) == 0
     code = runner.main(["merge", "--plan", str(plan_path), "--stage-dir", str(stage_dir)])
-    assert code == 1
-    assert "no acceptance arithmetic" in capsys.readouterr().err
-    assert not (stage_dir / "candidate_scores.csv").exists()
+    assert code == 0
+    assert (stage_dir / "candidate_scores.csv").exists()
 
 
-def test_merge_refuses_acceptance_inputs_that_do_not_match_the_contract(tmp_path, capsys):
+def test_merge_refuses_cli_inputs_that_do_not_hash_match_the_sealed_package(
+    tmp_path, capsys,
+):
     plan_path = fx.write_signed_plan(tmp_path)
     space = fx.m0_space()
     anchors = _write_anchors(tmp_path / "anchors.csv", space)
@@ -1413,7 +1409,7 @@ def test_merge_refuses_acceptance_inputs_that_do_not_match_the_contract(tmp_path
         "--observed", str(tmp_path / "short.json"),
         "--base-variance", str(tmp_path / "v.json"),
     ]) == 1
-    assert "--observed" in capsys.readouterr().err
+    assert "observed_sha256 compatibility assertion" in capsys.readouterr().err
 
     (tmp_path / "o.json").write_text(json.dumps(observed))
     zeroed = dict(base_variance)
@@ -1424,7 +1420,7 @@ def test_merge_refuses_acceptance_inputs_that_do_not_match_the_contract(tmp_path
         "--observed", str(tmp_path / "o.json"),
         "--base-variance", str(tmp_path / "zero.json"),
     ]) == 1
-    assert "strictly positive" in capsys.readouterr().err
+    assert "base_variance_sha256 compatibility assertion" in capsys.readouterr().err
 
     nonfinite = dict(observed)
     nonfinite[TARGETS[0]] = float("nan")
@@ -1434,7 +1430,7 @@ def test_merge_refuses_acceptance_inputs_that_do_not_match_the_contract(tmp_path
         "--observed", str(tmp_path / "nan.json"),
         "--base-variance", str(tmp_path / "v.json"),
     ]) == 1
-    assert "finite numeric" in capsys.readouterr().err
+    assert "observed_sha256 compatibility assertion" in capsys.readouterr().err
 
 
 def test_merge_records_the_hashes_of_the_acceptance_inputs(tmp_path):

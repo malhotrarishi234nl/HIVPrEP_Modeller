@@ -10,7 +10,9 @@ verified without spending production compute.
 
 from __future__ import annotations
 
+import csv
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -123,7 +125,13 @@ def signed_plan_dict(**overrides) -> dict:
     return raw
 
 
-def write_signed_plan(tmp_path: Path, **overrides) -> Path:
+def write_signed_plan(
+    tmp_path: Path,
+    *,
+    acceptance_observed: Path | Mapping[str, float] | None = None,
+    acceptance_variance: Path | Mapping[str, float] | None = None,
+    **overrides,
+) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     # Production validation correctly refuses the shipped deterministic debug
     # config.  The verification fixture therefore makes an explicit stochastic
@@ -137,6 +145,9 @@ def write_signed_plan(tmp_path: Path, **overrides) -> Path:
     base_path.write_text(json.dumps(base, indent=1))
     prereq = {
         "config_registry": str(tmp_path / "CONFIG_REGISTRY.md"),
+        "acceptance_inputs": str(
+            tmp_path / "acceptance_inputs" / "acceptance_input_provenance.json"
+        ),
         "measured_pilot": str(tmp_path / "measured_pilot.json"),
         "priced_budget": str(tmp_path / "priced_budget.json"),
         "seed_disjointness_audit": str(tmp_path / "seed_disjointness_audit.json"),
@@ -150,6 +161,12 @@ def write_signed_plan(tmp_path: Path, **overrides) -> Path:
     path = tmp_path / "signed_plan.json"
     path.write_text(json.dumps(raw, indent=1))
     plan_sha = ccs.sha256_file(path)
+    _write_test_acceptance_package(
+        tmp_path / "acceptance_inputs",
+        plan_path=path,
+        observed=acceptance_observed,
+        variance=acceptance_variance,
+    )
     (tmp_path / "CONFIG_REGISTRY.md").write_text(
         "# Verification fixture only\n\n"
         f"plan: {plan_sha}\n"
@@ -172,6 +189,143 @@ def write_signed_plan(tmp_path: Path, **overrides) -> Path:
         "confirmation": list(raw["seeds"]["confirmation"]),
     }))
     return path
+
+
+def _write_test_acceptance_package(
+    out: Path,
+    *,
+    plan_path: Path,
+    observed: Path | Mapping[str, float] | None,
+    variance: Path | Mapping[str, float] | None,
+) -> None:
+    """Write explicit fabricated review evidence for no-engine tests only."""
+    import nroy_acceptance_inputs as nai  # noqa: PLC0415 - avoid fixture cycle
+    import nroy_identity_gate as nig  # noqa: PLC0415 - runtime fingerprint
+    import run_robust_nroy_freeze as runner  # noqa: PLC0415 - code fingerprint
+
+    out.mkdir(parents=True, exist_ok=True)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    default_observed, default_variance = observed_and_variance(
+        plan.targets.frozen_order
+    )
+
+    observed_path = out / nai.OBSERVED_FILENAME
+    variance_path = out / nai.BASE_VARIANCE_FILENAME
+    if isinstance(observed, Path):
+        shutil.copyfile(observed, observed_path)
+        observed_values = json.loads(observed_path.read_text())
+    else:
+        observed_values = dict(observed or default_observed)
+        observed_path.write_text(json.dumps(observed_values))
+    if isinstance(variance, Path):
+        shutil.copyfile(variance, variance_path)
+        variance_values = json.loads(variance_path.read_text())
+    else:
+        variance_values = dict(variance or default_variance)
+        variance_path.write_text(json.dumps(variance_values))
+
+    component_path = out / nai.COMPONENT_FILENAME
+    fields = [
+        "key", "z", "v_obs_variance", "v_obs_status", "v_code_variance",
+        "v_disc_variance", "extra_variance", "b_variance",
+    ]
+    with component_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for key in plan.targets.frozen_order:
+            z = float(observed_values[key])
+            b_value = float(variance_values[key])
+            discrepancy = (plan.discrepancy * abs(z)) ** 2
+            remainder = b_value - discrepancy
+            if remainder < 0.0:
+                raise AssertionError(
+                    f"test fixture B_i cannot be below discrepancy variance for {key}"
+                )
+            writer.writerow({
+                "key": key,
+                "z": z,
+                "v_obs_variance": remainder,
+                "v_obs_status": "fabricated_test_fixture",
+                "v_code_variance": 0.0,
+                "v_disc_variance": discrepancy,
+                "extra_variance": 0.0,
+                "b_variance": b_value,
+            })
+
+    source_workbook = out / "fixture_source_workbook.txt"
+    wave_plan = out / "fixture_wave_plan.json"
+    source_workbook.write_text("fabricated test fixture; not scientific evidence\n")
+    wave_plan.write_text("{}\n")
+    base_config = Path(str(plan.require("models.base_config")))
+    if not base_config.is_absolute():
+        base_config = ROOT / base_config
+    m0_space = Path(str(plan.require("models.m0.calib_space")))
+    if not m0_space.is_absolute():
+        m0_space = ROOT / m0_space
+    register = Path(plan.targets.register_path)
+    if not register.is_absolute():
+        register = ROOT / register
+    base_config_sha256 = (
+        ccs.sha256_file(base_config) if base_config.is_file() else "MISSING_TEST_INPUT"
+    )
+
+    provenance = {
+        "schema": nai.SCHEMA,
+        "status": "FINAL",
+        "production_eligible": True,
+        "approved": True,
+        "approved_by": "verification-suite-fixture (NOT a production approval)",
+        "approved_utc": "2026-10-15T00:00:00Z",
+        "generated_utc": "2026-10-15T00:00:00Z",
+        "command": "verification fixture generator; no engine",
+        "plan_sha256": plan.plan_sha256,
+        "target_order": list(plan.targets.frozen_order),
+        "target_count": plan.targets.n,
+        "acceptance_rule": "I_max <= 3 on B_i + s_i^2 (1 + 1/K)",
+        "base_variance_formula": (
+            "B_i = V_obs + V_code + V_disc + declared extra non-process terms"
+        ),
+        "process_variance": "excluded from B_i; added during scoring",
+        "discrepancy": {
+            "method": ccs.DISCREPANCY_METHOD,
+            "fraction": plan.discrepancy,
+            "added_exactly_once": True,
+        },
+        "source_bindings": {
+            "plan": {"path": str(plan_path), "sha256": ccs.sha256_file(plan_path)},
+            "base_config": {
+                "path": str(base_config), "sha256": base_config_sha256,
+            },
+            "m0_calibration_space": {
+                "path": str(m0_space), "sha256": ccs.sha256_file(m0_space),
+            },
+            "target_register": {
+                "path": str(register), "sha256": ccs.sha256_file(register),
+            },
+            "source_workbook": {
+                "path": str(source_workbook),
+                "sha256": ccs.sha256_file(source_workbook),
+            },
+            "wave_plan": {"path": str(wave_plan), "sha256": ccs.sha256_file(wave_plan)},
+        },
+        "scientific_code_sha256": runner._code_sha256(),
+        "scientific_runtime": nig.scientific_runtime_fingerprint(),
+        "outputs": {
+            "observed_values": {
+                "path": observed_path.name, "sha256": ccs.sha256_file(observed_path),
+            },
+            "base_variance": {
+                "path": variance_path.name, "sha256": ccs.sha256_file(variance_path),
+            },
+            "component_table": {
+                "path": component_path.name, "sha256": ccs.sha256_file(component_path),
+            },
+        },
+        "limitations": [
+            "FABRICATED verification evidence only; never production evidence."
+        ],
+    }
+    (out / nai.PROVENANCE_FILENAME).write_text(json.dumps(provenance, indent=1))
 
 
 def signed_plan(tmp_path: Path, **overrides) -> nc.FrozenPlan:
