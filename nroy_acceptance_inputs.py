@@ -98,6 +98,18 @@ def validate_package(
     base_config = _path(root, plan.require("models.base_config"))
     m0_space = _path(root, plan.require("models.m0.calib_space"))
     target_register = _path(root, plan.targets.register_path)
+    register_payload = _read_mapping(target_register, label="target register")
+    expected_workbook_sha256 = register_payload.get("source_workbook_sha256")
+    if expected_workbook_sha256 is not None:
+        expected_workbook_sha256 = str(expected_workbook_sha256)
+        if (
+            len(expected_workbook_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in expected_workbook_sha256)
+        ):
+            problems.append(
+                "target register source_workbook_sha256 is not an exact lowercase SHA-256"
+            )
+    expected_workbook_path = _path(root, register_payload.get("source_workbook", ""))
     expected_bindings = {
         "plan": (Path(plan.plan_path), plan.plan_sha256),
         "base_config": (base_config, ccs.sha256_file(base_config)),
@@ -120,6 +132,25 @@ def validate_package(
             problems.append(f"source_bindings.{name} is missing")
             continue
         source = _path(root, binding.get("path", ""))
+        if name == "source_workbook" and expected_workbook_sha256 is not None:
+            if str(binding.get("sha256", "")) != expected_workbook_sha256:
+                problems.append(
+                    "source_bindings.source_workbook does not match the "
+                    "plan-bound target-register SHA-256"
+                )
+            if str(binding.get("expected_sha256", "")) != expected_workbook_sha256:
+                problems.append(
+                    "source_bindings.source_workbook.expected_sha256 does not match "
+                    "the plan-bound target register"
+                )
+            try:
+                if source.resolve() != expected_workbook_path.resolve():
+                    problems.append(
+                        "source_bindings.source_workbook path does not match the "
+                        "plan-bound target register"
+                    )
+            except OSError as exc:
+                problems.append(f"source_bindings.source_workbook path cannot be resolved: {exc}")
         if not source.is_file():
             problems.append(f"source_bindings.{name} file is missing: {source}")
         elif str(binding.get("sha256", "")) != ccs.sha256_file(source):

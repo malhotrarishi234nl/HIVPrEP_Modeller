@@ -135,6 +135,11 @@ def generate(args: argparse.Namespace) -> int:
     if not isinstance(register_raw, dict):
         raise nc.ContractError("target register must be a JSON object")
     workbook_path = resolve(register_raw["source_workbook"])
+    expected_workbook_sha256 = register_raw.get("source_workbook_sha256")
+    if expected_workbook_sha256 is not None and sha256(workbook_path) != expected_workbook_sha256:
+        raise nc.ContractError(
+            "source workbook does not match source_workbook_sha256 in the target register"
+        )
     command = " ".join(shlex.quote(value) for value in [sys.executable, *sys.argv])
     provenance = {
         "schema": SCHEMA,
@@ -161,7 +166,14 @@ def generate(args: argparse.Namespace) -> int:
             "base_config": {"path": portable_path(base_config), "sha256": sha256(base_config)},
             "m0_calibration_space": {"path": portable_path(m0_space), "sha256": sha256(m0_space)},
             "target_register": {"path": portable_path(register_path), "sha256": sha256(register_path)},
-            "source_workbook": {"path": portable_path(workbook_path), "sha256": sha256(workbook_path)},
+            "source_workbook": {
+                "path": portable_path(workbook_path),
+                "sha256": sha256(workbook_path),
+                **(
+                    {"expected_sha256": expected_workbook_sha256}
+                    if expected_workbook_sha256 is not None else {}
+                ),
+            },
             "wave_plan": {"path": portable_path(wave_plan_path), "sha256": sha256(wave_plan_path)},
         },
         "scientific_code_sha256": rn._code_sha256(),

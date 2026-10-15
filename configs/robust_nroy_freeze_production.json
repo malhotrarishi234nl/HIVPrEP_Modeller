@@ -54,7 +54,7 @@
     ],
     "frozen_order_note": "The 13-target contract is the production spec's RECOMMENDED choice because it implements the recorded 1996-onward HIV and 2000-onward AIDS source-window decision. Older 15-target memos predate that decision. Recommended is not signed.",
     "register_sha256": "UNSIGNED",
-    "register_sha256_proposal": "28c6edfc2e283ce7e50ad2ac83f154ee9c849efc41bf1d6b12364e4779755945",
+    "register_sha256_proposal": "57bed71174d2346419e250b2371995421c466f82c1b55c98104fcd2cfcce0af8",
     "register_sha256_note": "Hash of configs/hm_target_register_focused_20260916.json as audited on 2026-10-15. Recompute immediately before signing; a changed register requires renewed target review.",
     "reporting_groups_proposal": {
       "diagnoses_1996_2015": [

@@ -4,9 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 import coupled_calibration_search as ccs
+import hm_target_register as tr
 import nroy_contract as nc
 from tools import prepare_robust_nroy_acceptance_inputs as prep
 
@@ -18,11 +20,27 @@ EXTERNAL_TARGET_CANDIDATE = ROOT / (
     "outputs/calibration/rivm_aids_vintage_audit_20260916/"
     "candidate_newest_vetted_20260916.json"
 )
+EXTERNAL_INPUTS = nc.strict_json_load(
+    ROOT / "data" / "external_inputs.json", what="external-input manifest"
+)
+EXTERNAL_INPUTS_BY_ID = {
+    item["logical_id"]: item for item in EXTERNAL_INPUTS["inputs"]
+}
+
+
+def _is_exact_external_input(path: Path, logical_id: str) -> bool:
+    expected = EXTERNAL_INPUTS_BY_ID[logical_id]["sha256"]
+    return path.is_file() and ccs.sha256_file(path) == expected
+
+
 EXTERNAL_ACCEPTANCE_INPUTS_PRESENT = (
-    EXTERNAL_WORKBOOK.is_file() and EXTERNAL_TARGET_CANDIDATE.is_file()
+    _is_exact_external_input(EXTERNAL_WORKBOOK, "history_matching_target_workbook")
+    and _is_exact_external_input(
+        EXTERNAL_TARGET_CANDIDATE, "rivm_aids_newest_vetted_target_candidate"
+    )
 )
 EXTERNAL_ACCEPTANCE_INPUTS_REASON = (
-    "external-data lane requires DiseaseData.xlsx and the hash-pinned "
+    "external-data lane requires the exact manifest-hashed DiseaseData.xlsx and "
     "candidate_newest_vetted_20260916.json"
 )
 
@@ -90,4 +108,33 @@ def test_draft_generator_uses_the_strict_plan_loader(tmp_path, text, problem):
     generate_args = args(tmp_path / "out", draft=True)
     generate_args.plan = str(plan_path)
     with pytest.raises(nc.ContractError, match=problem):
+        prep.generate(generate_args)
+
+
+def test_generator_rejects_a_structurally_valid_wrong_workbook(tmp_path):
+    wrong_workbook = tmp_path / "wrong-workbook.xlsx"
+    with pd.ExcelWriter(wrong_workbook) as writer:
+        pd.DataFrame({"Year": [2024], "Value": [1]}).to_excel(
+            writer, sheet_name="S", index=False
+        )
+
+    register = nc.strict_json_load(
+        ROOT / "configs" / "hm_target_register_focused_20260916.json",
+        what="target register fixture",
+    )
+    register["source_workbook"] = str(wrong_workbook)
+    # Keep the production-bound expected digest, so a structurally parseable
+    # substitute cannot become an acceptance source merely by being recorded.
+    register_path = tmp_path / "target_register.json"
+    register_path.write_text(json.dumps(register))
+
+    plan = nc.strict_json_load(PLAN, what="production plan fixture")
+    plan["target_contract"]["register_path_proposal"] = str(register_path)
+    plan["target_contract"]["register_sha256_proposal"] = ccs.sha256_file(register_path)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan))
+    generate_args = args(tmp_path / "out", draft=True)
+    generate_args.plan = str(plan_path)
+
+    with pytest.raises(tr.RegisterError, match="does not match the register-bound"):
         prep.generate(generate_args)

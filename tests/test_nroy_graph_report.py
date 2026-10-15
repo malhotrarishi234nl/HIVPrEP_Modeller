@@ -25,6 +25,7 @@ import nroy_fixtures as fx  # noqa: E402
 from nroy_fixtures import ROOT  # noqa: E402
 
 import coupled_calibration_search as ccs  # noqa: E402
+import nroy_acceptance_inputs as nai  # noqa: E402
 import nroy_contract as nc  # noqa: E402
 import nroy_design as nd  # noqa: E402
 import nroy_execution as ne  # noqa: E402
@@ -40,11 +41,27 @@ EXTERNAL_TARGET_CANDIDATE = ROOT / (
     "outputs/calibration/rivm_aids_vintage_audit_20260916/"
     "candidate_newest_vetted_20260916.json"
 )
+EXTERNAL_INPUTS = nc.strict_json_load(
+    ROOT / "data" / "external_inputs.json", what="external-input manifest"
+)
+EXTERNAL_INPUTS_BY_ID = {
+    item["logical_id"]: item for item in EXTERNAL_INPUTS["inputs"]
+}
+
+
+def _is_exact_external_input(path: Path, logical_id: str) -> bool:
+    expected = EXTERNAL_INPUTS_BY_ID[logical_id]["sha256"]
+    return path.is_file() and ccs.sha256_file(path) == expected
+
+
 EXTERNAL_ACCEPTANCE_INPUTS_PRESENT = (
-    EXTERNAL_WORKBOOK.is_file() and EXTERNAL_TARGET_CANDIDATE.is_file()
+    _is_exact_external_input(EXTERNAL_WORKBOOK, "history_matching_target_workbook")
+    and _is_exact_external_input(
+        EXTERNAL_TARGET_CANDIDATE, "rivm_aids_newest_vetted_target_candidate"
+    )
 )
 EXTERNAL_ACCEPTANCE_INPUTS_REASON = (
-    "external-data lane requires DiseaseData.xlsx and the hash-pinned "
+    "external-data lane requires the exact manifest-hashed DiseaseData.xlsx and "
     "candidate_newest_vetted_20260916.json"
 )
 
@@ -1700,6 +1717,48 @@ def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evid
     # Readiness still fails on the deliberately placeholder external evidence,
     # not on a config defect that production no longer carries.
     assert "production M1 config route failed" not in out
+
+
+def test_acceptance_validation_rejects_a_self_consistent_wrong_workbook(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan_raw = nc.strict_json_load(plan_path, what="signed test plan")
+    register_path = Path(plan_raw["target_contract"]["register_path"])
+    register = nc.strict_json_load(register_path, what="test target register")
+    wrong_workbook = tmp_path / "acceptance_inputs" / "fixture_source_workbook.xlsx"
+    register["source_workbook"] = str(wrong_workbook)
+    register["source_workbook_sha256"] = "0" * 64
+    register_path.write_text(json.dumps(register))
+    plan_raw["target_contract"]["register_sha256"] = ccs.sha256_file(register_path)
+    plan_path.write_text(json.dumps(plan_raw, indent=1))
+    fx._write_test_acceptance_package(
+        tmp_path / "acceptance_inputs",
+        plan_path=plan_path,
+        observed=None,
+        variance=None,
+    )
+
+    with pd.ExcelWriter(wrong_workbook) as writer:
+        pd.DataFrame({"Year": [2024], "Value": [1]}).to_excel(
+            writer, sheet_name="S", index=False
+        )
+    provenance_path = tmp_path / "acceptance_inputs" / nai.PROVENANCE_FILENAME
+    provenance = nc.strict_json_load(provenance_path, what="acceptance provenance")
+    provenance["source_bindings"]["source_workbook"] = {
+        "path": str(wrong_workbook),
+        "sha256": ccs.sha256_file(wrong_workbook),
+        "expected_sha256": "0" * 64,
+    }
+    provenance_path.write_text(json.dumps(provenance, indent=1))
+
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    with pytest.raises(ContractError, match="plan-bound target-register SHA-256"):
+        nai.validate_package(
+            plan,
+            provenance_path,
+            root=ROOT,
+            scientific_code_sha256=runner._code_sha256(),
+            scientific_runtime=nig.scientific_runtime_fingerprint(),
+        )
 
 
 def test_prepare_refuses_an_unsigned_plan(tmp_path):

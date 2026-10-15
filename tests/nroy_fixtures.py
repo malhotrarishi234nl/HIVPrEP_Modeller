@@ -146,6 +146,21 @@ def write_signed_plan(
     }
     base_path = tmp_path / "stochastic_base_config.json"
     base_path.write_text(json.dumps(base, indent=1))
+    # Acceptance-package unit tests use a fabricated workbook.  Give those
+    # tests an explicitly legacy, hashless register copy so they do not weaken
+    # the production focused register's mandatory workbook-byte binding.
+    if "target_contract.register_path" not in overrides:
+        fixture_register = json.loads(
+            (ROOT / "configs" / "hm_target_register_focused_20260916.json").read_text()
+        )
+        fixture_register.pop("source_workbook_sha256", None)
+        fixture_register_path = tmp_path / "fixture_target_register.json"
+        fixture_register_path.write_text(json.dumps(fixture_register, indent=1))
+        overrides = {
+            "target_contract.register_path": str(fixture_register_path),
+            "target_contract.register_sha256": ccs.sha256_file(fixture_register_path),
+            **overrides,
+        }
     prereq = {
         "config_registry": str(tmp_path / "CONFIG_REGISTRY.md"),
         "acceptance_inputs": str(

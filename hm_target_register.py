@@ -24,7 +24,9 @@ silently: where a quantity has no source, the resulting term carries status
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -45,6 +47,49 @@ VALID_ROLES = CALIBRATION_ROLES | CROSS_VALIDATION_ROLES | EXCLUDED_ROLES
 
 class RegisterError(ValueError):
     """Raised when the register is internally inconsistent or contradicts the workbook."""
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise RegisterError(f"duplicate JSON object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(token: str) -> None:
+    raise RegisterError(f"non-finite JSON token {token!r} is not allowed")
+
+
+def _parse_finite_float(token: str) -> float:
+    value = float(token)
+    if not math.isfinite(value):
+        raise RegisterError(f"JSON number {token!r} overflows to a non-finite value")
+    return value
+
+
+def _strict_json_load(path: Path, *, label: str) -> object:
+    """Load authority JSON without duplicate or non-finite-number ambiguity."""
+    try:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RegisterError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RegisterError(f"{label} is not valid strict JSON: {path}: {exc}") from exc
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -352,13 +397,11 @@ def _rivm_candidate_targets(spec: dict, defaults: dict, model_dir: Path) -> list
     table, not an estimate.  Records carrying a percentage-consistency flag,
     an incompleteness flag or a pooled period are refused, never repaired.
     """
-    import hashlib  # noqa: PLC0415
-
     series_name = spec["series_name"]
     path = (model_dir / spec["candidate_path"]).resolve()
     if not path.is_file():
         raise RegisterError(f"{series_name}: candidate file not found: {path}")
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = _sha256(path)
     expected = spec.get("candidate_sha256")
     if not expected or digest != expected:
         raise RegisterError(
@@ -367,7 +410,9 @@ def _rivm_candidate_targets(spec: dict, defaults: dict, model_dir: Path) -> list
     group = spec.get("group")
     if group not in RIVM_CANDIDATE_GROUPS:
         raise RegisterError(f"{series_name}: group must be one of {sorted(RIVM_CANDIDATE_GROUPS)}")
-    candidate = json.loads(path.read_text(encoding="utf-8"))
+    candidate = _strict_json_load(path, label=f"{series_name} candidate")
+    if not isinstance(candidate, dict):
+        raise RegisterError(f"{series_name}: candidate must be a JSON object")
     first_year, last_year = (int(value) for value in spec["year_coverage"])
     restricted = spec.get("restricted_years")
     scored_first, scored_last = (int(v) for v in restricted) if restricted else (first_year, last_year)
@@ -431,8 +476,9 @@ def load_register(
     the sensitivity suite to sweep a declared multiplier without editing the file.
     """
     register_path = Path(register_path) if register_path else DEFAULT_REGISTER_PATH
-    with register_path.open(encoding="utf-8") as handle:
-        register = json.load(handle)
+    register = _strict_json_load(register_path, label="target register")
+    if not isinstance(register, dict):
+        raise RegisterError(f"Target register must be a JSON object: {register_path}")
 
     defaults = dict(register.get("defaults", {}))
     defaults.update(dict(overrides or {}))
@@ -442,8 +488,24 @@ def load_register(
         # for this package), matching calib_target_loader.default_disease_workbook_path.
         workbook_path = (Path(__file__).resolve().parent / register["source_workbook"]).resolve()
     workbook_path = Path(workbook_path)
-    if not workbook_path.exists():
+    if not workbook_path.is_file():
         raise RegisterError(f"Disease workbook not found: {workbook_path}")
+    expected_workbook_sha256 = register.get("source_workbook_sha256")
+    if expected_workbook_sha256 is not None:
+        expected_workbook_sha256 = str(expected_workbook_sha256)
+        if (
+            len(expected_workbook_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in expected_workbook_sha256)
+        ):
+            raise RegisterError(
+                "source_workbook_sha256 must be an exact lowercase SHA-256 digest"
+            )
+        actual_workbook_sha256 = _sha256(workbook_path)
+        if actual_workbook_sha256 != expected_workbook_sha256:
+            raise RegisterError(
+                f"Disease workbook SHA-256 {actual_workbook_sha256} does not match "
+                f"the register-bound {expected_workbook_sha256}"
+            )
 
     cache: dict[str, pd.DataFrame] = {}
     targets: list[ScalarTarget] = []

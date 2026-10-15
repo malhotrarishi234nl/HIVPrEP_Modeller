@@ -60,6 +60,46 @@ def test_combine_raises_on_an_unknown_column():
         tr._combine(pd.Series({"a": 1.0}), "nope", None, None)
 
 
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ('{"version": "first", "version": "second"}', "duplicate JSON object key"),
+        ('{"value": NaN}', "non-finite JSON token"),
+        ('{"value": Infinity}', "non-finite JSON token"),
+        ('{"value": -Infinity}', "non-finite JSON token"),
+        ('{"value": 1e999}', "overflows to a non-finite value"),
+    ],
+)
+def test_target_register_json_is_strict(tmp_path, text, problem):
+    path = tmp_path / "register.json"
+    path.write_text(text)
+    with pytest.raises(tr.RegisterError, match=problem):
+        tr.load_register(path, workbook_path=tmp_path / "unused.xlsx")
+
+
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ('{"selected": [], "selected": []}', "duplicate JSON object key"),
+        ('{"selected": NaN}', "non-finite JSON token"),
+        ('{"selected": Infinity}', "non-finite JSON token"),
+        ('{"selected": -Infinity}', "non-finite JSON token"),
+        ('{"selected": 1e999}', "overflows to a non-finite value"),
+    ],
+)
+def test_rivm_candidate_json_is_strict(tmp_path, text, problem):
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text(text)
+    spec = {
+        "series_name": "rivm_test",
+        "candidate_path": str(candidate),
+        "candidate_sha256": tr._sha256(candidate),
+        "group": "msm",
+    }
+    with pytest.raises(tr.RegisterError, match=problem):
+        tr._rivm_candidate_targets(spec, {}, tmp_path)
+
+
 # --------------------------------------------------------------------------
 # Register loading -- synthetic
 # --------------------------------------------------------------------------
@@ -116,6 +156,32 @@ def test_published_interval_target_resolves(tmp_path):
     assert first.v_obs.sigma == pytest.approx(20.0 / 3.92)
     assert first.v_obs.status == "derived"
     assert first.particle_column == "out_2020"
+
+
+def test_register_bound_workbook_hash_rejects_a_different_valid_workbook(tmp_path):
+    target = dict(
+        BASE_TARGET,
+        lower_column="Low",
+        upper_column="High",
+        v_obs={"method": "published_interval", "divisor": 3.92},
+    )
+    register_path = _write_fixture(tmp_path, [target])
+    workbook = tmp_path / "fixture.xlsx"
+    register_payload = json.loads(register_path.read_text())
+    register_payload["source_workbook_sha256"] = tr._sha256(workbook)
+    register_path.write_text(json.dumps(register_payload))
+
+    wrong_workbook = tmp_path / "wrong-but-structurally-valid.xlsx"
+    frame = pd.read_excel(workbook, sheet_name="S", header=1)
+    frame.loc[0, "Value"] = 999.0
+    with pd.ExcelWriter(wrong_workbook) as writer:
+        pd.DataFrame([["spacer"]]).to_excel(
+            writer, sheet_name="S", index=False, header=False
+        )
+        frame.to_excel(writer, sheet_name="S", index=False, startrow=1)
+
+    with pytest.raises(tr.RegisterError, match="does not match the register-bound"):
+        tr.load_register(register_path, workbook_path=wrong_workbook)
 
 
 def test_delay_correction_target_resolves_and_flags_the_missing_component(tmp_path):
