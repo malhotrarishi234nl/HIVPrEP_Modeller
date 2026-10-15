@@ -125,6 +125,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
     ROLE_SUITE: _names("""
         README.md
         V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json
+        coupled_search_plan_option_b_1980_research_e2e_20261015.json
         disease_target_mapping.json
         hm_wave_plan_template.json
         hta_config.json
@@ -194,6 +195,9 @@ STATUS_OVERRIDES = {
         "PREPARATION_ONLY_NOT_AUTHORIZED — exact Option B inputs and 1980 window are bound; "
         "seed decisions and execution authorization remain unsigned"
     ),
+    "coupled_search_plan_option_b_1980_research_e2e_20261015.json": (
+        "RESEARCH_E2E_ONLY — bounded Option B rehearsal plan; permanently not production eligible"
+    ),
     "hm_target_register_robust_nroy_production_20261015.json": (
         "UNSIGNED_PROPOSAL — proposed 13-target contract; target constructs and provenance require review"
     ),
@@ -221,6 +225,9 @@ SAFE_NOTE_OVERRIDES = {
     "coupled_search_plan_option_b_1980_recalibration_preparation_20261015.json": (
         "Validation-only use is safe. Historical 1975 vectors are proposal seeds only; do not "
         "prepare or run until seed fields and execution authorization are explicitly approved."
+    ),
+    "coupled_search_plan_option_b_1980_research_e2e_20261015.json": (
+        "Use only for the explicitly labelled bounded research rehearsal; it cannot authorize production."
     ),
     "hm_target_register_robust_nroy_production_20261015.json": (
         "Do not treat targets as accepted; use only after source-window, construct, and provenance review."

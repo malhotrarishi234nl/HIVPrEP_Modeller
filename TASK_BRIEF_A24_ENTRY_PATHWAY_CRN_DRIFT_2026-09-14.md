@@ -1,5 +1,8 @@
 # Task brief — A-24: why do births differ between arms under common random numbers?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** diagnostic. **Implements nothing in production.** Ends in a mechanism, a variance attribution, and a recommendation on A-2's option B.
 **Follows:** A-4 (built CRN), A-2 (found the drift and showed it dominates ΔQALY variance).

@@ -1,5 +1,8 @@
 # Task brief: diagnosis-mechanism triangulation and staged orchestration
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 Date: 2026-09-22  
 Status: prepare-only handoff. Evidence audit, implementation, unit tests, and validate-only are authorized. No real simulation may be launched by the implementation agent.  
 User-run wall-time cap: 2 hours total, with checkpointed stages and independently resumable shards  

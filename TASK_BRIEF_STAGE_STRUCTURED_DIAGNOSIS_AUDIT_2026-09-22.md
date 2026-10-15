@@ -1,5 +1,8 @@
 # Task brief: stage-structured diagnosis audit
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 Date: 2026-09-22  
 Status: ready for an implementation-and-run agent  
 Purpose: test a bounded structural diagnosis hypothesis; this is not recalibration and must not alter the production baseline.

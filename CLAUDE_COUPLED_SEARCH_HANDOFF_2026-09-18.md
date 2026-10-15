@@ -1,5 +1,9 @@
 # Claude implementation handoff: bounded coupled calibration
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** This preserved September
+> specification is not current run authority. It remains at its original path
+> because frozen provenance records reference it. Start at `documentation/INDEX.md`.
+
 Status: SPECIFICATION ONLY. No new harness exists and no simulations were launched by this handoff. Rishi requested detailed implementation instructions for Claude. This document supersedes the priority of temporal transmission changes in the 17 September direction; retain those results as evidence, not as a proposed production change.
 
 ## 1. Decision and scientific question

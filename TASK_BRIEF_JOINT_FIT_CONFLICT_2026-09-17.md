@@ -1,5 +1,8 @@
 # Bounded investigation: can the existing model reconcile MSM diagnoses and AIDS?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 ## Mission and required endpoint
 
 Determine whether the observed conflict is primarily (a) sparse search coverage, (b) unstable stochastic variance/ranking, (c) an observation or implementation defect, or (d) an unresolved temporal/mechanistic trade-off within the current model and parameter bounds. Multiple causes may coexist.

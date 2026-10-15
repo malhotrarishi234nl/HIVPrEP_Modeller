@@ -1,5 +1,9 @@
 # Coupled calibration search — runbook
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16). Do not use this runbook to
+> start a new run.** It remains at its original path because frozen provenance
+> records reference it. Start at `documentation/INDEX.md`.
+
 Implementation of `CLAUDE_COUPLED_SEARCH_HANDOFF_2026-09-18.md`.
 
 **Status, 18 September 2026.** The harness exists and is tested. The preparation is frozen and

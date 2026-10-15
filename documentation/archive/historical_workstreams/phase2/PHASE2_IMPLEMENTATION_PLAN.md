@@ -1,5 +1,8 @@
 # Phase 2 — Implementation Review & Improvement Plan
 
+> **ARCHIVED 2026-10-16.** This July plan is retained for provenance and is
+> not the current implementation plan. Start at `documentation/INDEX.md`.
+
 **Model:** `Modeller/v11` HIV transmission + CEA
 **Goal:** raise the model to publication / peer-review standard, prioritised for a thesis on the CE of lenacapavir vs. oral PrEP (Netherlands)
 **Date:** 2026-07-06

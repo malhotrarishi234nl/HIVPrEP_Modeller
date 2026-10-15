@@ -1,5 +1,9 @@
 # Option-B bounded research E2E calibration
 
+**Status: CURRENT.** This guide covers the research-only implementation through
+commit `0231e5e` and the preserved rehearsal produced on clean commit
+`ad129527f265bef48c9bb547c5993b989a6c467b`.
+
 This route exercises the real coupled-calibration implementation without
 claiming production authorization. Every artifact is permanently labelled:
 
@@ -8,20 +12,51 @@ run_class = RESEARCH_E2E_NOT_PRODUCTION_ELIGIBLE
 production_eligible = false
 ```
 
-The route keeps the reviewed 33-parameter space, frozen 13-target order,
+The route keeps the declared 33-parameter space, frozen 13-target order,
 target-relative discrepancy rules, maximum-implausibility acceptance rule,
 five common discovery seeds, twenty fresh confirmation seeds, three paired
 smoke seeds, hash-pinned inputs, append-only journals, artifact indexes and
 resume integrity. It does not manufacture a production seed audit, stage
 authorization, benchmark, pricing approval or production claim.
 
-## One-hour profile
+## Completed 2026-10-15 rehearsal
+
+The preserved local run is:
+
+```text
+outputs/calibration/option_b_research_e2e_20261015T181418Z/
+```
+
+Its sealed run artifacts record this outcome:
+
+| Stage | Status | Work completed | Wall time |
+|---|---|---:|---:|
+| Preparation | `PREPARED` | 256-vector initial archive prepared | not timed as simulation work |
+| Smoke | `SMOKE_PASSED` | 6 trajectories | 15.62 seconds |
+| Search | `SEARCH_COMPLETE` | 384 candidates; 1,920/1,920 trajectories; 0 failures | 1,858.34 seconds (30m58s) |
+| Confirmation | `CONFIRMATION_COMPLETE` | 10 candidates x 20 fresh seeds; 200/200 trajectories; 0 failures | 299.79 seconds (5m00s) |
+
+The search found one primary pass on the five shared discovery seeds. None of
+the ten shortlisted candidates passed the frozen 13-target rule on the twenty
+fresh confirmation seeds. The strongest confirmed candidate had
+`I_max = 3.013`, just above the primary `I_max <= 3` rule, but that is still a
+failure under the declared rule. The runner launched no second search and no
+PSA.
+
+This is evidence that preparation, paired smoke, bounded search, shortlist
+freezing, fresh-seed confirmation and artifact writing worked end to end. It is
+not evidence of a calibrated production model. The bounded design covered 384
+of the declared full design's maximum 2,048 vectors, so this result neither
+establishes global infeasibility nor authorizes widening bounds or changing the
+model.
+
+## Bounded local profile
 
 The recommended local profile is a full 256-vector initial archive plus two
 64-vector adaptive batches: 384 vectors and 1,920 discovery trajectories at
-five replicates per vector. Historical timing of 12.58 seconds per trajectory
-suggests about 50 minutes at eight workers, before a short six-trajectory smoke
-and at most 200 fresh confirmation trajectories. Timing is an estimate, not a
+five replicates per vector. The preserved run completed its search in about 31
+minutes at eight workers, before a short six-trajectory smoke and five-minute
+confirmation. This is one machine/run observation, not a portable timing
 guarantee. The search stops dispatch at 3,600 seconds and finishes only bounded
 in-flight work.
 
@@ -148,3 +183,31 @@ PSA is deliberately not chained into this launch. A later step must first bind
 one complete selected joint vector into a model config and freeze calibrated
 coordinates before running a conditional PSA. The shortlist is not a posterior
 and its marginals must not be recombined independently.
+
+## Reviewer-readable reports
+
+Searches and confirmations produced by the implementation at commit `0231e5e`
+write both a Markdown report and machine-readable diagnostics:
+
+- `SEARCH_REPORT.md` or `DECISION_REPORT.md`: headline acceptance result,
+  candidate comparison, target-level percentage errors and formal
+  implausibility values;
+- `target_fit_diagnostics.csv`: observed value, simulated mean, signed and
+  absolute percentage error, fit band and target-level implausibility;
+- `candidate_fit_summary.csv`: mean and maximum absolute percentage error,
+  counts within 10%, 20% and 30%, and boundary-flag totals;
+- `parameter_boundary_diagnostics.csv`: every fitted value's location in its
+  declared interval, labelled `NEAR BOUND` within 2.5%, `BOUNDARY WATCH` from
+  2.5% through 10%, or `INTERIOR`.
+
+Percentage-error bands make ordinary fit visible to non-specialist readers;
+they do not replace the formal `I_max <= 3` rule. Boundary labels are
+diagnostics, not automatic rejection rules. A parameter near a declared bound
+can indicate pressure on the search space, but it does not by itself prove the
+bound is scientifically wrong.
+
+The preserved rehearsal predates those report additions and remains sealed
+under its recorded code hashes. It was not rewritten. A local derived preview
+under `outputs/report_previews/20261016/current_option_b_rehearsal/` demonstrates
+the new presentation using the preserved numbers, but the original manifests
+and reports remain the authoritative run artifacts.

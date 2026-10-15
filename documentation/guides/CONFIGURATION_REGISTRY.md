@@ -32,6 +32,12 @@ machine-recorded, but its inherited fitted values have not been recalibrated on
 that backbone. It is not fitted, validated, or production eligible and cannot
 be selected or signed as the production model.
 
+The separately classified
+`coupled_search_plan_option_b_1980_research_e2e_20261015.json` is a
+`suite/tool` input for an explicitly bounded research rehearsal. Its
+`RESEARCH_E2E_ONLY` status is permanent: a completed run cannot promote that
+plan, its inputs, or any resulting candidate into production evidence.
+
 ## Drift check
 
 The checker is read-only. It fails if a config file is missing or unclassified,

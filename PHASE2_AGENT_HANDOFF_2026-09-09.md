@@ -1,5 +1,9 @@
 # Phase 2 Agent Handoff — Task Board
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** This task board is retained at
+> its original provenance path and contains known stale entries. It must not be
+> used as the current work queue. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-09
 **Owner:** Rishi Malhotra
 **Supersedes:** §9 of `PHASE2_STRATEGY_BRIEF_2026-09-06.md` (written before Phase 0 results; the sequence below is current)

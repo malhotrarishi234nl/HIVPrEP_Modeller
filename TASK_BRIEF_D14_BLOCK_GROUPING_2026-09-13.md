@@ -1,5 +1,8 @@
 # Task brief — A-22: how should the background-mortality block be grouped?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-13 · **Owner:** Rishi Malhotra
 **Type:** measurement + a recommendation. **Implements nothing in production.**
 **Follows:** A-21, which confirmed the mechanism. This asks what to do about it.

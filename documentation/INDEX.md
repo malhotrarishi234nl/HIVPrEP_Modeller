@@ -2,6 +2,9 @@
 
 ## Current authority
 
+- Bounded Option-B research-E2E route, completed rehearsal result and report
+  interpretation:
+  `guides/OPTION_B_RESEARCH_E2E_20261015.md`
 - Production-readiness status and evidence:
   `reports/calibration/robust_nroy_readiness_2026-10-15/README.md`
 - Requirement-by-requirement completion evidence and exact open conditions:
@@ -34,6 +37,10 @@ Root-level `TASK_BRIEF_*.md`, dated handoffs, and runbooks are preserved because
 scientific artifacts cite them. Treat them as historical snapshots unless a
 current-authority document above explicitly adopts them.
 
+Historical plans that could be relocated without changing frozen provenance
+are listed in `archive/historical_workstreams/README.md`, including an exact
+old-path-to-new-path map.
+
 `guides/HISTORY_MATCHING_GUIDE.md` is the historical operating guide for the
 2026-09-15 19-target learning-wave workflow. It remains useful for interpreting
 those artifacts, but it is not the current Option B/robust-NROY calibration
@@ -41,6 +48,11 @@ contract.
 
 `BACKLOG.md` is a provenance pointer to preserved historical backlog editions;
 it is not a reconstructed claim that every old backlog item remains current.
+
+The completed bounded Option-B rehearsal does not promote older calibration
+artifacts or supersede their recorded provenance. Its guide is current because
+it records both the reusable research-only route and the exact 2026-10-15
+outcome.
 
 ## Document status rule
 

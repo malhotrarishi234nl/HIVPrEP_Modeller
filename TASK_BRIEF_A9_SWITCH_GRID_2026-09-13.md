@@ -1,5 +1,8 @@
 # Task brief — A-9: why is the substitution switch grid non-monotone?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-13 · **Owner:** Rishi Malhotra
 **Type:** measurement. **Implements nothing in production.** Ends in a localisation, or in an explicit statement that it does not localise.
 **Follows:** A-15, which tested and eliminated the allocation-granularity explanation.

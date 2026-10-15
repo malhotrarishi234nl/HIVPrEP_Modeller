@@ -1,8 +1,12 @@
 # Phase 2 Development Checklist
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** This checklist is a preserved
+> Phase 2 record at its original provenance path, not the current repository
+> handoff or operating checklist. Start at `documentation/INDEX.md`.
+
 **Purpose:** single go-to checklist for the 3–5 week model-development phase.  
 **Created:** 2026-08-18  
-**Primary inputs:** `PHASE1_MODEL_AUDIT.md`, `PHASE2_IMPLEMENTATION_PLAN.md`, and the post-reorganization validation completed on 2026-08-18.
+**Primary inputs:** `PHASE1_MODEL_AUDIT.md`, `documentation/archive/historical_workstreams/phase2/PHASE2_IMPLEMENTATION_PLAN.md`, and the post-reorganization validation completed on 2026-08-18.
 
 ## How to use this file
 

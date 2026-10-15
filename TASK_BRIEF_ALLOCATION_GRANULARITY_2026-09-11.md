@@ -1,5 +1,8 @@
 # Task brief — allocation granularity: A-14, A-15, B-8
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-11
 **Owner:** Rishi Malhotra
 **For:** a multi-agent session. Three tasks, one shared decision, one synthesis step.

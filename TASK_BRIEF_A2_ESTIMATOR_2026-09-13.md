@@ -1,5 +1,8 @@
 # Task brief — A-2: what is the ΔQALY actually measuring?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-13 · **Owner:** Rishi Malhotra
 **Type:** diagnostic. **Implements nothing in production.** Ends in a characterisation and a recommendation.
 **Batching:** fully independent of A-22, A-9 and A-23 — different code path, different outputs. Run in parallel.

@@ -1,4 +1,4 @@
-> **Superseded for new runs (2026-09-22).** This file holds the commands for the **completed** focused stage-diagnosis calibration (1,780 trajectories, `outputs/calibration/stage_structured_diagnosis_focused_calibration_20260922/`). It is kept because that run's report cites it. **Do not rerun these commands.** For the diagnosis triangulation run, use `documentation/diagnosis_triangulation_20260922/USER_RUN_COMMANDS.md`, which is also copied into `outputs/calibration/diagnosis_triangulation_orchestration_20260922/`.
+> **HISTORICAL SNAPSHOT; superseded for new runs since 2026-09-22.** This file holds the commands for the **completed** focused stage-diagnosis calibration (1,780 trajectories, `outputs/calibration/stage_structured_diagnosis_focused_calibration_20260922/`). It remains at its original path because that run's report and frozen provenance cite it. **Do not rerun these commands.** Start at `documentation/INDEX.md` for current guidance. The later diagnosis-triangulation commands are preserved at `documentation/diagnosis_triangulation_20260922/USER_RUN_COMMANDS.md`.
 
 # User-run commands: focused stage-structured diagnosis calibration (2026-09-22)
 

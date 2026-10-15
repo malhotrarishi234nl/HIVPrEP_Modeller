@@ -1,5 +1,8 @@
 # Task brief — A-16: the headline economics under the stochastic estimand
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-11
 **Owner:** Rishi Malhotra
 **Purpose:** produce the numbers Rishi needs in order to choose which paper he is writing.

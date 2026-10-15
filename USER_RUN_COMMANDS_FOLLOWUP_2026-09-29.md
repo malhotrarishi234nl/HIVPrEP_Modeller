@@ -1,5 +1,9 @@
 # Follow-up runs (2026-09-29): same-θ knot test, late-diagnosis engine, fresh-seed confirmation
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16). Do not launch these commands as
+> a current workflow.** They preserve an unlaunched September follow-up design
+> at its original provenance path. Start at `documentation/INDEX.md`.
+
 Nothing here has been launched. Total: 1,160 trajectories, about 39 min at 8 workers (16.3 s per trajectory per worker, from the runbook). Allow 45 min.
 The runner never modifies frozen tools. Output: `outputs/calibration/followup_knot_and_late_dx_20260929/`.
 

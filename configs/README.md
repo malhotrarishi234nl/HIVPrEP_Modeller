@@ -53,6 +53,11 @@ has those approvals and there is no CLI bypass.
 - `V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json`:
   machine-readable parent/source hashes and exact old/new JSON-path changes.
   It is derivation evidence, not a production registry entry or approval.
+- `coupled_search_plan_option_b_1980_research_e2e_20261015.json`: exact bounded
+  research-E2E plan used for the completed 2026-10-15 rehearsal. It is
+  permanently labelled `RESEARCH_E2E_NOT_PRODUCTION_ELIGIBLE`; completion does
+  not approve its inputs, fitted candidates, or any production use. See the
+  [current research-E2E guide](../documentation/guides/OPTION_B_RESEARCH_E2E_20261015.md).
 
 ## Broad file classes
 

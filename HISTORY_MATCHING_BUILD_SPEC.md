@@ -1,5 +1,9 @@
 # Bayesian History Matching — Build Specification
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** This earlier method build
+> record is not the current operating specification. It remains at its original
+> path because frozen inputs reference it. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-10
 **Status:** **HM-1–HM-4 complete. Two bounded post-fix stochastic learning waves completed on 2026-09-15; HM-6 is not yet frozen.**
 **Build report:** `outputs/calibration/hm_prototype_20260910/HM_BUILD_REPORT_2026-09-10.md` — read it before acting on this spec; it corrects three things below and records findings that change what the method can claim.

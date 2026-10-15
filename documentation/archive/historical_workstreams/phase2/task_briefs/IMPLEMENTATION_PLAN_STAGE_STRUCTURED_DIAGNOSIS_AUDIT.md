@@ -1,5 +1,8 @@
 # Stage-structured diagnosis audit: implementation plan
 
+> **ARCHIVED 2026-10-16.** This September plan is retained for provenance and
+> is not current task or run authority. Start at `documentation/INDEX.md`.
+
 Date: 2026-09-22
 
 1. Add a disabled-by-default `disease.diagnosis.stage_structured_diagnosis`

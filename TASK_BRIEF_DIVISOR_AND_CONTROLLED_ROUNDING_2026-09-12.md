@@ -1,5 +1,8 @@
 # Task brief — A-19: the two allocation rules A-17 left open
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-12
 **Owner:** Rishi Malhotra
 **Type:** diagnostic screen, ending in a recommendation. **Implements nothing in production.**

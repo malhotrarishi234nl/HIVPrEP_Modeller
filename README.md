@@ -5,6 +5,19 @@ Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
 
 ## Current status
 
+- **Bounded Option-B research rehearsal:** **COMPLETE** on clean commit
+  `ad129527f265bef48c9bb547c5993b989a6c467b`. The eight-worker run evaluated
+  384 candidates using 1,920 discovery trajectories, then evaluated a frozen
+  10-candidate shortlist using 200 fresh-seed confirmation trajectories. One
+  candidate passed on the common discovery seeds; **zero candidates passed
+  fresh-seed confirmation**. No PSA was run. This verifies the bounded E2E
+  mechanics, not calibration adequacy or production readiness. See the
+  [current Option-B research-E2E guide](documentation/guides/OPTION_B_RESEARCH_E2E_20261015.md).
+- **Reviewer-readable calibration output:** implementation through commit
+  `0231e5e` adds percentage-error bands and explicit parameter-boundary labels
+  alongside the formal implausibility results. These additions did not rerun
+  or reseal the preserved rehearsal; its exact code identity remains the one
+  recorded in its manifests.
 - **Collaborator source-code handoff:** **COMPLETE** at commit
   `68112bba96402dbbf43c4456289f4384b9635cbe` (tree
   `bcc902476f507d745765e9d9835e341651e70d21`). The mounted-evidence guarded
@@ -15,24 +28,27 @@ Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
 - **Scientific production status:** **not yet production-ready**. Do not launch
   production calibration, identity, pilot, M1 confirmation, PSA, or policy
   runs without the explicit gate described in the current readiness package.
-- **Next scientific sequence:** authorize the exact Option-B inputs, seed
-  blocks, preparation and identity smoke; run and review the recalibration;
-  select the fitted configuration; then finalize the 45 robust-NROY decisions.
-  Search or resume additionally requires a measured benchmark, current pricing
-  approval, and a live-matched execution profile.
+- **Next scientific sequence:** review the bounded rehearsal and decide whether
+  to run the unchanged full search to test whether the miss was caused by
+  limited search coverage. Any larger search still requires its own applicable
+  authorization and resource controls. Select a fitted joint vector only after
+  fresh-seed confirmation; a conditional PSA comes after that selection, not
+  from the failed rehearsal shortlist. Production promotion still requires the
+  separate readiness gates and the unresolved robust-NROY decisions.
 - **Historical results:** preserved for their recorded code snapshots. They are
   not automatically current-code evidence.
 
 Start with:
 
 1. [documentation/INDEX.md](documentation/INDEX.md)
-2. [robust-NROY readiness package](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md)
-3. [requirement-by-requirement closure matrix](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_READINESS_CLOSURE_MATRIX.md)
-4. [owner decision packet](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_DECISION_PACKET.md)
-5. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
-6. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
-7. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
-8. [configuration guide](configs/README.md)
+2. [Option-B research-E2E guide and completed rehearsal result](documentation/guides/OPTION_B_RESEARCH_E2E_20261015.md)
+3. [robust-NROY readiness package](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md)
+4. [requirement-by-requirement closure matrix](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_READINESS_CLOSURE_MATRIX.md)
+5. [owner decision packet](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_DECISION_PACKET.md)
+6. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
+7. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
+8. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
+9. [configuration guide](configs/README.md)
 
 Older root-level task briefs and runbooks are retained for provenance. A dated
 document is not current authority unless the documentation index says so.

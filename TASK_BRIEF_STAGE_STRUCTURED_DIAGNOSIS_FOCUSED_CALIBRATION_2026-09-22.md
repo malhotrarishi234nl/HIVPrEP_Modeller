@@ -1,5 +1,8 @@
 # Task brief: focused stage-structured diagnosis calibration and decision harness
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 Date: 2026-09-22  
 Status: prepare-only handoff; implementation, unit tests, and validate-only are authorized, but no simulation launch is authorized  
 Wall-time budget: 45 minutes at up to 8 workers  

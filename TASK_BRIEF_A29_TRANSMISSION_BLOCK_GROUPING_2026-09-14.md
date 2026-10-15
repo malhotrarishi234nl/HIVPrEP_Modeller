@@ -1,5 +1,8 @@
 # Task brief — A-29: block grouping for the deterministic transmission allocator
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** production change + measurement. **This one does implement in production.**
 **Sibling of:** A-22 (`TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md`), which asks the same question at the

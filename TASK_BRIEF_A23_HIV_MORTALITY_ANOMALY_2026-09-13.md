@@ -1,5 +1,8 @@
 # Task brief — A-23: why does stochastic HIV mortality inflate the model by 122%?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-13 · **Owner:** Rishi Malhotra
 **Type:** measurement. **Implements nothing in production.**
 **Follows:** A-20 (found it), A-21 (eliminated the obvious explanation).

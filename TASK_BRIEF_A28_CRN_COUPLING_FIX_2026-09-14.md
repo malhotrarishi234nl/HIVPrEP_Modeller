@@ -1,5 +1,8 @@
 # Task brief — A-28: couple the two samplers that break CRN pairing
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** **the first implementation task in this sequence.** Everything since A-12 has been diagnostic. This one changes production code.
 **Follows:** A-2 (found the noise), A-24 (found the cause and pre-measured the fix).

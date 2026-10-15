@@ -1,5 +1,8 @@
 # Task brief — A-5: measure V_ensemble for the history-matching variance budget
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** measurement + a recommendation. **Implements nothing in production** except, if accepted, a data file the register consumes.
 **Blocks:** the history-matching wave. Decided by Rishi 2026-09-14 to be measured rather than assumed.

@@ -1,5 +1,8 @@
 # Task brief — A-8 (revised): is 1.9 discounted QALYs per averted infection plausible?
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** derivation and literature check. **Implements nothing.** Ends in a judgement on whether the model's per-infection health consequence is defensible, and what drives it.
 **Supersedes:** the A-8 entry in `PHASE2_AGENT_HANDOFF_2026-09-09.md` (framed on pre-CRN figures that no longer apply — see §2).

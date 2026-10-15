@@ -1,5 +1,9 @@
 # Phase 2 Strategy Brief — Model, Calibration, and Manuscript Direction
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** This brief remains at its
+> original provenance path and records the state on 2026-09-06. It is not the
+> current repository status. Start at `documentation/INDEX.md`.
+
 **Created:** 2026-09-06
 **Status:** working strategy document. Complements, does not replace, `PHASE2_DEVELOPMENT_CHECKLIST.md` (the operational gate list).
 **Purpose:** capture the reasoning, evidence, and decisions from the 2026-09-06 strategy session in enough detail to (a) resume work in a new session without re-deriving anything, and (b) prevent already-rejected paths from being relitigated.

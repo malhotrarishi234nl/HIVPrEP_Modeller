@@ -1,5 +1,8 @@
 # Task brief: stage-diagnosis candidate baseline, whole-model review, and gated next experiment
 
+> **HISTORICAL SNAPSHOT (reviewed 2026-10-16).** Retained at its original
+> provenance path; not current task or run authority. Start at `documentation/INDEX.md`.
+
 Date: 2026-09-22  
 Status: analysis-first handoff  
 Primary candidate: `D_1788_v109`  
