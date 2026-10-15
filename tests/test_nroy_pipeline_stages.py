@@ -2111,9 +2111,17 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
     evidence_path = fx.write_m1_anchor_evidence(
         tmp_path, plan_path=plan_path, anchors_path=anchors_path,
     )
+    acceptance = runner._validate_declared_acceptance_package(plan)
+    validation_inputs = {
+        "acceptance_identity": acceptance["acceptance_input_identity"],
+        "observed": json.loads(Path(acceptance["observed_path"]).read_text()),
+        "base_variance": json.loads(
+            Path(acceptance["base_variance_path"]).read_text()
+        ),
+    }
     runner._validate_m1_anchor_evidence(
         evidence_path, anchors_path=anchors_path, anchors=anchors,
-        plan=plan, model=model,
+        plan=plan, model=model, **validation_inputs,
     )
 
     original = json.loads(evidence_path.read_text())
@@ -2125,6 +2133,13 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
         "wrong_runtime": {**original, "scientific_runtime": {}},
         "wrong_base_config": {**original, "base_config_sha256": "0" * 64},
         "wrong_seeds": {**original, "confirmation_seeds": list(plan.seeds.discovery)},
+        "wrong_acceptance_basis": {
+            **original,
+            "acceptance_input_identity": {
+                **original["acceptance_input_identity"],
+                "observed_sha256": "0" * 64,
+            },
+        },
         "wrong_vector": {
             **original,
             "candidates": [
@@ -2211,17 +2226,142 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
         with pytest.raises(ContractError):
             runner._validate_m1_anchor_evidence(
                 path, anchors_path=anchors_path, anchors=anchors,
-                plan=plan, model=model,
+                plan=plan, model=model, **validation_inputs,
             )
 
-    first_result = evidence_path.parent / original["candidates"][0][
-        "seed_result_artifact_path"
-    ]
+    first_row = original["candidates"][0]
+    first_result = evidence_path.parent / first_row["seed_result_artifact_path"]
+    original_seed_result = json.loads(first_result.read_text())
+    first_target = plan.targets.frozen_order[0]
+    seed_mutations = {
+        "wrong_candidate": {
+            **original_seed_result,
+            "candidate_id": "not-the-anchor",
+        },
+        "wrong_acceptance_basis": {
+            **original_seed_result,
+            "acceptance_input_identity": {
+                **original_seed_result["acceptance_input_identity"],
+                "base_variance_sha256": "0" * 64,
+            },
+        },
+        "wrong_target_order": {
+            **original_seed_result,
+            "target_order": list(reversed(original_seed_result["target_order"])),
+        },
+        "wrong_complete_vector": {
+            **original_seed_result,
+            "parameters": {
+                **original_seed_result["parameters"],
+                model.names[0]: float(original_seed_result["parameters"][model.names[0]])
+                + 0.01,
+            },
+        },
+        "duplicate_reserved_seed": {
+            **original_seed_result,
+            "seed_results": [
+                original_seed_result["seed_results"][0],
+                original_seed_result["seed_results"][0],
+                *original_seed_result["seed_results"][2:],
+            ],
+        },
+        "wrong_per_seed_vector": {
+            **original_seed_result,
+            "seed_results": [
+                {**record, "vector_hash": "f" * 64} if index == 0 else record
+                for index, record in enumerate(original_seed_result["seed_results"])
+            ],
+        },
+        "missing_target_output": {
+            **original_seed_result,
+            "seed_results": [
+                {
+                    **record,
+                    "outputs": {
+                        key: value for key, value in record["outputs"].items()
+                        if key != first_target
+                    },
+                }
+                if index == 0 else record
+                for index, record in enumerate(original_seed_result["seed_results"])
+            ],
+        },
+        "nonfinite_target_output": {
+            **original_seed_result,
+            "seed_results": [
+                {
+                    **record,
+                    "outputs": {**record["outputs"], first_target: float("nan")},
+                }
+                if index == 0 else record
+                for index, record in enumerate(original_seed_result["seed_results"])
+            ],
+        },
+        "string_target_output": {
+            **original_seed_result,
+            "seed_results": [
+                {
+                    **record,
+                    "outputs": {**record["outputs"], first_target: "0.0"},
+                }
+                if index == 0 else record
+                for index, record in enumerate(original_seed_result["seed_results"])
+            ],
+        },
+        "aggregate_pass_cannot_override_outputs": {
+            **original_seed_result,
+            "seed_results": [
+                {
+                    **record,
+                    "outputs": {**record["outputs"], first_target: 4.0},
+                }
+                for record in original_seed_result["seed_results"]
+            ],
+        },
+    }
+    for label, seed_payload in seed_mutations.items():
+        bad_result = tmp_path / f"bad_seed_result_{label}.json"
+        bad_result.write_text(json.dumps(seed_payload))
+        bad_evidence = {
+            **original,
+            "candidates": [
+                {
+                    **row,
+                    "seed_result_artifact_path": bad_result.name,
+                    "seed_result_artifact_sha256": ccs.sha256_file(bad_result),
+                }
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        }
+        bad_evidence_path = tmp_path / f"bad_semantics_{label}.json"
+        bad_evidence_path.write_text(json.dumps(bad_evidence))
+        with pytest.raises(ContractError):
+            runner._validate_m1_anchor_evidence(
+                bad_evidence_path, anchors_path=anchors_path, anchors=anchors,
+                plan=plan, model=model, **validation_inputs,
+            )
+
+    aggregate_override = {
+        **original,
+        "candidates": [
+            {**row, "nominal_i_max": 0.5} if index == 0 else row
+            for index, row in enumerate(original["candidates"])
+        ],
+    }
+    aggregate_override_path = tmp_path / "bad_self_declared_aggregate.json"
+    aggregate_override_path.write_text(json.dumps(aggregate_override))
+    with pytest.raises(ContractError, match="does not match recomputed"):
+        runner._validate_m1_anchor_evidence(
+            aggregate_override_path, anchors_path=anchors_path, anchors=anchors,
+            plan=plan, model=model, **validation_inputs,
+        )
+
     first_result.write_text(first_result.read_text() + "\nmutated\n")
     with pytest.raises(ContractError, match="seed-result artifact SHA-256 does not match"):
         runner._validate_m1_anchor_evidence(
             evidence_path, anchors_path=anchors_path, anchors=anchors,
-            plan=plan, model=model,
+            plan=plan, model=model, **validation_inputs,
         )
 
 

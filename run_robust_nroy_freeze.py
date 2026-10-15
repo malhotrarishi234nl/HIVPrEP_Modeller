@@ -99,7 +99,8 @@ QUESTION = (
     "detected under the declared finite design?"
 )
 
-M1_ANCHOR_EVIDENCE_SCHEMA = "robust_nroy_m1_anchor_confirmation/1.0.0"
+M1_ANCHOR_EVIDENCE_SCHEMA = "robust_nroy_m1_anchor_confirmation/2.0.0"
+M1_SEED_RESULT_SCHEMA = "robust_nroy_m1_anchor_seed_results/1.0.0"
 M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
 FROZEN_ACCEPTANCE_IDENTITY_SCHEMA = "robust_nroy_frozen_acceptance_identity/1.0.0"
 FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
@@ -112,6 +113,11 @@ FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
 def _is_sha256(value: object) -> bool:
     text = str(value or "")
     return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
+
+
+def _is_finite_json_number(value: object) -> bool:
+    """True only for a finite native JSON number, never Boolean or string."""
+    return type(value) in (int, float) and bool(np.isfinite(float(value)))
 
 
 def _evidence_path(value: object) -> Path | None:
@@ -1105,15 +1111,19 @@ def _validate_m1_anchor_evidence(
     anchors: Sequence[nd.Anchor],
     plan: nc.FrozenPlan,
     model: nc.ModelSpace,
+    acceptance_identity: Mapping,
+    observed: Mapping[str, float],
+    base_variance: Mapping[str, float],
 ) -> dict:
     """Prove that caller-supplied positive-p M1 anchors were confirmed.
 
     A CSV is a vector transport, not confirmation evidence.  This typed
     artifact binds the verdict to the exact plan, production configuration,
     scientific code/runtime, target contract, reserved confirmation seeds and
-    every candidate/vector.  It deliberately requires candidate-level
-    replicate counts and nominal scores rather than accepting a generic
-    ``passed=true`` document.
+    every candidate/vector.  Candidate-level aggregates are checked against
+    a typed seed-result artifact and a fresh score recomputation using the
+    exact acceptance basis being sealed into this stage.  Neither a generic
+    ``passed=true`` nor a self-declared ``nominal_i_max`` is evidence.
     """
     if not path.exists():
         raise ContractError(f"M1 anchor-confirmation evidence does not exist: {path}")
@@ -1158,11 +1168,37 @@ def _validate_m1_anchor_evidence(
     if tuple(payload.get("target_order") or ()) != tuple(plan.targets.frozen_order):
         problems.append("target_order does not match the frozen target contract")
     try:
-        recorded_seeds = tuple(int(seed) for seed in payload.get("confirmation_seeds", ()))
-    except (TypeError, ValueError):
+        recorded_seeds = tuple(
+            nc.require_rng_seed(seed, what=f"confirmation_seeds[{index}]")
+            for index, seed in enumerate(payload.get("confirmation_seeds", ()))
+        )
+    except (TypeError, ContractError):
         recorded_seeds = ()
     if recorded_seeds != plan.seeds.confirmation:
         problems.append("confirmation_seeds are not the exact reserved confirmation block")
+    if nc.json_safe(payload.get("acceptance_input_identity")) != nc.json_safe(
+        acceptance_identity
+    ):
+        problems.append(
+            "acceptance_input_identity does not match the acceptance basis sealed for this stage"
+        )
+
+    target_order = tuple(plan.targets.frozen_order)
+    if tuple(observed) != target_order:
+        problems.append("observed values are not in the frozen target order")
+    if tuple(base_variance) != target_order:
+        problems.append("base variance is not in the frozen target order")
+    try:
+        if any(not np.isfinite(float(observed[name])) for name in target_order):
+            problems.append("observed values contain a non-finite value")
+        if any(
+            not np.isfinite(float(base_variance[name]))
+            or float(base_variance[name]) <= 0.0
+            for name in target_order
+        ):
+            problems.append("base variance contains a non-finite or non-positive value")
+    except (KeyError, TypeError, ValueError):
+        problems.append("acceptance inputs are incomplete or malformed")
 
     rows = payload.get("candidates")
     if not isinstance(rows, list) or not rows:
@@ -1196,10 +1232,18 @@ def _validate_m1_anchor_evidence(
         if str(row.get("vector_hash", "")) != anchor.vector_hash:
             problems.append(f"{candidate_id}: vector_hash does not match the anchor")
         try:
+            if not _is_finite_json_number(row.get("p_value")):
+                raise ValueError("p_value is not a finite JSON number")
+            if not _is_finite_json_number(row.get("nominal_i_max")):
+                raise ValueError("nominal_i_max is not a finite JSON number")
             p_value = float(row.get("p_value"))
-            n_replicates = int(row.get("n_replicates"))
-            i_max = float(row.get("nominal_i_max"))
-        except (TypeError, ValueError):
+            n_replicates = nc.require_native_integer(
+                row.get("n_replicates"),
+                what=f"{candidate_id}.n_replicates",
+                minimum=1,
+            )
+            declared_i_max = float(row.get("nominal_i_max"))
+        except (TypeError, ValueError, ContractError):
             problems.append(f"{candidate_id}: malformed p/replicate/I_max evidence")
             continue
         if not np.isfinite(p_value) or p_value != float(anchor.params[p_name]) or p_value <= 0.0:
@@ -1209,19 +1253,13 @@ def _validate_m1_anchor_evidence(
                 f"{candidate_id}: n_replicates={n_replicates}, expected "
                 f"K_confirmation={plan.k_confirmation}"
             )
-        if not np.isfinite(i_max) or i_max > plan.cutoff:
-            problems.append(
-                f"{candidate_id}: nominal_i_max={i_max!r} does not satisfy "
-                f"the primary cutoff {plan.cutoff}"
-            )
-        if row.get("nominal_pass") is not True:
-            problems.append(f"{candidate_id}: nominal_pass is not the Boolean true")
         per_seed_hashes = row.get("per_seed_joint_vector_hashes")
-        if not isinstance(per_seed_hashes, list) or len(per_seed_hashes) != 20 \
+        if not isinstance(per_seed_hashes, list) \
+                or len(per_seed_hashes) != len(plan.seeds.confirmation) \
                 or len(per_seed_hashes) != n_replicates:
             problems.append(
                 f"{candidate_id}: per_seed_joint_vector_hashes must contain exactly "
-                "one hash for each of the 20 confirmation seeds"
+                "one hash for each reserved confirmation seed"
             )
         elif any(str(value) != anchor.vector_hash for value in per_seed_hashes):
             problems.append(
@@ -1242,6 +1280,41 @@ def _validate_m1_anchor_evidence(
             seed_result_path
         ):
             problems.append(f"{candidate_id}: seed-result artifact SHA-256 does not match")
+        else:
+            try:
+                recomputed = _recompute_m1_anchor_seed_result(
+                    seed_result_path,
+                    candidate_id=candidate_id,
+                    anchor=anchor,
+                    plan=plan,
+                    model=model,
+                    acceptance_identity=acceptance_identity,
+                    observed=observed,
+                    base_variance=base_variance,
+                )
+            except ContractError as exc:
+                problems.append(f"{candidate_id}: {exc}")
+            else:
+                if not np.isfinite(declared_i_max) or not np.isclose(
+                    declared_i_max,
+                    recomputed["nominal_i_max"],
+                    rtol=1e-12,
+                    atol=1e-12,
+                ):
+                    problems.append(
+                        f"{candidate_id}: declared nominal_i_max={declared_i_max!r} "
+                        f"does not match recomputed {recomputed['nominal_i_max']!r}"
+                    )
+                if row.get("nominal_pass") is not recomputed["nominal_pass"]:
+                    problems.append(
+                        f"{candidate_id}: nominal_pass does not match the recomputed verdict"
+                    )
+                if recomputed["nominal_pass"] is not True:
+                    problems.append(
+                        f"{candidate_id}: recomputed nominal_i_max="
+                        f"{recomputed['nominal_i_max']!r} exceeds the primary cutoff "
+                        f"{plan.cutoff}"
+                    )
 
     if problems:
         raise ContractError(
@@ -1249,6 +1322,135 @@ def _validate_m1_anchor_evidence(
             + "\n".join(f"  - {problem}" for problem in problems)
         )
     return dict(payload)
+
+
+def _recompute_m1_anchor_seed_result(
+    path: Path,
+    *,
+    candidate_id: str,
+    anchor: nd.Anchor,
+    plan: nc.FrozenPlan,
+    model: nc.ModelSpace,
+    acceptance_identity: Mapping,
+    observed: Mapping[str, float],
+    base_variance: Mapping[str, float],
+) -> dict:
+    """Parse one typed seed artifact and recompute its nominal verdict."""
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(f"seed-result artifact is not valid JSON: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ContractError("seed-result artifact must be a JSON object")
+
+    problems: list[str] = []
+    expected_scalars = {
+        "schema": M1_SEED_RESULT_SCHEMA,
+        "model": nc.MODEL_M1,
+        "candidate_id": candidate_id,
+        "vector_hash": anchor.vector_hash,
+    }
+    for field, expected in expected_scalars.items():
+        if payload.get(field) != expected:
+            problems.append(f"seed-result {field} must equal {expected!r}")
+    if nc.json_safe(payload.get("acceptance_input_identity")) != nc.json_safe(
+        acceptance_identity
+    ):
+        problems.append("seed-result acceptance_input_identity does not match")
+    if tuple(payload.get("parameter_order") or ()) != tuple(model.names):
+        problems.append("seed-result parameter_order is not the complete M1 order")
+    if tuple(payload.get("target_order") or ()) != tuple(plan.targets.frozen_order):
+        problems.append("seed-result target_order does not match the frozen target order")
+    if tuple(payload.get("confirmation_seeds") or ()) != plan.seeds.confirmation:
+        problems.append("seed-result confirmation_seeds are not the reserved block")
+    if payload.get("n_replicates") != len(plan.seeds.confirmation):
+        problems.append("seed-result n_replicates does not match the reserved block")
+
+    parameters = payload.get("parameters")
+    if not isinstance(parameters, Mapping) or set(parameters) != set(model.names):
+        problems.append("seed-result parameters are not one complete M1 vector")
+    else:
+        try:
+            vector = {name: float(parameters[name]) for name in model.names}
+        except (TypeError, ValueError):
+            problems.append("seed-result parameters contain a malformed value")
+        else:
+            if any(
+                not _is_finite_json_number(parameters[name]) for name in model.names
+            ):
+                problems.append(
+                    "seed-result parameters must be finite native JSON numbers"
+                )
+            elif nc.vector_hash(vector, names=model.names) != anchor.vector_hash:
+                problems.append("seed-result complete parameter vector does not match the anchor")
+
+    records = payload.get("seed_results")
+    if not isinstance(records, list) or len(records) != len(plan.seeds.confirmation):
+        problems.append("seed_results must contain exactly one record per reserved seed")
+        records = []
+    seed_rows: list[dict] = []
+    actual_seeds: list[int] = []
+    for index, record in enumerate(records):
+        if not isinstance(record, Mapping):
+            problems.append(f"seed_results[{index}] is not an object")
+            continue
+        seed = record.get("seed")
+        if type(seed) is not int:
+            problems.append(f"seed_results[{index}].seed is not a native JSON integer")
+            continue
+        actual_seeds.append(seed)
+        if record.get("candidate_id") != candidate_id:
+            problems.append(f"seed {seed}: candidate_id does not match")
+        if record.get("vector_hash") != anchor.vector_hash:
+            problems.append(f"seed {seed}: vector_hash does not match the complete anchor")
+        outputs = record.get("outputs")
+        if not isinstance(outputs, Mapping) or set(outputs) != set(plan.targets.frozen_order):
+            problems.append(f"seed {seed}: outputs are not the complete frozen target set")
+            continue
+        if any(
+            not _is_finite_json_number(outputs[name])
+            for name in plan.targets.frozen_order
+        ):
+            problems.append(
+                f"seed {seed}: outputs must be finite native JSON numbers"
+            )
+            continue
+        values = {
+            name: float(outputs[name]) for name in plan.targets.frozen_order
+        }
+        seed_rows.append({
+            "design_id": candidate_id,
+            "seed": seed,
+            "vector_hash": anchor.vector_hash,
+            **{f"target:{name}": values[name] for name in plan.targets.frozen_order},
+        })
+
+    if len(actual_seeds) != len(set(actual_seeds)):
+        problems.append("seed_results contain duplicate seeds")
+    if set(actual_seeds) != set(plan.seeds.confirmation):
+        problems.append("seed_results do not contain the exact reserved confirmation seeds")
+    if problems:
+        raise ContractError(
+            f"{path}: invalid typed seed-result evidence:\n"
+            + "\n".join(f"  - {problem}" for problem in problems)
+        )
+
+    scores = ne.recompute_candidate_scores(
+        pd.DataFrame(seed_rows),
+        targets=plan.targets,
+        observed={name: float(observed[name]) for name in plan.targets.frozen_order},
+        base_variance={
+            name: float(base_variance[name]) for name in plan.targets.frozen_order
+        },
+        cutoff=plan.cutoff,
+    )
+    if len(scores) != 1 or str(scores.iloc[0]["design_id"]) != candidate_id:
+        raise ContractError("seed-result recomputation did not produce exactly this candidate")
+    score = scores.iloc[0]
+    return {
+        "nominal_i_max": float(score["i_max"]),
+        "nominal_pass": bool(score["nominal_pass"]),
+    }
 
 
 def _package_m1_anchor_evidence(
@@ -1849,6 +2051,13 @@ def command_prepare(args: argparse.Namespace) -> int:
                 evidence = _validate_m1_anchor_evidence(
                     evidence_source, anchors_path=independent_path,
                     anchors=independent_m1, plan=plan, model=model,
+                    acceptance_identity=acceptance_package_identity[
+                        "acceptance_input_identity"
+                    ],
+                    observed=json.loads((out / nai.OBSERVED_FILENAME).read_text()),
+                    base_variance=json.loads(
+                        (out / nai.BASE_VARIANCE_FILENAME).read_text()
+                    ),
                 )
                 by_id = {anchor.anchor_id: anchor for anchor in independent_m1}
                 for anchor in embedded_m0_anchors:

@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_m1_anchor_confirmation/1.0.0",
+  "schema": "robust_nroy_m1_anchor_confirmation/2.0.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "generated_utc": null,
@@ -15,6 +15,7 @@
   "base_config_sha256": null,
   "target_register_sha256": null,
   "target_order": [],
+  "acceptance_input_identity": {},
   "p_parameter": null,
   "confirmation_seeds": [],
   "candidates": [

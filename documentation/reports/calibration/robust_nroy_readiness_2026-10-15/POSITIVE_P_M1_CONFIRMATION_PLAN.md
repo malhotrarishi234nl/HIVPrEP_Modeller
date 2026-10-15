@@ -24,19 +24,27 @@ vectors, p=0 rows, or marginal recombination fail closed.
 - Evaluate every candidate on all 20 seeds with the signed stochastic
   M1-capable config, exact target order, current scientific code/runtime, and
   the frozen observed/B_i evidence.
-- Record candidate-level `n_replicates = 20`, nominal `I_max`, binding target,
-  and Boolean `nominal_pass = (I_max <= 3)`. Sensitivity-only or upper-variance-
-  bound passes are not confirmations.
-- Preserve seed-level complete target vectors and their hashes; do not store
-  only aggregate scores. Each candidate must reference that seed-result
-  artifact by a package-local relative path plus its exact SHA-256. Absolute
-  paths and paths that escape the evidence package fail closed.
+- Record candidate-level `n_replicates = 20`, nominal `I_max`, and Boolean
+  `nominal_pass = (I_max <= 3)`. Sensitivity-only or upper-variance-
+  bound passes are not confirmations. The validator recomputes nominal `I_max`
+  from the seed records; these aggregate fields are cross-checks and cannot
+  override the recomputed verdict.
+- Preserve a typed seed-result artifact for each candidate using
+  `robust_nroy_m1_anchor_seed_results/1.0.0`. It must bind the complete ordered
+  M1 vector, frozen target order, exact acceptance-input identity, and one
+  unique record for every reserved seed. Every record repeats the candidate
+  and vector hash and contains a complete finite target-output vector.
+  Aggregate-only scores are insufficient.
+- Reference each seed-result artifact by a package-local relative path plus its
+  exact SHA-256. Absolute paths and paths that escape the evidence package fail
+  closed. See `templates/m1_anchor_seed_results.json.template`.
 
 The final evidence must validate against
-`robust_nroy_m1_anchor_confirmation/1.0.0`; the template is
+`robust_nroy_m1_anchor_confirmation/2.0.0`; the template is
 `templates/m1_anchor_confirmation.json.template` and the existing
 `_validate_m1_anchor_evidence` routine verifies plan/config/code/runtime, target
-order, seeds, vectors, replicate counts, scores and pass flags.
+order, seeds, complete vectors and outputs, acceptance basis, recomputed scores,
+and pass flags.
 
 ## Discovery union after confirmation
 

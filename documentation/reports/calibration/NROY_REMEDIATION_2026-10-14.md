@@ -145,17 +145,20 @@ ranked by the consequence that existed before this pass.
 - **Affected path:** `run_robust_nroy_freeze.py::command_prepare` and
   `_validate_m1_anchor_evidence`.
 - **Fix:** M1 discovery now requires a typed
-  `robust_nroy_m1_anchor_confirmation/1.0.0` artifact. It must bind the exact
+  `robust_nroy_m1_anchor_confirmation/2.0.0` artifact. It must bind the exact
   plan, anchor CSV, scientific code/runtime, production config, target register
   and order, reserved 20-seed confirmation block, and every candidate ID,
-  vector hash, positive `p`, replicate count, finite nominal `I_max` and
-  Boolean primary-rule pass. The validated evidence is copied into and sealed
-  with the prepared stage.
+  vector hash, positive `p`, replicate count, recomputed nominal `I_max` and
+  Boolean primary-rule pass. Each candidate also supplies typed seed evidence
+  with the complete M1 vector, one unique complete finite target-output record
+  per reserved seed, and the exact frozen acceptance-input identity. Aggregate
+  scores are cross-checks only. The validated evidence and seed artifacts are
+  copied into and sealed with the prepared stage.
 - **Regression:**
   `test_m1_anchor_confirmation_evidence_is_typed_and_reconciled` mutates a
-  generic pass file, plan, seeds, vector, replicate count and primary verdict;
-  the union and strict-positive tests cover valid M0-at-zero plus M1-positive
-  composition.
+  generic pass file, plan, seeds, complete vector, replicate count, target
+  outputs, aggregate override and primary verdict; the union and strict-positive
+  tests cover valid M0-at-zero plus M1-positive composition.
 - **Remaining limitation:** no real production evidence exists. The test
   artifact identifies itself as fabricated and cannot satisfy a production
   scientific handoff.

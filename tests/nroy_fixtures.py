@@ -420,6 +420,10 @@ def write_m1_anchor_evidence(
     plan = nc.FrozenPlan.load(plan_path, root=ROOT)
     model = runner._model_spaces(plan)[nc.MODEL_M1]
     anchors = runner._load_anchors(anchors_path, model)
+    acceptance = runner._validate_declared_acceptance_package(plan)
+    acceptance_identity = acceptance["acceptance_input_identity"]
+    observed = json.loads(Path(acceptance["observed_path"]).read_text())
+    base_variance = json.loads(Path(acceptance["base_variance_path"]).read_text())
     base_config = Path(str(plan.require("models.base_config")))
     if not base_config.is_absolute():
         base_config = ROOT / base_config
@@ -428,19 +432,62 @@ def write_m1_anchor_evidence(
     candidate_rows = []
     for index, anchor in enumerate(anchors):
         seed_result_path = seed_result_dir / f"candidate_{index:04d}.json"
+        seed_results = [
+            {
+                "seed": seed,
+                "candidate_id": anchor.anchor_id,
+                "vector_hash": anchor.vector_hash,
+                "outputs": {
+                    name: float(observed[name]) for name in plan.targets.frozen_order
+                },
+            }
+            for seed in plan.seeds.confirmation
+        ]
         seed_result_path.write_text(json.dumps({
+            "schema": runner.M1_SEED_RESULT_SCHEMA,
+            "model": nc.MODEL_M1,
             "candidate_id": anchor.anchor_id,
             "vector_hash": anchor.vector_hash,
+            "parameter_order": list(model.names),
+            "parameters": {
+                name: float(anchor.params[name]) for name in model.names
+            },
+            "target_order": list(plan.targets.frozen_order),
             "confirmation_seeds": list(plan.seeds.confirmation),
-            "fixture_warning": "fabricated seed-level result transport",
+            "n_replicates": plan.k_confirmation,
+            "acceptance_input_identity": acceptance_identity,
+            "seed_results": seed_results,
+            "fixture_warning": (
+                "FABRICATED no-engine outputs equal to the observed targets; "
+                "not scientific confirmation evidence"
+            ),
         }, indent=1))
+        seed_frame = pd.DataFrame([
+            {
+                "design_id": anchor.anchor_id,
+                "seed": record["seed"],
+                "vector_hash": anchor.vector_hash,
+                **{
+                    f"target:{name}": record["outputs"][name]
+                    for name in plan.targets.frozen_order
+                },
+            }
+            for record in seed_results
+        ])
+        recomputed = ne.recompute_candidate_scores(
+            seed_frame,
+            targets=plan.targets,
+            observed=observed,
+            base_variance=base_variance,
+            cutoff=plan.cutoff,
+        ).iloc[0]
         candidate_rows.append({
             "candidate_id": anchor.anchor_id,
             "vector_hash": anchor.vector_hash,
             "p_value": float(anchor.params[model.p_name]),
             "n_replicates": plan.k_confirmation,
-            "nominal_i_max": 0.0,
-            "nominal_pass": True,
+            "nominal_i_max": float(recomputed["i_max"]),
+            "nominal_pass": bool(recomputed["nominal_pass"]),
             "per_seed_joint_vector_hashes": [
                 anchor.vector_hash for _seed in plan.seeds.confirmation
             ],
@@ -464,6 +511,7 @@ def write_m1_anchor_evidence(
         "base_config_sha256": ccs.sha256_file(base_config),
         "target_register_sha256": plan.targets.register_sha256,
         "target_order": list(plan.targets.frozen_order),
+        "acceptance_input_identity": acceptance_identity,
         "p_parameter": str(plan.require("p_parameter.name")),
         "confirmation_seeds": list(plan.seeds.confirmation),
         "candidates": candidate_rows,

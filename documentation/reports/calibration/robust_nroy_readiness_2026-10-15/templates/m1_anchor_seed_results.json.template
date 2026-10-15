@@ -1,0 +1,21 @@
+{
+  "schema": "robust_nroy_m1_anchor_seed_results/1.0.0",
+  "model": "M1",
+  "candidate_id": null,
+  "vector_hash": null,
+  "parameter_order": [],
+  "parameters": {},
+  "target_order": [],
+  "confirmation_seeds": [],
+  "n_replicates": null,
+  "acceptance_input_identity": {},
+  "seed_results": [
+    {
+      "seed": null,
+      "candidate_id": null,
+      "vector_hash": null,
+      "outputs": {}
+    }
+  ],
+  "notes": "One unique record is required for every reserved confirmation seed. outputs must contain every frozen target as a finite number."
+}
