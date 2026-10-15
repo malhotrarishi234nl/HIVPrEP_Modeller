@@ -14,6 +14,8 @@
   `reports/calibration/NROY_REMEDIATION_2026-10-14.md`
 - History-matching operating guide: `guides/HISTORY_MATCHING_GUIDE.md`
 - Testing lanes and interpretation: `guides/TESTING.md`
+- Optional environment-specific workbook builders:
+  `guides/OPTIONAL_ARTIFACT_BUILDERS.md`
 - Configuration guide: `../configs/README.md`
 - External-input contract: `../data/README.md`
 
