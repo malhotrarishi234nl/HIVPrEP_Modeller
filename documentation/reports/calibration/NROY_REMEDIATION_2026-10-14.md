@@ -535,3 +535,31 @@ hash and exact 43-decision fail-closed result.
   The observed/B_i package must be regenerated, reviewed, approved, and frozen
   after sign-off.
 
+## 2026-10-15 final production-readiness pass
+
+The later lock-in pass selected Option B as a recalibration direction, closed
+the collaborator, signature, typed-evidence, seed-result, acceptance-lineage,
+and signed-prerequisite defects found by an independent adversarial audit, and
+classified every in-scope output artifact without deleting or resealing any
+scientific result.
+
+Final isolated no-engine verification, with warnings promoted to errors:
+
+```text
+2865 passed, 285 skipped, 0 failed, 0 errors, 0 warnings in 456.87 s
+```
+
+The current plan SHA-256 is
+`e3835812876831af6381e96bc662b75731fe89b35ba261ef79e38e683f181c74`.
+Validation exits 2 with exactly 43 unsigned scientific/numerical decisions
+(29 proposal-backed and 14 new) plus a separate three-field signature gate.
+The Option B candidate validates mechanically through both M0 and M1 operator
+routes, but remains unfitted and not production eligible. No identity gate,
+pilot, calibration, positive-p confirmation, or production simulation was run.
+
+- **Code acceptance: ACCEPT.** The current no-engine implementation and
+  collaborator handoff surface are internally consistent and fail closed.
+- **Production readiness: NOT READY.** Recalibration and the real scientific,
+  seed, timing, pricing, confirmation, acceptance, and approval evidence remain
+  mandatory.
+

@@ -30,7 +30,10 @@ engine-running gate.
   exact config/space hashes, then select a production proposal. The current
   candidate is `REQUIRES_RECALIBRATION` and cannot itself close this gate.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
-- [ ] Historical artifacts have an approved disposition; current claims exclude unrepeated stale lineages.
+- [x] Historical artifacts have preservation-first terminal dispositions;
+  current claims exclude every pre-Option-B result unless it is explicitly
+  revalidated or rerun. All 132 catalog rows are classified and none is marked
+  current validated.
 - [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.
 - [x] A read-only deterministic `robust_nroy_seed_audit/1.0.0` scanner,
   explicit proposed source-scope manifest, and incomplete inventory artifact
@@ -44,9 +47,11 @@ engine-running gate.
 - [ ] `robust_nroy_priced_budget/1.0.0` generated from the measured pilot, priced, and approved.
 - [ ] Positive-p M1 anchors confirmed on the reserved 20-seed block under separate authorization.
 - [ ] Observed values, component variance budget and B_i regenerated from the signed plan; hashes frozen; discrepancy appears exactly once.
-- [ ] Repository handoff gate passes: current README/index, config and external-
+- [x] Repository code-handoff gate passes: current README/index, config and external-
   input registries, portable test lane, and artifact catalog contain no
-  unclassified current dependency.
+  unclassified current dependency. Mounted raw/literature/output lanes remain
+  separate from a source-only clone, and this code-handoff result is not
+  scientific production acceptance.
 - [ ] `.venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan>` returns zero blockers.
 - [ ] Only then request a new, separate authorization for production dispatch.
 

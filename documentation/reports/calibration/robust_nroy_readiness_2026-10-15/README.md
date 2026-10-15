@@ -2,16 +2,17 @@
 
 ## Verdict
 
-- **Code acceptance: ACCEPT.** Current robust-NROY fail-closed code remains
-  accepted; the path reconciliation is covered by guarded tests.
+- **Code acceptance: ACCEPT.** The merged fail-closed implementation passed an
+  independent adversarial audit, the reported defects were remediated, and the
+  final guarded repository suite passed with warnings treated as errors.
 - **Production readiness: NOT READY.** The exact current plan hash is
   `e3835812876831af6381e96bc662b75731fe89b35ba261ef79e38e683f181c74`
   and validation reports 43 unsigned required decisions: 29 proposal-backed
   and 14 requiring new decisions.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
   run. No historical result was resealed.
-- Final isolated no-engine suite: **2589 passed, 29 failed, 284 skipped, 0
-  errors**. Every failure is an intentionally stale historical-lineage check.
+- Final isolated no-engine suite: **2865 passed, 285 skipped, 0 failed, 0
+  errors, 0 warnings** in 456.87 seconds.
 
 ## Package contents
 
@@ -25,6 +26,12 @@
 - `PRODUCTION_BACKBONE_RECONCILIATION.md`: exact 1975/1980 lineage evidence,
   compatibility audit, recorded Option B choice, and remaining recalibration
   boundary.
+- `PRODUCTION_BACKBONE_RECONCILIATION_PRE_OPTION_B_2026-10-15.md`: immutable
+  source snapshot for the Option B status-metadata derivation.
+- `ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md`: conservative preservation
+  disposition for the final nine formerly ambiguous outputs. The generated
+  artifact catalog now classifies all 132 in-scope directories and promotes
+  none to current validation.
 - `POSITIVE_P_M1_CONFIRMATION_PLAN.md`: candidate, seed, vector and evidence
   contract without execution.
 - `acceptance_inputs_pre_sign/`: current-source observed values, component
@@ -136,27 +143,28 @@ confirmation, and proposal blocks are supplied. See
 
 ## Exact remaining approvals
 
-1. Rishi Malhotra reviews and signs the 43 owner-assigned register rows.
-2. The owner selected backbone Option B. Recalibrate the prepared V13.22-on-
+1. The owner selected backbone Option B. Recalibrate the prepared V13.22-on-
    1980 stochastic M0/M1 candidate and independently review the resulting fit
    before selecting or signing any production base. The current candidate is
    explicitly not fitted, validated, or production eligible; code-route tests
    do not replace calibration, identity, or scientific review.
-3. Choose whether a full preserved backlog edition should be restored as
-   authoritative documentation.
-4. Approve retirement-only versus current-code rerun for the two stale
-   historical lineages; no rerun is necessary merely to preserve history.
-5. Review `seed_source_scope.json`, reconcile any remote,
+2. Review and sign all 43 owner-assigned decision rows when their dependent
+   evidence exists, then complete the separate strict sign-off block. A signed
+   plan still does not authorize compute.
+3. Review `seed_source_scope.json`, reconcile any remote,
    deleted, collaborator-held, binary, or otherwise excluded sources, resolve
    the inventory's ambiguous/unparseable references, and approve the complete
    seed-source scope. Only afterward supply candidate blocks for collision
    checking; this task does not choose or reserve them.
-6. Separately authorize the identity gate.
-7. Separately authorize the measured pilot and approve its machine profile.
-8. Approve the priced budget derived from that pilot.
-9. Approve candidate-selection rules and separately authorize the 20-seed
+4. Separately authorize the identity gate.
+5. Separately authorize the measured pilot, approve its machine profile, and
+   approve the priced budget derived from it.
+6. Approve candidate-selection rules and separately authorize the 20-seed
    positive-p M1 confirmation.
-10. Review/freeze the regenerated observed/B_i evidence, including underivable
+7. Review and approve the regenerated observed/B_i evidence, including underivable
     V_obs limitations and the declared 10% discrepancy assumption.
-11. After validation returns zero blockers, separately authorize production
-    dispatch.
+8. Generate and review the final signed-plan `CONFIG_REGISTRY.md`, then require
+   zero-blocker validation of every exact signed prerequisite path and hash.
+9. After scientific acceptance, promote the canonical collaborator config with
+   its protected production-approval record.
+10. Separately authorize production dispatch.

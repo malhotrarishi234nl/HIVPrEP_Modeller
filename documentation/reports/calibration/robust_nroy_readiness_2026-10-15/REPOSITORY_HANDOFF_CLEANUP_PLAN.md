@@ -11,6 +11,23 @@ This plan is non-destructive. No file should be moved or deleted until the
 current dirty state is preserved and the relevant references have been
 enumerated.
 
+### 2026-10-15 completion update
+
+The code-facing handoff blockers identified below are now closed: the root
+README and documentation index are current; the machine-local dependency
+symlink is removed; external inputs have a path/hash manifest; test lanes are
+documented; the guarded repository suite is green; all 75 config files are in a
+drift-checked conservative registry; and all 132 in-scope output directories
+have preservation-first terminal catalog dispositions with none labeled
+current validation. The flat Python-module layout is retained deliberately
+because paths participate in imports and scientific provenance.
+
+Remaining cleanup is not safe to automate as part of this pass: raw-data and
+literature redistribution/licensing, the external artifact-vault location, and
+deletion of verified duplicate backup trees still require explicit storage and
+retention decisions. These do not unblock scientific production; the larger
+blockers are the new Option B calibration and the signed evidence gates.
+
 ## Immediate blockers
 
 1. The active branch is 20 commits ahead of `main`, with 40 modified tracked

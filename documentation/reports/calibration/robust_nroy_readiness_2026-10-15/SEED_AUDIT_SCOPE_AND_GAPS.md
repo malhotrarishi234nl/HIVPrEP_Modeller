@@ -13,7 +13,7 @@ is `evidence/robust_nroy_seed_audit_20261015.json`.
 
 The current mounted snapshot inventories 74,281 output files plus 156 tracked
 configuration/documentation files. It content-scans 2,905 files, records 920
-distinct parsed RNG integers, 75,595 ambiguous references, and 43 unparseable
+distinct parsed RNG integers, 75,597 ambiguous references, and 43 unparseable
 references. Another 71,531 output files are inventoried without content
 scanning under the proposed rules. These counts describe this mounted snapshot;
 they are not evidence that the source scope is exhaustive.

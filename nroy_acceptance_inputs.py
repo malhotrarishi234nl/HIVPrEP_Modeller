@@ -234,4 +234,3 @@ def validate_package(
         ),
         "payload": payload,
     }
-
