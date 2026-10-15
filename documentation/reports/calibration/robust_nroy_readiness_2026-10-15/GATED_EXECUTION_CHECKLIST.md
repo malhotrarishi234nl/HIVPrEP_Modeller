@@ -44,8 +44,19 @@ engine-running gate.
   internal or prior-source overlap.
 - [ ] Identity-gate run separately authorized, executed through the production route, and passed.
 - [ ] Measured-pilot run separately authorized and completed on the declared machine profile.
-- [ ] `robust_nroy_priced_budget/1.1.0` generated from the measured pilot,
-  declaring per-stage ledger caps and a separately priced entire workflow, and approved.
+- [ ] `robust_nroy_measured_pilot/2.0.0` recomputed from its hash-bound
+  `robust_nroy_raw_pilot_measurements/1.0.0` rows, with unique successful
+  trajectory ids, exact uint32 signed-block seeds, unique vector/seed
+  identities even across model labels, complete finite vectors whose hashes
+  recompute in the model-specific coordinate order, positive finite elapsed
+  measurements, exact M0/M1 scientific
+  config hashes, and exact machine/scheduler identity. Strict JSON validation
+  rejects duplicate keys and non-finite tokens.
+- [ ] `robust_nroy_priced_budget/2.0.0` generated from that measured pilot and
+  a hash-bound typed current pricing source. All six M0/M1 simulator-stage
+  rows exactly match the signed per-stage caps, and the validator recomputes
+  each row and the separately priced entire robust-NROY workflow before human
+  approval.
 - [ ] Positive-p M1 anchors confirmed on the reserved 20-seed block under separate authorization.
 - [ ] Observed values, component variance budget and B_i regenerated from the signed plan; hashes frozen; discrepancy appears exactly once.
 - [ ] Repository code-handoff gate passes. The README/index, collaborator

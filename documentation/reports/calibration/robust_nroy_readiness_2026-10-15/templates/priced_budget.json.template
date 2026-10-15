@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_priced_budget/1.1.0",
+  "schema": "robust_nroy_priced_budget/2.0.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "generated_utc": null,
@@ -13,15 +13,42 @@
   "machine_profile": null,
   "pricing_source": null,
   "pricing_source_sha256": null,
-  "currency_or_credit_unit": null,
-  "unit_price": null,
   "cap_scope": "per_stage_ledger",
   "cost_scope": "entire_workflow",
-  "max_attempts": null,
-  "max_trajectories": null,
-  "wall_time_cap_seconds": null,
-  "expected_cost": null,
-  "worst_case_cost": null,
-  "calculation": null,
-  "notes": "Populate from measured timing and current machine/account pricing; never infer from a test fixture."
+  "cost_formula": "resource_seconds_at_signed_stage_caps/v1",
+  "cost_inputs": {
+    "currency_or_credit_unit": null,
+    "resource_unit": null,
+    "billing_unit": "resource_hour",
+    "seconds_per_billing_unit": 3600,
+    "unit_price": null
+  },
+  "timing_inputs": {
+    "M0": {
+      "statistic": "arithmetic_mean_successful_elapsed_seconds",
+      "n_successful_trajectories": null,
+      "expected_seconds_per_trajectory": null,
+      "observed_max_seconds_per_trajectory": null
+    },
+    "M1": {
+      "statistic": "arithmetic_mean_successful_elapsed_seconds",
+      "n_successful_trajectories": null,
+      "expected_seconds_per_trajectory": null,
+      "observed_max_seconds_per_trajectory": null
+    }
+  },
+  "stage_costs": [
+    {"model": "M0", "stage": "discovery", "max_attempts": null, "max_trajectories": null, "wall_time_cap_seconds": null, "expected_resource_seconds": null, "worst_case_resource_seconds": null, "expected_cost": null, "worst_case_cost": null},
+    {"model": "M0", "stage": "confirmation", "max_attempts": null, "max_trajectories": null, "wall_time_cap_seconds": null, "expected_resource_seconds": null, "worst_case_resource_seconds": null, "expected_cost": null, "worst_case_cost": null},
+    {"model": "M0", "stage": "bridges", "max_attempts": null, "max_trajectories": null, "wall_time_cap_seconds": null, "expected_resource_seconds": null, "worst_case_resource_seconds": null, "expected_cost": null, "worst_case_cost": null},
+    {"model": "M1", "stage": "discovery", "max_attempts": null, "max_trajectories": null, "wall_time_cap_seconds": null, "expected_resource_seconds": null, "worst_case_resource_seconds": null, "expected_cost": null, "worst_case_cost": null},
+    {"model": "M1", "stage": "confirmation", "max_attempts": null, "max_trajectories": null, "wall_time_cap_seconds": null, "expected_resource_seconds": null, "worst_case_resource_seconds": null, "expected_cost": null, "worst_case_cost": null},
+    {"model": "M1", "stage": "bridges", "max_attempts": null, "max_trajectories": null, "wall_time_cap_seconds": null, "expected_resource_seconds": null, "worst_case_resource_seconds": null, "expected_cost": null, "worst_case_cost": null}
+  ],
+  "workflow_totals": {
+    "n_priced_stages": 6,
+    "expected_cost": null,
+    "worst_case_cost": null
+  },
+  "notes": "Populate only from the hash-bound measured pilot, typed current pricing source and exact signed caps. The validator recomputes every stage and workflow total."
 }

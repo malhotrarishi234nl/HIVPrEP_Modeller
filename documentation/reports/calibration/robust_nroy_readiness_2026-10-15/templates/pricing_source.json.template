@@ -1,0 +1,13 @@
+{
+  "schema": "robust_nroy_pricing_source/1.0.0",
+  "status": "INCOMPLETE",
+  "machine_profile": null,
+  "currency_or_credit_unit": null,
+  "resource_unit": null,
+  "billing_unit": "resource_hour",
+  "seconds_per_billing_unit": 3600,
+  "unit_price": null,
+  "source_reference": null,
+  "effective_utc": null,
+  "notes": "Transcribe current provider/account pricing for the pilot machine profile, retain the source reference, and hash-bind this file from priced_budget.json. This empty template cannot pass validation."
+}

@@ -68,6 +68,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import shutil
 import sqlite3
 import sys
@@ -105,6 +106,17 @@ M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
 M1_INDEPENDENT_ANCHORS_FILENAME = "m1_independent_anchors.csv"
 FROZEN_ACCEPTANCE_IDENTITY_SCHEMA = "robust_nroy_frozen_acceptance_identity/1.0.0"
 FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
+MEASURED_PILOT_SCHEMA = "robust_nroy_measured_pilot/2.0.0"
+RAW_PILOT_SCHEMA = "robust_nroy_raw_pilot_measurements/1.0.0"
+PILOT_TIMING_STATISTIC = "arithmetic_mean_successful_elapsed_seconds"
+PRICED_BUDGET_SCHEMA = "robust_nroy_priced_budget/2.0.0"
+PRICING_SOURCE_SCHEMA = "robust_nroy_pricing_source/1.0.0"
+PRICING_FORMULA = "resource_seconds_at_signed_stage_caps/v1"
+PRICED_STAGE_KEYS = tuple(
+    (model, stage)
+    for model in nc.MODELS
+    for stage in (nc.STAGE_DISCOVERY, nc.STAGE_CONFIRMATION, nc.STAGE_BRIDGES)
+)
 
 
 # ==========================================================================
@@ -112,13 +124,53 @@ FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
 # ==========================================================================
 
 def _is_sha256(value: object) -> bool:
-    text = str(value or "")
+    if not isinstance(value, str):
+        return False
+    text = value
     return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
 
 
 def _is_finite_json_number(value: object) -> bool:
     """True only for a finite native JSON number, never Boolean or string."""
-    return type(value) in (int, float) and bool(np.isfinite(float(value)))
+    if type(value) not in (int, float):
+        return False
+    try:
+        return bool(np.isfinite(float(value)))
+    except (OverflowError, ValueError):
+        return False
+
+
+def _strict_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject duplicate object keys instead of silently keeping the last one."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ContractError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    """Reject Python's non-standard NaN/Infinity JSON extensions."""
+    raise ContractError(f"non-finite JSON token {value!r}")
+
+
+def _strict_json_float(value: str) -> float:
+    """Parse one JSON float while refusing values that overflow to infinity."""
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ContractError(f"non-finite JSON number {value!r}")
+    return parsed
+
+
+def _load_strict_json(path: Path) -> object:
+    """Load JSON with no duplicate keys or non-finite numeric values."""
+    return json.loads(
+        path.read_text(),
+        object_pairs_hook=_strict_json_pairs,
+        parse_constant=_reject_json_constant,
+        parse_float=_strict_json_float,
+    )
 
 
 def _evidence_path(value: object) -> Path | None:
@@ -211,20 +263,529 @@ def _registry_bindings(text: str) -> tuple[str, dict[str, str], set[str]]:
     return status, bindings, duplicates
 
 
-def _positive_finite(value: object) -> float | None:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if np.isfinite(number) and number > 0.0 else None
+def _native_positive_int(value: object) -> int | None:
+    """Return a positive native JSON integer, never a Boolean or float."""
+    return int(value) if type(value) is int and value > 0 else None
 
 
-def _nonnegative_finite(value: object) -> float | None:
+def _native_uint32(value: object) -> int | None:
+    """Return an exact native uint32, never a Boolean or numeric string."""
+    return int(value) if type(value) is int and 0 <= value <= 2**32 - 1 else None
+
+
+def _numbers_match(recorded: object, expected: float) -> bool:
+    """Compare a recorded native JSON number with recomputed arithmetic."""
+    return _is_finite_json_number(recorded) and bool(np.isclose(
+        float(recorded), float(expected), rtol=1e-12, atol=1e-12
+    ))
+
+
+def _finite_product(*values: object) -> float | None:
+    """Multiply finite numeric inputs without allowing an infinite result."""
+    result = 1.0
     try:
-        number = float(value)
-    except (TypeError, ValueError):
+        for value in values:
+            result *= float(value)
+    except (OverflowError, TypeError, ValueError):
         return None
-    return number if np.isfinite(number) and number >= 0.0 else None
+    return result if math.isfinite(result) else None
+
+
+def _pilot_measurement_facts(
+    pilot: Mapping,
+    pilot_path: Path,
+    *,
+    plan: nc.FrozenPlan,
+    problems: list[str],
+) -> dict[str, object] | None:
+    """Parse raw pilot rows and independently recompute the declared summary.
+
+    The pilot summary is review metadata, not a source of timings.  Only the
+    hash-bound raw rows are allowed to supply trajectory count, elapsed-time
+    statistics or peak memory for downstream pricing.
+    """
+    raw_path = _referenced_evidence_file(pilot_path, pilot.get("raw_measurement_path"))
+    if raw_path is None or not raw_path.is_file():
+        problems.append("the measured-pilot raw measurement source is missing")
+        return None
+    recorded_raw_sha = pilot.get("raw_measurement_sha256")
+    if not _is_sha256(recorded_raw_sha) \
+            or recorded_raw_sha != ccs.sha256_file(raw_path):
+        problems.append("the measured-pilot raw-measurement hash is stale")
+        return None
+    try:
+        raw = _load_strict_json(raw_path)
+    except (OSError, json.JSONDecodeError, ContractError) as exc:
+        problems.append(f"the measured-pilot raw measurement is not strict JSON: {exc}")
+        return None
+    if not isinstance(raw, Mapping):
+        problems.append("the measured-pilot raw measurement is not a JSON object")
+        return None
+    if raw.get("schema") != RAW_PILOT_SCHEMA:
+        problems.append(
+            f"the measured-pilot raw measurement has no current schema ({RAW_PILOT_SCHEMA})"
+        )
+    if raw.get("status") != "FINAL":
+        problems.append("the measured-pilot raw measurement status is not FINAL")
+    if raw.get("plan_sha256") != pilot.get("plan_sha256"):
+        problems.append("the measured-pilot raw measurement is bound to a different plan")
+    if raw.get("scientific_code_sha256") != pilot.get("scientific_code_sha256"):
+        problems.append("the measured-pilot raw measurement scientific code identity differs")
+    if raw.get("models") != list(nc.MODELS):
+        problems.append("the measured-pilot raw measurement model identities are incomplete")
+    if raw.get("discovery_seeds") != list(plan.seeds.discovery):
+        problems.append("the measured-pilot raw measurement does not declare the signed seed block")
+    machine = pilot.get("machine_profile")
+    if not isinstance(machine, Mapping) or not machine or raw.get("machine_profile") != machine:
+        problems.append("the measured-pilot raw measurement machine identity is missing or different")
+    scheduler = pilot.get("scheduler_request")
+    if not isinstance(scheduler, Mapping) or not scheduler \
+            or raw.get("scheduler_request") != scheduler:
+        problems.append("the measured-pilot raw measurement scheduler request is missing or different")
+        return None
+    elif _native_uint32(scheduler.get("billable_resources")) in (None, 0) \
+            or not isinstance(scheduler.get("resource_unit"), str) \
+            or not scheduler["resource_unit"].strip():
+        problems.append(
+            "the measured-pilot scheduler request needs positive uint32 "
+            "billable_resources and a resource_unit"
+        )
+        return None
+
+    rows = raw.get("rows")
+    minimum_rows = 2 * len(plan.seeds.discovery)
+    if not isinstance(rows, list) or len(rows) < minimum_rows:
+        problems.append(
+            "the measured-pilot raw measurement must contain every signed discovery "
+            "seed once for each model"
+        )
+        return None
+    try:
+        model_spaces = _model_spaces(plan)
+        expected_config_sha = {
+            model: _scientific_config_sha256(plan, model_spaces[model])
+            for model in nc.MODELS
+        }
+    except Exception as exc:  # noqa: BLE001 - identity cannot be inferred on failure
+        problems.append(
+            f"the measured-pilot scientific config identities could not be resolved: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return None
+    parsed_rows: dict[str, list[dict[str, object]]] = {
+        model: [] for model in nc.MODELS
+    }
+    trajectory_ids: list[str] = []
+    vector_seed_identities: set[tuple[str, int]] = set()
+    malformed = False
+    failed = False
+    duplicate_vector_seed = False
+    for row in rows:
+        if not isinstance(row, Mapping):
+            malformed = True
+            continue
+        row_malformed = False
+        model = row.get("model")
+        if model not in nc.MODELS:
+            malformed = True
+            continue
+        trajectory_id = row.get("trajectory_id")
+        if not isinstance(trajectory_id, str) or not trajectory_id.strip():
+            row_malformed = True
+        else:
+            trajectory_ids.append(trajectory_id)
+        seed = _native_uint32(row.get("seed"))
+        vector = row.get("parameter_vector")
+        vector_sha = row.get("parameter_vector_sha256")
+        config_sha = row.get("scientific_config_sha256")
+        vector_identity_valid = isinstance(vector, Mapping)
+        if vector_identity_valid:
+            try:
+                vector_identity_valid = (
+                    all(_is_finite_json_number(value) for value in vector.values())
+                    and nc.vector_hash(vector, names=model_spaces[model].names) == vector_sha
+                )
+            except (ContractError, KeyError, TypeError, ValueError):
+                vector_identity_valid = False
+        if seed is None or seed not in plan.seeds.discovery \
+                or not _is_sha256(vector_sha) or not vector_identity_valid \
+                or config_sha != expected_config_sha[model]:
+            row_malformed = True
+        if row.get("status") != "SUCCESS":
+            failed = True
+        seconds = row.get("elapsed_seconds")
+        memory = row.get("peak_memory_bytes")
+        if not _is_finite_json_number(seconds) or float(seconds) <= 0.0:
+            row_malformed = True
+        if _native_positive_int(memory) is None:
+            row_malformed = True
+        if row_malformed:
+            malformed = True
+        elif seed is not None:
+            # Model is deliberately not part of this key: the same timed
+            # vector/seed observation cannot be presented as fresh evidence
+            # for both M0 and M1.  Their scientific-config hashes remain
+            # separately and exactly checked above.
+            identity = (str(vector_sha), seed)
+            if identity in vector_seed_identities:
+                duplicate_vector_seed = True
+            vector_seed_identities.add(identity)
+            parsed_rows[str(model)].append({
+                "trajectory_id": str(trajectory_id),
+                "seed": seed,
+                "elapsed_seconds": float(seconds),
+                "peak_memory_bytes": int(memory),
+            })
+    if malformed or len(trajectory_ids) != len(rows) or sum(
+        len(model_rows) for model_rows in parsed_rows.values()
+    ) != len(rows):
+        problems.append(
+            "the measured-pilot raw rows require model, non-empty trajectory_id, exact "
+            "uint32 signed seed, complete finite parameter vector with matching SHA256, "
+            "matching scientific-config "
+            "SHA256, SUCCESS status, positive finite elapsed_seconds and positive integer "
+            "peak_memory_bytes"
+        )
+        return None
+    if failed:
+        problems.append("the measured-pilot raw measurement contains a failed trajectory")
+        return None
+    if len(set(trajectory_ids)) != len(trajectory_ids):
+        problems.append("the measured-pilot raw measurement contains duplicate trajectory ids")
+        return None
+    if duplicate_vector_seed:
+        problems.append(
+            "the measured-pilot raw measurement repeats a vector/seed trajectory"
+        )
+        return None
+
+    facts: dict[str, object] = {
+        "models": {},
+        "billable_resources": int(scheduler["billable_resources"]),
+        "resource_unit": str(scheduler["resource_unit"]),
+    }
+    declared_models = pilot.get("model_summaries")
+    if not isinstance(declared_models, Mapping) or set(declared_models) != set(nc.MODELS):
+        problems.append("the measured-pilot artifact lacks exact M0 and M1 model summaries")
+        declared_models = {}
+    for model in nc.MODELS:
+        model_rows = parsed_rows[model]
+        seeds = [int(row["seed"]) for row in model_rows]
+        if len(model_rows) != len(plan.seeds.discovery) \
+                or len(set(seeds)) != len(seeds) \
+                or set(seeds) != set(plan.seeds.discovery):
+            problems.append(
+                f"the measured-pilot {model} rows do not cover every signed discovery seed "
+                "exactly once"
+            )
+        elapsed = [float(row["elapsed_seconds"]) for row in model_rows]
+        memory = [int(row["peak_memory_bytes"]) for row in model_rows]
+        if not elapsed or not memory:
+            continue
+        try:
+            total_elapsed = math.fsum(elapsed)
+        except OverflowError:
+            total_elapsed = math.inf
+        if not math.isfinite(total_elapsed):
+            problems.append(
+                f"the measured-pilot {model} elapsed-time aggregate is not finite"
+            )
+            continue
+        model_facts = {
+            "n_trajectories": len(model_rows),
+            "trajectory_ids": [str(row["trajectory_id"]) for row in model_rows],
+            "seeds": seeds,
+            "mean_elapsed_seconds": total_elapsed / len(elapsed),
+            "max_elapsed_seconds": max(elapsed),
+            "total_elapsed_seconds": total_elapsed,
+            "peak_memory_bytes": max(memory),
+        }
+        facts["models"][model] = model_facts
+        declared = declared_models.get(model)
+        if not isinstance(declared, Mapping):
+            problems.append(f"the measured-pilot artifact has no typed {model} summary")
+            continue
+        if type(declared.get("n_trajectories")) is not int \
+                or declared.get("n_trajectories") != model_facts["n_trajectories"]:
+            problems.append(
+                f"the measured-pilot {model} n_trajectories does not match its raw rows"
+            )
+        if declared.get("trajectory_ids") != model_facts["trajectory_ids"]:
+            problems.append(
+                f"the measured-pilot {model} trajectory ids do not match its raw rows"
+            )
+        if declared.get("seeds") != model_facts["seeds"]:
+            problems.append(f"the measured-pilot {model} seeds do not match its raw rows")
+        summary = declared.get("timing_summary")
+        if not isinstance(summary, Mapping):
+            problems.append(f"the measured-pilot {model} has no typed timing_summary")
+        else:
+            if summary.get("statistic") != PILOT_TIMING_STATISTIC:
+                problems.append(
+                    f"the measured-pilot {model} timing statistic is not the declared mean"
+                )
+            for key in (
+                "mean_elapsed_seconds", "max_elapsed_seconds", "total_elapsed_seconds"
+            ):
+                if not _numbers_match(summary.get(key), float(model_facts[key])):
+                    problems.append(
+                        f"the measured-pilot {model} {key} does not match its raw rows"
+                    )
+            if type(summary.get("n_successful_trajectories")) is not int \
+                    or summary.get("n_successful_trajectories") != model_facts[
+                        "n_trajectories"
+                    ]:
+                problems.append(
+                    f"the measured-pilot {model} successful trajectory count does not "
+                    "match its raw rows"
+                )
+        if type(declared.get("peak_memory_bytes")) is not int \
+                or declared.get("peak_memory_bytes") != model_facts["peak_memory_bytes"]:
+            problems.append(
+                f"the measured-pilot {model} peak memory does not match its raw rows"
+            )
+    return facts
+
+
+def _validate_priced_budget(
+    priced: Mapping,
+    priced_path: Path,
+    *,
+    plan: nc.FrozenPlan,
+    pilot: Mapping,
+    pilot_facts: Mapping[str, object] | None,
+    pilot_path: Path | None,
+    problems: list[str],
+) -> None:
+    """Recompute every stage cost and the entire-workflow totals."""
+    if priced.get("cap_scope") != "per_stage_ledger":
+        problems.append("the priced-budget artifact does not declare per-stage ledger caps")
+    if priced.get("cost_scope") != "entire_workflow":
+        problems.append("the priced-budget artifact does not price the entire workflow separately")
+    if priced.get("cost_formula") != PRICING_FORMULA:
+        problems.append("the priced-budget artifact has an unknown or arbitrary cost formula")
+    if pilot_path is not None:
+        if not _paths_match(priced.get("measured_pilot_path"), pilot_path):
+            problems.append("the priced-budget artifact records the wrong measured-pilot path")
+        recorded_pilot_sha = priced.get("measured_pilot_sha256")
+        if not _is_sha256(recorded_pilot_sha) \
+                or recorded_pilot_sha != ccs.sha256_file(pilot_path):
+            problems.append("the priced-budget artifact is not bound to the measured pilot")
+    if not _has_evidence_value(priced.get("machine_profile")):
+        problems.append("the priced-budget artifact records no priced machine profile")
+    elif pilot and priced.get("machine_profile") != pilot.get("machine_profile"):
+        problems.append("the priced-budget machine profile differs from the measured pilot")
+    if not isinstance(priced.get("approved_by"), str) \
+            or not priced["approved_by"].strip():
+        problems.append("the priced-budget artifact has no approved_by")
+    if not _valid_utc_timestamp(priced.get("approved_utc")):
+        problems.append("the priced-budget artifact has no valid approved_utc")
+
+    source_path = _referenced_evidence_file(priced_path, priced.get("pricing_source"))
+    source: Mapping | None = None
+    if source_path is None or not source_path.is_file():
+        problems.append("the priced-budget pricing source is missing")
+    elif not _is_sha256(priced.get("pricing_source_sha256")) \
+            or priced.get("pricing_source_sha256") != ccs.sha256_file(source_path):
+        problems.append("the priced-budget pricing-source hash is stale")
+    else:
+        try:
+            parsed_source = _load_strict_json(source_path)
+        except (OSError, json.JSONDecodeError, ContractError) as exc:
+            problems.append(f"the priced-budget pricing source is not strict JSON: {exc}")
+        else:
+            if not isinstance(parsed_source, Mapping):
+                problems.append("the priced-budget pricing source is not a JSON object")
+            else:
+                source = parsed_source
+
+    cost_inputs = priced.get("cost_inputs")
+    if not isinstance(cost_inputs, Mapping):
+        problems.append("the priced-budget artifact has no typed cost_inputs")
+        cost_inputs = {}
+    if source is not None:
+        if source.get("schema") != PRICING_SOURCE_SCHEMA:
+            problems.append(
+                f"the priced-budget pricing source has no current schema ({PRICING_SOURCE_SCHEMA})"
+            )
+        if source.get("status") != "FINAL":
+            problems.append("the priced-budget pricing source status is not FINAL")
+        if source.get("machine_profile") != priced.get("machine_profile"):
+            problems.append("the priced-budget pricing source is for a different machine profile")
+        if not isinstance(source.get("source_reference"), str) \
+                or not source["source_reference"].strip():
+            problems.append("the priced-budget pricing source has no source reference")
+        if not _valid_utc_timestamp(source.get("effective_utc")):
+            problems.append("the priced-budget pricing source has no valid effective_utc")
+        expected_inputs = {
+            "currency_or_credit_unit": source.get("currency_or_credit_unit"),
+            "resource_unit": source.get("resource_unit"),
+            "billing_unit": source.get("billing_unit"),
+            "seconds_per_billing_unit": source.get("seconds_per_billing_unit"),
+            "unit_price": source.get("unit_price"),
+        }
+        if dict(cost_inputs) != expected_inputs:
+            problems.append("the priced-budget cost_inputs differ from the hashed pricing source")
+    currency = cost_inputs.get("currency_or_credit_unit")
+    resource_unit = cost_inputs.get("resource_unit")
+    billing_unit = cost_inputs.get("billing_unit")
+    unit_seconds = cost_inputs.get("seconds_per_billing_unit")
+    unit_price = cost_inputs.get("unit_price")
+    if not isinstance(currency, str) or not currency.strip():
+        problems.append("the priced-budget artifact records no currency or credit unit")
+    if not isinstance(resource_unit, str) or not resource_unit.strip():
+        problems.append("the priced-budget artifact records no resource unit")
+    if billing_unit != "resource_hour":
+        problems.append("the priced-budget billing unit must be resource_hour")
+    if not _numbers_match(unit_seconds, 3600.0):
+        problems.append("the priced-budget billing unit must contain 3600 seconds")
+    if not _is_finite_json_number(unit_price) or float(unit_price) <= 0.0:
+        problems.append("the priced-budget artifact has no positive finite unit price")
+
+    timing_inputs = priced.get("timing_inputs")
+    if not isinstance(timing_inputs, Mapping) or set(timing_inputs) != set(nc.MODELS):
+        problems.append("the priced-budget artifact needs exact M0 and M1 timing_inputs")
+        timing_inputs = {}
+    pilot_models = pilot_facts.get("models") if pilot_facts is not None else None
+    if pilot_facts is not None:
+        if resource_unit != pilot_facts.get("resource_unit"):
+            problems.append("the priced-budget resource unit differs from the measured pilot")
+        if not isinstance(pilot_models, Mapping) or set(pilot_models) != set(nc.MODELS):
+            problems.append("the measured pilot has no complete model-specific timing basis")
+            pilot_models = None
+        else:
+            for model in nc.MODELS:
+                measured = pilot_models[model]
+                declared = timing_inputs.get(model)
+                if not isinstance(declared, Mapping) or declared.get(
+                    "statistic"
+                ) != PILOT_TIMING_STATISTIC \
+                        or declared.get("n_successful_trajectories") != measured[
+                            "n_trajectories"
+                        ] or not _numbers_match(
+                            declared.get("expected_seconds_per_trajectory"),
+                            float(measured["mean_elapsed_seconds"]),
+                        ) or not _numbers_match(
+                            declared.get("observed_max_seconds_per_trajectory"),
+                            float(measured["max_elapsed_seconds"]),
+                        ):
+                    problems.append(
+                        f"the priced-budget {model} timing_inputs differ from the "
+                        "measured pilot"
+                    )
+
+    rows = priced.get("stage_costs")
+    if not isinstance(rows, list):
+        problems.append("the priced-budget artifact has no typed per-stage cost rows")
+        return
+    by_key: dict[tuple[str, str], Mapping] = {}
+    malformed_rows = False
+    for row in rows:
+        if not isinstance(row, Mapping):
+            malformed_rows = True
+            continue
+        key = (str(row.get("model", "")), str(row.get("stage", "")))
+        if key in by_key:
+            malformed_rows = True
+        by_key[key] = row
+    if malformed_rows or set(by_key) != set(PRICED_STAGE_KEYS) or len(rows) != len(
+        PRICED_STAGE_KEYS
+    ):
+        problems.append(
+            "the priced-budget stage rows must cover each M0/M1 discovery, confirmation "
+            "and bridges stage exactly once"
+        )
+
+    if pilot_models is None or not _is_finite_json_number(unit_price) \
+            or float(unit_price) <= 0.0 or not _numbers_match(unit_seconds, 3600.0):
+        return
+    max_trajectories = int(plan.require("budget.max_trajectories"))
+    max_attempts = int(plan.require("budget.max_attempts"))
+    wall_cap = float(plan.require("budget.wall_time_cap_seconds"))
+    billable_resources = int(pilot_facts["billable_resources"])
+    valid_expected_costs: list[float] = []
+    valid_worst_costs: list[float] = []
+    for key in PRICED_STAGE_KEYS:
+        row = by_key.get(key)
+        if row is None:
+            continue
+        model, stage = key
+        measured = pilot_models[model]
+        expected_resource_seconds = _finite_product(
+            max_trajectories,
+            measured["mean_elapsed_seconds"],
+            billable_resources,
+        )
+        # Observed pilot maxima are measurements, not hard runtime bounds.  The
+        # signed wall-clock cap is the only cap-derived worst-case billing
+        # bound for a stage under the declared billable scheduler allocation.
+        worst_resource_seconds = _finite_product(wall_cap, billable_resources)
+        if expected_resource_seconds is None or worst_resource_seconds is None:
+            problems.append(
+                f"the priced-budget {model}/{stage} resource-second arithmetic "
+                "is not finite"
+            )
+            continue
+        if expected_resource_seconds > worst_resource_seconds:
+            problems.append(
+                f"the signed {model}/{stage} wall-time cap cannot fund the expected "
+                "full-capacity workload under the measured model-specific timing"
+            )
+        expected_cost = _finite_product(
+            expected_resource_seconds / float(unit_seconds), unit_price
+        )
+        worst_cost = _finite_product(
+            worst_resource_seconds / float(unit_seconds), unit_price
+        )
+        if expected_cost is None or worst_cost is None:
+            problems.append(
+                f"the priced-budget {model}/{stage} cost arithmetic is not finite"
+            )
+            continue
+        if type(row.get("max_trajectories")) is not int \
+                or row.get("max_trajectories") != max_trajectories \
+                or type(row.get("max_attempts")) is not int \
+                or row.get("max_attempts") != max_attempts \
+                or not _numbers_match(row.get("wall_time_cap_seconds"), wall_cap):
+            problems.append(
+                f"the priced-budget {model}/{stage} row does not match the signed "
+                "per-stage caps"
+            )
+        expected_values = {
+            "expected_resource_seconds": expected_resource_seconds,
+            "worst_case_resource_seconds": worst_resource_seconds,
+            "expected_cost": expected_cost,
+            "worst_case_cost": worst_cost,
+        }
+        for field, expected in expected_values.items():
+            if not _numbers_match(row.get(field), expected):
+                problems.append(
+                    f"the priced-budget {model}/{stage} {field} is not recomputable"
+                )
+        valid_expected_costs.append(expected_cost)
+        valid_worst_costs.append(worst_cost)
+
+    try:
+        valid_expected_total = math.fsum(valid_expected_costs)
+        valid_worst_total = math.fsum(valid_worst_costs)
+    except OverflowError:
+        problems.append("the priced-budget entire-workflow cost arithmetic is not finite")
+        return
+    if not math.isfinite(valid_expected_total) or not math.isfinite(valid_worst_total):
+        problems.append("the priced-budget entire-workflow cost arithmetic is not finite")
+        return
+
+    totals = priced.get("workflow_totals")
+    if not isinstance(totals, Mapping):
+        problems.append("the priced-budget artifact has no typed entire-workflow totals")
+    else:
+        if type(totals.get("n_priced_stages")) is not int \
+                or totals.get("n_priced_stages") != len(PRICED_STAGE_KEYS):
+            problems.append("the priced-budget workflow stage count is not recomputable")
+        if not _numbers_match(totals.get("expected_cost"), valid_expected_total):
+            problems.append("the priced-budget entire-workflow expected cost is not recomputable")
+        if not _numbers_match(totals.get("worst_case_cost"), valid_worst_total):
+            problems.append("the priced-budget entire-workflow worst-case cost is not recomputable")
 
 
 def _has_evidence_value(value: object) -> bool:
@@ -444,16 +1005,20 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         if path is None:
             continue
         try:
-            payload = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            problems.append(f"production prerequisite {key!r} is not valid JSON: {exc}")
+            payload = (
+                _load_strict_json(path)
+                if key in {"measured_pilot", "priced_budget"}
+                else json.loads(path.read_text())
+            )
+        except (OSError, json.JSONDecodeError, ContractError) as exc:
+            problems.append(f"production prerequisite {key!r} is not strict JSON: {exc}")
             continue
         if not isinstance(payload, Mapping):
             problems.append(f"production prerequisite {key!r} is not a JSON object")
             continue
         required_schema = {
-            "measured_pilot": "robust_nroy_measured_pilot/1.0.0",
-            "priced_budget": "robust_nroy_priced_budget/1.1.0",
+            "measured_pilot": MEASURED_PILOT_SCHEMA,
+            "priced_budget": PRICED_BUDGET_SCHEMA,
             "seed_disjointness_audit": "robust_nroy_seed_audit/1.0.0",
         }[key]
         if str(payload.get("schema", "")) != required_schema:
@@ -630,82 +1195,10 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             problems.append("the seed-disjointness audit records unresolved findings")
         if not isinstance(audit.get("limitations"), list):
             problems.append("the seed-disjointness audit has no limitations list")
-    priced = loaded.get("priced_budget", {})
-    if priced:
-        if priced.get("cap_scope") != "per_stage_ledger":
-            problems.append(
-                "the priced-budget artifact does not declare per-stage ledger caps"
-            )
-        if priced.get("cost_scope") != "entire_workflow":
-            problems.append(
-                "the priced-budget artifact does not price the entire workflow separately"
-            )
-        expected_budget = {
-            "max_attempts": int(plan.require("budget.max_attempts")),
-            "max_trajectories": int(plan.require("budget.max_trajectories")),
-            "wall_time_cap_seconds": float(plan.require("budget.wall_time_cap_seconds")),
-        }
-        for key, expected in expected_budget.items():
-            try:
-                actual = float(priced.get(key, -1))
-            except (TypeError, ValueError):
-                actual = -1.0
-            if actual != float(expected):
-                problems.append(f"the priced-budget artifact does not cover signed {key}")
-        pilot_path = paths.get("measured_pilot")
-        if pilot_path is not None:
-            if not _paths_match(priced.get("measured_pilot_path"), pilot_path):
-                problems.append("the priced-budget artifact records the wrong measured-pilot path")
-            if str(priced.get("measured_pilot_sha256", "")) != ccs.sha256_file(pilot_path):
-                problems.append("the priced-budget artifact is not bound to the measured pilot")
-        pilot = loaded.get("measured_pilot", {})
-        if not _has_evidence_value(priced.get("machine_profile")):
-            problems.append("the priced-budget artifact records no priced machine profile")
-        elif pilot and priced.get("machine_profile") != pilot.get("machine_profile"):
-            problems.append("the priced-budget machine profile differs from the measured pilot")
-        if not str(priced.get("approved_by", "")).strip():
-            problems.append("the priced-budget artifact has no approved_by")
-        if not _valid_utc_timestamp(priced.get("approved_utc")):
-            problems.append("the priced-budget artifact has no valid approved_utc")
-        pricing_source = _evidence_path(priced.get("pricing_source"))
-        if pricing_source is None or not pricing_source.is_file():
-            problems.append("the priced-budget pricing source is missing")
-        elif str(priced.get("pricing_source_sha256", "")) != ccs.sha256_file(pricing_source):
-            problems.append("the priced-budget pricing-source hash is stale")
-        if not str(priced.get("currency_or_credit_unit", "")).strip():
-            problems.append("the priced-budget artifact records no currency or credit unit")
-        unit_price = _nonnegative_finite(priced.get("unit_price"))
-        expected_cost = _nonnegative_finite(priced.get("expected_cost"))
-        worst_cost = _nonnegative_finite(priced.get("worst_case_cost"))
-        if unit_price is None:
-            problems.append("the priced-budget artifact has no valid unit price")
-        if expected_cost is None:
-            problems.append("the priced-budget artifact has no valid expected cost")
-        if worst_cost is None:
-            problems.append("the priced-budget artifact has no valid worst-case cost")
-        elif expected_cost is not None and worst_cost < expected_cost:
-            problems.append("the priced-budget worst-case cost is below the expected cost")
-        if not _has_evidence_value(priced.get("calculation")):
-            problems.append("the priced-budget artifact records no calculation")
     pilot = loaded.get("measured_pilot", {})
+    pilot_path = paths.get("measured_pilot")
+    pilot_facts: dict[str, object] | None = None
     if pilot:
-        if _positive_finite(pilot.get("seconds_per_trajectory")) is None:
-            problems.append("the measured-pilot artifact has no positive timing measurement")
-        try:
-            n_measured = int(pilot.get("n_trajectories", 0))
-        except (TypeError, ValueError):
-            n_measured = 0
-        if n_measured < 2:
-            problems.append("the measured-pilot artifact must time at least two trajectories")
-        trajectory_ids = pilot.get("trajectory_ids")
-        if not isinstance(trajectory_ids, list) or len(trajectory_ids) != n_measured \
-                or len({str(item) for item in trajectory_ids}) != len(trajectory_ids) \
-                or any(not str(item).strip() for item in trajectory_ids):
-            problems.append("the measured-pilot trajectory ids do not match n_trajectories")
-        if _positive_finite(pilot.get("wall_seconds")) is None:
-            problems.append("the measured-pilot artifact has no positive wall time")
-        if _positive_finite(pilot.get("peak_memory_bytes")) is None:
-            problems.append("the measured-pilot artifact has no positive peak-memory measurement")
         if not _paths_match(pilot.get("base_config_path"), base):
             problems.append("the measured-pilot artifact records the wrong base-config path")
         if str(pilot.get("base_config_sha256", "")) != base_sha:
@@ -716,27 +1209,32 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             problems.append("the measured-pilot artifact is not bound to the target register")
         if tuple(pilot.get("target_order") or ()) != plan.targets.frozen_order:
             problems.append("the measured-pilot target order differs from the signed contract")
-        try:
-            pilot_seeds = tuple(int(seed) for seed in pilot.get("discovery_seeds", ()))
-        except (TypeError, ValueError):
-            pilot_seeds = ()
-        if pilot_seeds != plan.seeds.discovery:
+        pilot_seeds = pilot.get("discovery_seeds")
+        if pilot_seeds != list(plan.seeds.discovery) or any(
+            _native_uint32(seed) is None for seed in pilot_seeds
+        ):
             problems.append("the measured-pilot discovery seeds differ from the signed block")
         if str(pilot.get("scientific_code_sha256", "")) != _code_sha256():
             problems.append("the measured-pilot artifact is not bound to the current scientific code")
         if pilot.get("scientific_runtime") != nig.scientific_runtime_fingerprint():
             problems.append("the measured-pilot scientific runtime differs from the current runtime")
-        if not _has_evidence_value(pilot.get("machine_profile")):
-            problems.append("the measured-pilot artifact has no machine profile")
-        if not isinstance(pilot.get("scheduler_request"), Mapping) or not pilot.get(
-            "scheduler_request"
-        ):
-            problems.append("the measured-pilot artifact has no scheduler request")
-        raw_measurement = _evidence_path(pilot.get("raw_measurement_path"))
-        if raw_measurement is None or not raw_measurement.is_file():
-            problems.append("the measured-pilot raw measurement source is missing")
-        elif str(pilot.get("raw_measurement_sha256", "")) != ccs.sha256_file(raw_measurement):
-            problems.append("the measured-pilot raw-measurement hash is stale")
+        if pilot_path is not None:
+            pilot_facts = _pilot_measurement_facts(
+                pilot, pilot_path, plan=plan, problems=problems
+            )
+
+    priced = loaded.get("priced_budget", {})
+    priced_path = paths.get("priced_budget")
+    if priced and priced_path is not None:
+        _validate_priced_budget(
+            priced,
+            priced_path,
+            plan=plan,
+            pilot=pilot,
+            pilot_facts=pilot_facts,
+            pilot_path=pilot_path,
+            problems=problems,
+        )
 
     # Exercise the exact configuration-construction route production will use,
     # including the generated M1 calibration space and the diagnosis block.

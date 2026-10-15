@@ -682,10 +682,81 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
     )
 
     raw_measurement = tmp_path / "pilot_raw_measurement.json"
-    raw_measurement.write_text(json.dumps({"trajectory_seconds": [1.0, 1.0]}))
-    machine = {"profile": "verification-machine", "workers": 1}
+    machine = {"profile": "verification-machine", "cpu": "fixture-cpu"}
+    scheduler = {
+        "billable_resources": 64,
+        "resource_unit": "worker",
+        "wall_seconds": 60,
+    }
+    model_elapsed = {nc.MODEL_M0: 0.01, nc.MODEL_M1: 0.02}
+    model_spaces = runner._model_spaces(plan)
+    config_sha = {
+        model: runner._scientific_config_sha256(plan, model_spaces[model])
+        for model in nc.MODELS
+    }
+    pilot_vector = {
+        model: {
+            name: float((lower + upper) / 2.0)
+            for name, lower, upper in zip(
+                model_spaces[model].names,
+                model_spaces[model].space.lower,
+                model_spaces[model].space.upper,
+            )
+        }
+        for model in nc.MODELS
+    }
+    vector_sha = {
+        model: nc.vector_hash(pilot_vector[model], names=model_spaces[model].names)
+        for model in nc.MODELS
+    }
+    raw_rows = [
+        {
+            "trajectory_id": f"{model}-pilot-{seed}",
+            "model": model,
+            "seed": int(seed),
+            "parameter_vector": pilot_vector[model],
+            "parameter_vector_sha256": vector_sha[model],
+            "scientific_config_sha256": config_sha[model],
+            "status": "SUCCESS",
+            "elapsed_seconds": model_elapsed[model],
+            "peak_memory_bytes": 1024 if model == nc.MODEL_M0 else 2048,
+        }
+        for model in nc.MODELS
+        for seed in plan.seeds.discovery
+    ]
+    raw_measurement.write_text(json.dumps({
+        "schema": runner.RAW_PILOT_SCHEMA,
+        "status": "FINAL",
+        "plan_sha256": plan.plan_sha256,
+        "scientific_code_sha256": runner._code_sha256(),
+        "models": list(nc.MODELS),
+        "discovery_seeds": list(plan.seeds.discovery),
+        "machine_profile": machine,
+        "scheduler_request": scheduler,
+        "rows": raw_rows,
+    }))
+    model_summaries = {
+        model: {
+            "n_trajectories": len(plan.seeds.discovery),
+            "trajectory_ids": [
+                f"{model}-pilot-{seed}" for seed in plan.seeds.discovery
+            ],
+            "seeds": list(plan.seeds.discovery),
+            "timing_summary": {
+                "statistic": runner.PILOT_TIMING_STATISTIC,
+                "n_successful_trajectories": len(plan.seeds.discovery),
+                "mean_elapsed_seconds": model_elapsed[model],
+                "max_elapsed_seconds": model_elapsed[model],
+                "total_elapsed_seconds": (
+                    model_elapsed[model] * len(plan.seeds.discovery)
+                ),
+            },
+            "peak_memory_bytes": 1024 if model == nc.MODEL_M0 else 2048,
+        }
+        for model in nc.MODELS
+    }
     pilot = {
-        "schema": "robust_nroy_measured_pilot/1.0.0",
+        "schema": runner.MEASURED_PILOT_SCHEMA,
         "status": "FINAL",
         "production_eligible": True,
         "generated_utc": "2026-10-15T00:00:00Z",
@@ -701,21 +772,58 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "scientific_code_sha256": runner._code_sha256(),
         "scientific_runtime": runtime,
         "machine_profile": machine,
-        "scheduler_request": {"workers": 1, "wall_seconds": 60},
-        "n_trajectories": 2,
-        "trajectory_ids": ["pilot-1", "pilot-2"],
-        "wall_seconds": 2.0,
-        "seconds_per_trajectory": 1.0,
-        "peak_memory_bytes": 1024,
+        "scheduler_request": scheduler,
+        "model_summaries": model_summaries,
         "raw_measurement_path": str(raw_measurement),
         "raw_measurement_sha256": ccs.sha256_file(raw_measurement),
     }
     paths["measured_pilot"].write_text(json.dumps(pilot))
 
     pricing_source = tmp_path / "pricing_source.json"
-    pricing_source.write_text(json.dumps({"credit_per_trajectory": 0.25}))
+    cost_inputs = {
+        "currency_or_credit_unit": "test-credit",
+        "resource_unit": "worker",
+        "billing_unit": "resource_hour",
+        "seconds_per_billing_unit": 3600,
+        "unit_price": 0.25,
+    }
+    pricing_source.write_text(json.dumps({
+        "schema": runner.PRICING_SOURCE_SCHEMA,
+        "status": "FINAL",
+        "machine_profile": machine,
+        "source_reference": "verification fixture price card",
+        "effective_utc": "2026-10-15T00:00:00Z",
+        **cost_inputs,
+    }))
+    max_trajectories = int(plan.require("budget.max_trajectories"))
+    max_attempts = int(plan.require("budget.max_attempts"))
+    wall_cap = float(plan.require("budget.wall_time_cap_seconds"))
+    expected_resource_seconds = {
+        model: max_trajectories * model_elapsed[model] * 64
+        for model in nc.MODELS
+    }
+    worst_resource_seconds = wall_cap * 64
+    expected_cost = {
+        model: expected_resource_seconds[model] / 3600.0 * 0.25
+        for model in nc.MODELS
+    }
+    worst_cost = worst_resource_seconds / 3600.0 * 0.25
+    stage_costs = [
+        {
+            "model": model,
+            "stage": stage,
+            "max_attempts": max_attempts,
+            "max_trajectories": max_trajectories,
+            "wall_time_cap_seconds": wall_cap,
+            "expected_resource_seconds": expected_resource_seconds[model],
+            "worst_case_resource_seconds": worst_resource_seconds,
+            "expected_cost": expected_cost[model],
+            "worst_case_cost": worst_cost,
+        }
+        for model, stage in runner.PRICED_STAGE_KEYS
+    ]
     priced = {
-        "schema": "robust_nroy_priced_budget/1.1.0",
+        "schema": runner.PRICED_BUDGET_SCHEMA,
         "status": "FINAL",
         "production_eligible": True,
         "generated_utc": "2026-10-15T00:00:00Z",
@@ -729,16 +837,25 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "machine_profile": machine,
         "pricing_source": str(pricing_source),
         "pricing_source_sha256": ccs.sha256_file(pricing_source),
-        "currency_or_credit_unit": "test-credit",
-        "unit_price": 0.25,
         "cap_scope": "per_stage_ledger",
         "cost_scope": "entire_workflow",
-        "max_attempts": int(plan.require("budget.max_attempts")),
-        "max_trajectories": int(plan.require("budget.max_trajectories")),
-        "wall_time_cap_seconds": float(plan.require("budget.wall_time_cap_seconds")),
-        "expected_cost": 10.0,
-        "worst_case_cost": 20.0,
-        "calculation": "measured throughput times signed caps",
+        "cost_formula": runner.PRICING_FORMULA,
+        "cost_inputs": cost_inputs,
+        "timing_inputs": {
+            model: {
+                "statistic": runner.PILOT_TIMING_STATISTIC,
+                "n_successful_trajectories": len(plan.seeds.discovery),
+                "expected_seconds_per_trajectory": model_elapsed[model],
+                "observed_max_seconds_per_trajectory": model_elapsed[model],
+            }
+            for model in nc.MODELS
+        },
+        "stage_costs": stage_costs,
+        "workflow_totals": {
+            "n_priced_stages": len(stage_costs),
+            "expected_cost": sum(row["expected_cost"] for row in stage_costs),
+            "worst_case_cost": len(stage_costs) * worst_cost,
+        },
     }
     paths["priced_budget"].write_text(json.dumps(priced))
 
@@ -856,6 +973,311 @@ def test_production_readiness_fails_on_load_bearing_evidence_drift(
     paths[artifact].write_text(json.dumps(payload))
     assert any(
         expected_problem in problem for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def _mutate_raw_pilot(paths, mutation) -> None:
+    """Change raw rows while keeping both enclosing hashes internally current."""
+    pilot = json.loads(paths["measured_pilot"].read_text())
+    raw_path = Path(pilot["raw_measurement_path"])
+    raw = json.loads(raw_path.read_text())
+    mutation(raw)
+    raw_path.write_text(json.dumps(raw))
+    pilot["raw_measurement_sha256"] = ccs.sha256_file(raw_path)
+    paths["measured_pilot"].write_text(json.dumps(pilot))
+    priced = json.loads(paths["priced_budget"].read_text())
+    priced["measured_pilot_sha256"] = ccs.sha256_file(paths["measured_pilot"])
+    paths["priced_budget"].write_text(json.dumps(priced))
+
+
+def test_measured_pilot_rejects_hash_consistent_tampered_raw_timing(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths, lambda raw: raw["rows"][0].update(elapsed_seconds=9.0)
+    )
+    assert any(
+        "M0 mean_elapsed_seconds does not match its raw rows" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_authored_summary_mismatch(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    pilot = json.loads(paths["measured_pilot"].read_text())
+    pilot["model_summaries"]["M0"]["timing_summary"][
+        "mean_elapsed_seconds"
+    ] = 99.0
+    paths["measured_pilot"].write_text(json.dumps(pilot))
+    assert any(
+        "M0 mean_elapsed_seconds does not match its raw rows" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_duplicate_raw_trajectory_rows(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths,
+        lambda raw: raw["rows"][1].update(
+            trajectory_id=raw["rows"][0]["trajectory_id"]
+        ),
+    )
+    assert any(
+        "duplicate trajectory ids" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_failed_raw_trajectory(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths, lambda raw: raw["rows"][1].update(status="FAILED")
+    )
+    assert any(
+        "failed trajectory" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_problem"),
+    (
+        (
+            lambda raw: raw["rows"][0].update(seed=-1),
+            "exact uint32 signed seed",
+        ),
+        (
+            lambda raw: raw["rows"][0].update(
+                seed=str(raw["rows"][0]["seed"]),
+            ),
+            "exact uint32 signed seed",
+        ),
+        (
+            lambda raw: raw["rows"][0].update(scientific_config_sha256="0" * 64),
+            "matching scientific-config SHA256",
+        ),
+        (
+            lambda raw: raw["rows"][0]["parameter_vector"].update(
+                {
+                    next(iter(raw["rows"][0]["parameter_vector"])):
+                    next(iter(raw["rows"][0]["parameter_vector"].values())) + 0.01,
+                }
+            ),
+            "complete finite parameter vector with matching SHA256",
+        ),
+        (
+            lambda raw: raw["rows"][1].update(
+                seed=raw["rows"][0]["seed"],
+                parameter_vector_sha256=raw["rows"][0]["parameter_vector_sha256"],
+            ),
+            "repeats a vector/seed trajectory",
+        ),
+    ),
+)
+def test_measured_pilot_rejects_anonymous_or_repeated_timing_rows(
+        tmp_path, mutation, expected_problem):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(paths, mutation)
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_invalid_scheduler_fails_closed_without_crashing(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    pilot = json.loads(paths["measured_pilot"].read_text())
+    pilot["scheduler_request"] = {
+        "billable_resources": "64",
+        "resource_unit": "worker",
+    }
+    raw_path = Path(pilot["raw_measurement_path"])
+    raw = json.loads(raw_path.read_text())
+    raw["scheduler_request"] = pilot["scheduler_request"]
+    raw_path.write_text(json.dumps(raw))
+    pilot["raw_measurement_sha256"] = ccs.sha256_file(raw_path)
+    paths["measured_pilot"].write_text(json.dumps(pilot))
+    problems = runner._production_readiness_problems(plan)
+    assert any("positive uint32 billable_resources" in problem for problem in problems)
+
+
+def _inject_duplicate_schema_key(path: Path) -> None:
+    text = path.read_text()
+    assert text.startswith("{")
+    path.write_text('{"schema":"duplicate",' + text[1:])
+
+
+@pytest.mark.parametrize(
+    ("artifact", "expected_problem"),
+    (
+        ("measured_pilot", "production prerequisite 'measured_pilot' is not strict JSON"),
+        ("priced_budget", "production prerequisite 'priced_budget' is not strict JSON"),
+        ("raw_measurement", "raw measurement is not strict JSON"),
+        ("pricing_source", "pricing source is not strict JSON"),
+    ),
+)
+def test_new_pilot_and_pricing_artifacts_reject_duplicate_json_keys(
+        tmp_path, artifact, expected_problem):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    pilot = json.loads(paths["measured_pilot"].read_text())
+    priced = json.loads(paths["priced_budget"].read_text())
+    targets = {
+        "measured_pilot": paths["measured_pilot"],
+        "priced_budget": paths["priced_budget"],
+        "raw_measurement": Path(pilot["raw_measurement_path"]),
+        "pricing_source": Path(priced["pricing_source"]),
+    }
+    _inject_duplicate_schema_key(targets[artifact])
+    if artifact == "raw_measurement":
+        pilot["raw_measurement_sha256"] = ccs.sha256_file(targets[artifact])
+        paths["measured_pilot"].write_text(json.dumps(pilot))
+        priced["measured_pilot_sha256"] = ccs.sha256_file(paths["measured_pilot"])
+        paths["priced_budget"].write_text(json.dumps(priced))
+    elif artifact == "pricing_source":
+        priced["pricing_source_sha256"] = ccs.sha256_file(targets[artifact])
+        paths["priced_budget"].write_text(json.dumps(priced))
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_raw_pilot_rejects_nonstandard_nan_even_when_hash_is_current(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths, lambda raw: raw["rows"][0].update(elapsed_seconds=float("nan"))
+    )
+    assert any(
+        "non-finite JSON token 'NaN'" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_raw_pilot_rejects_integer_too_large_for_finite_timing(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths, lambda raw: raw["rows"][0].update(elapsed_seconds=10 ** 400)
+    )
+    assert any(
+        "positive finite elapsed_seconds" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_strict_json_rejects_finite_syntax_that_overflows_binary_float(tmp_path):
+    artifact = tmp_path / "overflow.json"
+    artifact.write_text('{"elapsed_seconds":1e999}')
+    with pytest.raises(ContractError, match="non-finite JSON number"):
+        runner._load_strict_json(artifact)
+
+
+def test_pricing_fails_if_expected_runtime_exceeds_signed_wall_cap(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_raw_pilot(
+        paths,
+        lambda raw: raw["rows"][0].update(
+            elapsed_seconds=float(plan.require("budget.wall_time_cap_seconds")) * 10.0,
+        ),
+    )
+    assert any(
+        "wall-time cap cannot fund the expected full-capacity workload" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_pricing_uses_model_specific_means_and_wall_cap_as_hard_ceiling(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    priced = json.loads(paths["priced_budget"].read_text())
+    rows = {(row["model"], row["stage"]): row for row in priced["stage_costs"]}
+    max_trajectories = int(plan.require("budget.max_trajectories"))
+    wall_cap = float(plan.require("budget.wall_time_cap_seconds"))
+    resources = 64
+    assert rows[(nc.MODEL_M0, nc.STAGE_DISCOVERY)][
+        "expected_resource_seconds"
+    ] == pytest.approx(max_trajectories * 0.01 * resources)
+    assert rows[(nc.MODEL_M1, nc.STAGE_DISCOVERY)][
+        "expected_resource_seconds"
+    ] == pytest.approx(max_trajectories * 0.02 * resources)
+    assert all(
+        row["worst_case_resource_seconds"] == pytest.approx(wall_cap * resources)
+        for row in rows.values()
+    )
+
+
+def test_pricing_rejects_using_m0_timing_for_an_m1_stage(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    priced = json.loads(paths["priced_budget"].read_text())
+    m0_expected = next(
+        row["expected_resource_seconds"] for row in priced["stage_costs"]
+        if row["model"] == nc.MODEL_M0
+    )
+    m1_row = next(
+        row for row in priced["stage_costs"] if row["model"] == nc.MODEL_M1
+    )
+    m1_row["expected_resource_seconds"] = m0_expected
+    paths["priced_budget"].write_text(json.dumps(priced))
+    assert any(
+        "M1/discovery expected_resource_seconds is not recomputable" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_pricing_requires_exact_six_simulator_stage_rows(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    priced = json.loads(paths["priced_budget"].read_text())
+    priced["stage_costs"].pop()
+    paths["priced_budget"].write_text(json.dumps(priced))
+    assert any(
+        "stage rows must cover each M0/M1 discovery, confirmation and bridges "
+        "stage exactly once" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_problem"),
+    (
+        (
+            lambda priced: priced["workflow_totals"].update(expected_cost=12345.0),
+            "entire-workflow expected cost is not recomputable",
+        ),
+        (
+            lambda priced: priced.update(cost_formula="multiply whatever the reviewer wrote"),
+            "unknown or arbitrary cost formula",
+        ),
+        (
+            lambda priced: priced["stage_costs"][0].update(max_attempts=1),
+            "does not match the signed per-stage caps",
+        ),
+        (
+            lambda priced: priced["stage_costs"][0].update(expected_cost=12345.0),
+            "expected_cost is not recomputable",
+        ),
+    ),
+)
+def test_priced_budget_rejects_authored_totals_formulas_and_cap_drift(
+        tmp_path, mutation, expected_problem):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    priced = json.loads(paths["priced_budget"].read_text())
+    mutation(priced)
+    paths["priced_budget"].write_text(json.dumps(priced))
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
     )
 
 

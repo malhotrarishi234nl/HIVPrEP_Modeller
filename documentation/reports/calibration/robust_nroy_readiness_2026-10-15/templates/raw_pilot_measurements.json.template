@@ -1,0 +1,26 @@
+{
+  "schema": "robust_nroy_raw_pilot_measurements/1.0.0",
+  "status": "INCOMPLETE",
+  "plan_sha256": null,
+  "scientific_code_sha256": null,
+  "models": ["M0", "M1"],
+  "discovery_seeds": [],
+  "machine_profile": null,
+  "scheduler_request": {
+    "billable_resources": null,
+    "resource_unit": null
+  },
+  "rows": [],
+  "row_contract": {
+    "trajectory_id": "unique non-empty string",
+    "model": "M0 or M1; each declared discovery seed appears exactly once per model",
+    "seed": "native uint32 from the exact signed discovery block",
+    "parameter_vector": "complete finite model-specific coordinate mapping for the exact timed vector",
+    "parameter_vector_sha256": "nroy_contract.vector_hash of parameter_vector in the frozen model-specific coordinate order",
+    "scientific_config_sha256": "exact model-specific scientific config SHA256",
+    "status": "SUCCESS",
+    "elapsed_seconds": "positive finite native JSON number",
+    "peak_memory_bytes": "positive native JSON integer"
+  },
+  "notes": "A real authorized pilot must declare a positive uint32 billable_resources count, write one raw row per timed trajectory, cover every signed discovery seed exactly once for M0 and M1, and never reuse a vector/seed identity, including under a different model label. This empty template is not evidence and cannot pass validation."
+}

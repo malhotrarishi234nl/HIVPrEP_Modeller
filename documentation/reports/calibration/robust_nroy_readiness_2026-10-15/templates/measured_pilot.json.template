@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_measured_pilot/1.0.0",
+  "schema": "robust_nroy_measured_pilot/2.0.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "generated_utc": null,
@@ -15,13 +15,39 @@
   "scientific_code_sha256": null,
   "scientific_runtime": {},
   "machine_profile": null,
-  "scheduler_request": {},
-  "n_trajectories": null,
-  "trajectory_ids": [],
-  "wall_seconds": null,
-  "seconds_per_trajectory": null,
-  "peak_memory_bytes": null,
+  "scheduler_request": {
+    "billable_resources": null,
+    "resource_unit": null
+  },
+  "model_summaries": {
+    "M0": {
+      "n_trajectories": null,
+      "trajectory_ids": [],
+      "seeds": [],
+      "timing_summary": {
+        "statistic": "arithmetic_mean_successful_elapsed_seconds",
+        "n_successful_trajectories": null,
+        "mean_elapsed_seconds": null,
+        "max_elapsed_seconds": null,
+        "total_elapsed_seconds": null
+      },
+      "peak_memory_bytes": null
+    },
+    "M1": {
+      "n_trajectories": null,
+      "trajectory_ids": [],
+      "seeds": [],
+      "timing_summary": {
+        "statistic": "arithmetic_mean_successful_elapsed_seconds",
+        "n_successful_trajectories": null,
+        "mean_elapsed_seconds": null,
+        "max_elapsed_seconds": null,
+        "total_elapsed_seconds": null
+      },
+      "peak_memory_bytes": null
+    }
+  },
   "raw_measurement_path": null,
   "raw_measurement_sha256": null,
-  "notes": "Run only after explicit pilot authorization. Do not estimate timings."
+  "notes": "Run only after explicit pilot authorization. Every summary value is recomputed from the hash-bound raw rows; do not estimate or hand-author timings."
 }

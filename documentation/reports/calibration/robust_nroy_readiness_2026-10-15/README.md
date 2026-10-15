@@ -140,7 +140,52 @@ path. They cannot substitute another otherwise-valid certificate at prepare time
 
 Pilot and pricing generation remain intentionally unimplemented as automatic
 “passed” commands: pilot measurements require authorization and real hardware,
-and pricing requires current account data and approval. The seed audit now has
+and pricing requires current account data and approval. The validator does not
+trust authored timing or cost totals. `robust_nroy_measured_pilot/2.0.0` must
+hash-bind a strict `robust_nroy_raw_pilot_measurements/1.0.0` JSON artifact;
+duplicate keys and non-standard `NaN`/`Infinity` tokens are rejected. Its rows
+have globally unique trajectory ids, `SUCCESS` status, positive finite elapsed
+seconds and positive integer peak memory under the exact declared machine and
+scheduler request. Every row also carries M0/M1 identity, an exact native
+uint32 from the signed discovery block, the complete finite timed parameter
+vector and its recomputed model-specific vector SHA-256, plus the
+recomputed model-specific scientific-config SHA-256. Every discovery seed must
+appear exactly once for each model and a vector/seed identity cannot be
+reused, including across model labels. The validator independently recomputes
+separate M0 and M1 counts, ids, seeds, arithmetic-mean elapsed time, observed
+maximum, total elapsed time and peak memory. The model-specific arithmetic means are the simple
+predeclared timing statistics used for expected full-capacity pricing; neither
+is silently projected onto the other model or claimed to describe a population
+timing distribution.
+
+`robust_nroy_priced_budget/2.0.0` must also hash-bind a typed
+`robust_nroy_pricing_source/1.0.0` for that machine profile. The source records
+currency/credit unit, resource unit and a positive price per resource-hour.
+The budget contains exactly six simulator-stage rows: discovery, confirmation
+and bridges for M0 and M1. Promotion and regions are allocation/reporting
+stages and do not dispatch trajectories. Every row repeats the exact signed
+per-stage trajectory, attempt and wall-time caps. The validator recomputes:
+
+```text
+expected resource-seconds = max_trajectories
+                            x model-specific measured mean elapsed seconds
+                            x billable_resources
+cap-bounded worst resource-seconds = wall_time_cap_seconds x billable_resources
+cost = resource-seconds / 3600 x unit_price_per_resource_hour
+workflow cost = sum of the six recomputed simulator-stage rows
+```
+
+The observed pilot maximum remains visible as a diagnostic but is not treated
+as a hard bound. “Worst” is the hard billing ceiling under the declared
+scheduler size and signed wall-time cap; expected full-capacity resource time
+must fit beneath it. The attempt cap is still copied and checked exactly because
+it limits dispatches, but no observed duration is mislabelled as an upper bound
+for failed or future attempts. Human approval remains required, and a priced
+artifact fails if its formula, source inputs, stage coverage, plan caps, row
+totals or workflow totals differ from recomputation. The separate identity, positive-p anchor,
+pilot itself and downstream policy/PSA costs are not hidden inside these six
+robust-NROY stage rows and must be costed under their own authorization where
+applicable. The seed audit now has
 a read-only deterministic inventory tool, a proposed source-scope manifest, and
 an explicit incomplete artifact. It cannot pass until the owner approves the
 complete source scope, every ambiguity is resolved, and candidate discovery,
