@@ -39,6 +39,21 @@ def _write_copy(tmp_path: Path, payload: dict) -> Path:
     return path
 
 
+def _write_approved_canonical(tmp_path: Path) -> Path:
+    payload = json.loads(SHARED.read_text())
+    payload["production_approval"] = {
+        "schema": run_model.PRODUCTION_APPROVAL_SCHEMA,
+        "status": "APPROVED",
+        "production_eligible": True,
+        "approved": True,
+        "approved_by": "Synthetic test owner",
+        "approved_utc": "2026-10-15T09:00:00Z",
+    }
+    path = tmp_path / "synthetic_approved_canonical.json"
+    path.write_text(json.dumps(payload, indent=2))
+    return path
+
+
 def test_shared_config_is_a_minimal_declared_derivative():
     source = json.loads(SOURCE.read_text())
     shared = json.loads(SHARED.read_text())
@@ -170,6 +185,74 @@ def test_operator_run_requires_an_explicit_seed_before_engine_import(tmp_path, c
     assert not output.exists()
 
 
+def test_operator_run_refuses_unapproved_config_before_engine_import(
+    tmp_path, monkeypatch, capsys,
+):
+    output = tmp_path / "must-not-run"
+
+    class MustNotConstruct:
+        def __init__(self, config, seed):
+            raise AssertionError("unapproved config reached engine construction")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "run_v3",
+        types.SimpleNamespace(SimulationEngineV3=MustNotConstruct),
+    )
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M0", "--seed", "12345",
+        "--output-dir", str(output),
+    ]) == 2
+    message = capsys.readouterr().out
+    assert "actual runs require a protected production_approval block" in message
+    assert not output.exists()
+
+
+def test_operator_cannot_self_approve_a_copy(tmp_path, capsys):
+    config = json.loads(SHARED.read_text())
+    config["production_approval"] = {
+        "schema": run_model.PRODUCTION_APPROVAL_SCHEMA,
+        "status": "APPROVED",
+        "production_eligible": True,
+        "approved": True,
+        "approved_by": "Unreviewed operator edit",
+        "approved_utc": "2026-10-15T09:00:00Z",
+    }
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 2
+    assert "forbidden config edit at production_approval" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("status", "DRAFT", "status must be 'APPROVED'"),
+        ("production_eligible", 1, "production_eligible must be true"),
+        ("approved", "true", "approved must be true"),
+        ("approved_by", "  ", "must name the approving owner"),
+        ("approved_utc", "2026-10-15T09:00:00", "must include a timezone"),
+    ],
+)
+def test_production_approval_contract_rejects_false_or_malformed_claims(
+    field, value, message,
+):
+    config = {
+        "production_approval": {
+            "schema": run_model.PRODUCTION_APPROVAL_SCHEMA,
+            "status": "APPROVED",
+            "production_eligible": True,
+            "approved": True,
+            "approved_by": "Synthetic test owner",
+            "approved_utc": "2026-10-15T09:00:00Z",
+        }
+    }
+    config["production_approval"][field] = value
+    with pytest.raises(run_model.OperatorConfigError, match=message):
+        run_model._require_production_approval(config)
+
+
 def test_operator_copy_may_change_an_existing_scientific_value(tmp_path, capsys):
     config = json.loads(SHARED.read_text())
     config["transmission_model"]["disease"]["diagnosis"]["annual_rate"][
@@ -220,6 +303,8 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     tmp_path, monkeypatch, capsys,
 ):
     output = tmp_path / "recorded-run"
+    approved = _write_approved_canonical(tmp_path)
+    monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
     seen = {}
 
     class FakeEngine:
@@ -245,7 +330,7 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     monkeypatch.setattr(run_model, "_utc_now", lambda: next(times))
 
     assert run_model.main([
-        "--config", str(SHARED), "--model", "M1", "--p", "0.2",
+        "--config", str(approved), "--model", "M1", "--p", "0.2",
         "--seed", "42001", "--output-dir", str(output),
     ]) == 0
     assert seen["seed"] == 42001
@@ -259,8 +344,8 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     assert manifest["status"] == "COMPLETE"
     assert manifest["route"] == {"model": "M1", "p": 0.2, "seed": 42001}
     assert manifest["input_config"] == {
-        "path": str(SHARED.resolve()),
-        "sha256": hashlib.sha256(SHARED.read_bytes()).hexdigest(),
+        "path": str(approved.resolve()),
+        "sha256": hashlib.sha256(approved.read_bytes()).hexdigest(),
     }
     assert manifest["effective_config"]["path"] == str(effective_path.resolve())
     assert manifest["effective_config"]["sha256"] == hashlib.sha256(
@@ -276,11 +361,21 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     ]
     assert node["enabled"]["value"] is True
     assert node["aids_symptom_annual_probability"]["value"] == pytest.approx(0.2)
+    assert effective["production_approval"] == {
+        "schema": run_model.PRODUCTION_APPROVAL_SCHEMA,
+        "status": "APPROVED",
+        "production_eligible": True,
+        "approved": True,
+        "approved_by": "Synthetic test owner",
+        "approved_utc": "2026-10-15T09:00:00Z",
+    }
     assert "reproducibility manifest" in capsys.readouterr().out
 
 
 def test_fake_engine_failure_marks_manifest_failed(tmp_path, monkeypatch):
     output = tmp_path / "failed-run"
+    approved = _write_approved_canonical(tmp_path)
+    monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
 
     class FailingFakeEngine:
         def __init__(self, config, seed):
@@ -307,7 +402,7 @@ def test_fake_engine_failure_marks_manifest_failed(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="synthetic test failure"):
         run_model.main([
-            "--config", str(SHARED), "--model", "M0", "--seed", "42002",
+            "--config", str(approved), "--model", "M0", "--seed", "42002",
             "--output-dir", str(output),
         ])
 

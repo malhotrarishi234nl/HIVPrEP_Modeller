@@ -11,6 +11,11 @@ well formed. It does **not** establish scientific validity. In particular, M1
 must not be described as production-ready until the separately authorized
 identity gate, measured pilot, and scientific review have passed.
 
+The repository currently has no collaborator config approved for a real run.
+That is intentional: draft and recalibration configs remain useful with
+`--validate-only`, while an actual run fails before creating outputs or
+importing the engine.
+
 ## Start from a copy
 
 Use the shared candidate as the source and give each analysis its own named
@@ -55,6 +60,8 @@ probability:
 
 These commands do not construct the simulation engine.
 They may omit `--seed` because no stochastic trajectory is created.
+Validation-only also does not require production approval; its success is a
+mechanical preflight result, not permission to simulate.
 
 The CLI checks that `p` is a mathematical probability in `[0,1]`. That is a
 structural check, not approval of a scientific range. The robust-NROY plan
@@ -64,8 +71,11 @@ as scientific acceptance.
 
 ## Run after the analysis is authorized
 
-Choose an explicit seed and a new, analysis-specific output directory. A real
-run always requires `--seed`; the CLI never falls back to the saved config seed.
+These commands become usable only after a maintainer promotes the canonical
+config with the protected approval contract below. Until then they fail closed.
+Once promoted, choose an explicit seed and a new, analysis-specific output
+directory. A real run always requires `--seed`; the CLI never falls back to the
+saved config seed.
 
 ```bash
 .venv/bin/python run_model.py \
@@ -102,6 +112,30 @@ engine raises. Do not relabel a `PREPARED` or `FAILED` directory as a completed
 result. The output-directory non-overwrite rule protects these sidecars along
 with the scientific outputs.
 
+## Protected production approval
+
+Every actual `run_model.py` simulation requires the canonical config to carry
+this exact maintainer-owned block:
+
+```json
+"production_approval": {
+  "schema": "model_config_production_approval/1.0.0",
+  "status": "APPROVED",
+  "production_eligible": true,
+  "approved": true,
+  "approved_by": "Named approving owner",
+  "approved_utc": "2026-10-15T09:00:00Z"
+}
+```
+
+The approver and timestamp must be non-empty and the timestamp must include a
+timezone. This block records a completed promotion; it must not be added merely
+to make the command run. It is protected like provenance and cannot be added or
+changed in a collaborator copy. There is no command-line bypass. Promotion
+therefore requires a reviewed canonical-config change after calibration and
+scientific acceptance; collaborators continue to edit only permitted parameter
+values in copies of that promoted canonical config.
+
 ## Editable and protected inputs
 
 Ordinary analysis inputs may be changed in a copied config when the change is
@@ -128,6 +162,8 @@ Do not edit these protected shared-route fields:
 - `stage_structured_diagnosis.symptom_start_year.value` must remain `1985`;
 - calibration-space paths and robust-NROY acceptance settings are not ordinary
   collaborator inputs.
+- the top-level `production_approval` block is maintainer-owned and must match
+  the canonical config exactly.
 
 The command fails with a plain `ERROR:` message if a protected field or model
 choice is invalid. For a forbidden copy edit, the error names the first path

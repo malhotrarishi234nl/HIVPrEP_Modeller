@@ -40,7 +40,10 @@ and the identity, pilot, scientific-review, and dispatch gates remain open.
 Real runs require an explicit seed and a new output directory; the runner saves
 the exact effective config and a SHA-bound runtime/code reproducibility
 manifest alongside the results. Validation-only constructs no engine and
-writes no run files.
+writes no run files. Actual simulations additionally require the canonical
+config's protected machine-readable production approval; no current candidate
+has it, and the collaborator CLI has no bypass. This leaves mechanical
+validation usable while calibration and scientific acceptance are completed.
 
 ## Safety boundary
 

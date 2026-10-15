@@ -17,6 +17,12 @@ choice through `run_model.py` and parameter changes through reviewed JSON
 copies. Follow the
 [model operator guide](../documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md).
 The route is code-tested but is not a production approval.
+`--validate-only` remains available for candidate and recalibration configs.
+An actual collaborator simulation additionally requires a protected canonical
+`production_approval` block with exact schema, `APPROVED` status, both
+`approved` and `production_eligible` set to true, and a named approver plus
+timezone-qualified approval time. No current candidate has that approval and
+there is no CLI bypass.
 
 ## Current robust-NROY inputs
 
@@ -80,8 +86,10 @@ For an edited `value`, the validator enforces co-located numeric `bounds`,
 `range`, `min`/`max`, or `minimum`/`maximum` metadata when it exists. It does
 not infer a limit where the canonical parameter declares none, and passing
 this mechanical check does not make the edit scientifically accepted. Actual
-runs require an explicit command-line seed and produce an effective-config
-snapshot plus a reproducibility manifest in the new output directory.
+runs require an explicit command-line seed, an exact protected production
+approval inherited from the canonical config, and produce an effective-config
+snapshot plus a reproducibility manifest in the new output directory. A
+collaborator cannot promote a copied config by adding or editing the approval.
 
 `run_model.py` structurally validates the M1 symptom probability as a
 mathematical probability in `[0,1]`. That does not approve the entire interval

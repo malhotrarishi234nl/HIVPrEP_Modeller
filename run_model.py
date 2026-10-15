@@ -39,7 +39,13 @@ class OperatorConfigError(ValueError):
 
 PROTECTED_ROOTS = {
     "_readme", "meta", "run_control", "output", "v13_14_diagnostic",
-    "calibration_metadata",
+    "calibration_metadata", "production_approval",
+}
+
+PRODUCTION_APPROVAL_SCHEMA = "model_config_production_approval/1.0.0"
+PRODUCTION_APPROVAL_FIELDS = {
+    "schema", "status", "production_eligible", "approved", "approved_by",
+    "approved_utc",
 }
 
 EFFECTIVE_CONFIG_FILENAME = "effective_config.json"
@@ -332,6 +338,67 @@ def _format_path(path: tuple[str | int, ...]) -> str:
     return text
 
 
+def _require_production_approval(config: Mapping[str, Any]) -> None:
+    """Fail closed unless this canonical config is approved for real runs.
+
+    Validation-only intentionally does not call this function.  The approval
+    block is a protected config root, so an operator copy cannot add or edit it
+    independently of the canonical config selected by this runner.
+    """
+    approval = config.get("production_approval")
+    if not isinstance(approval, Mapping):
+        raise OperatorConfigError(
+            "actual runs require a protected production_approval block; this "
+            "config may be checked with --validate-only but is not authorized "
+            "for simulation"
+        )
+    fields = set(approval)
+    if fields != PRODUCTION_APPROVAL_FIELDS:
+        missing = sorted(PRODUCTION_APPROVAL_FIELDS - fields)
+        unexpected = sorted(fields - PRODUCTION_APPROVAL_FIELDS)
+        details = []
+        if missing:
+            details.append(f"missing={missing}")
+        if unexpected:
+            details.append(f"unexpected={unexpected}")
+        raise OperatorConfigError(
+            "production_approval has the wrong fields (" + ", ".join(details) + ")"
+        )
+    if approval["schema"] != PRODUCTION_APPROVAL_SCHEMA:
+        raise OperatorConfigError(
+            "production_approval.schema must be "
+            f"{PRODUCTION_APPROVAL_SCHEMA!r}"
+        )
+    if approval["status"] != "APPROVED":
+        raise OperatorConfigError("production_approval.status must be 'APPROVED'")
+    if approval["production_eligible"] is not True:
+        raise OperatorConfigError(
+            "production_approval.production_eligible must be true"
+        )
+    if approval["approved"] is not True:
+        raise OperatorConfigError("production_approval.approved must be true")
+    approved_by = approval["approved_by"]
+    if not isinstance(approved_by, str) or not approved_by.strip():
+        raise OperatorConfigError(
+            "production_approval.approved_by must name the approving owner"
+        )
+    approved_utc = approval["approved_utc"]
+    if not isinstance(approved_utc, str) or not approved_utc.strip():
+        raise OperatorConfigError(
+            "production_approval.approved_utc must be a timezone-qualified timestamp"
+        )
+    try:
+        parsed = datetime.fromisoformat(approved_utc.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise OperatorConfigError(
+            "production_approval.approved_utc must be a valid ISO-8601 timestamp"
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise OperatorConfigError(
+            "production_approval.approved_utc must include a timezone"
+        )
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -586,6 +653,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise OperatorConfigError(
                 f"output directory is not empty: {output_path}; choose a new run directory"
             )
+        _require_production_approval(base)
         manifest_path = write_reproducibility_bundle(
             input_config_path=args.config,
             input_config_sha256=input_config_sha256,
