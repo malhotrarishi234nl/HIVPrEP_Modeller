@@ -20,10 +20,11 @@ Start with:
 
 1. [documentation/INDEX.md](documentation/INDEX.md)
 2. [robust-NROY readiness package](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md)
-3. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
-4. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
-5. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
-6. [configuration guide](configs/README.md)
+3. [owner decision packet](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_DECISION_PACKET.md)
+4. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
+5. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
+6. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
+7. [configuration guide](configs/README.md)
 
 Older root-level task briefs and runbooks are retained for provenance. A dated
 document is not current authority unless the documentation index says so.

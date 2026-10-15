@@ -35,6 +35,9 @@
 - `OWNER_LOCK_IN_AND_METHODS_GUIDE.md`: plain-language owner decisions,
   assumptions, methods rationale, reading list, and newly discovered design
   gaps that must close before signing.
+- `OWNER_DECISION_PACKET.md`: all 42 unsigned rows grouped by closure route,
+  with coupled numeric recommendations, bounded sensitivities, and explicit
+  trajectory-cost consequences; it is decision support, not a signature.
 - `REPOSITORY_HANDOFF_CLEANUP_PLAN.md`: preservation-first repository and
   artifact cleanup sequence for a reproducible researcher handoff.
 - `MODEL_OPERATOR_GUIDE.md`: parameter-focused, no-Python-edit commands for
