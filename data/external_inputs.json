@@ -1,0 +1,51 @@
+{
+  "schema": "hiv_prep_external_inputs/1.0.0",
+  "status": "CURRENT_ACTIVE_WORKFLOWS",
+  "path_contract": {
+    "data_root": "../data/raw",
+    "literature_root": "../literature",
+    "note": "Paths are relative to the repository root; SHA-256 is authoritative."
+  },
+  "inputs": [
+    {
+      "logical_id": "history_matching_target_workbook",
+      "path": "../data/raw/validation/DiseaseData.xlsx",
+      "sha256": "0ff530cea5cb2545b32c6c20ab40de324bfadf7846c2078e59eec6b79eb93404",
+      "required_by": [
+        "configs/hm_target_register_focused_20260916.json",
+        "robust-NROY acceptance-input generation"
+      ],
+      "redistribution_status": "REVIEW_REQUIRED"
+    },
+    {
+      "logical_id": "unaids_netherlands_estimates_2025",
+      "path": "../data/raw/validation/HIV Data UNAIDS/ZIP Files/netherlands_estimates_2025.csv",
+      "sha256": "e5104b6f89c47d65687e42bcf00c2f33d0503f7b22ac0ee869bcb96d6a8e5c56",
+      "required_by": ["UNAIDS validation loaders"],
+      "redistribution_status": "REVIEW_REQUIRED"
+    },
+    {
+      "logical_id": "hmd_netherlands_population",
+      "path": "../data/raw/validation/HMD_NL_Pop.txt",
+      "sha256": "17461a86c04bdebcb0ffbb1a1ea58fb1fee6044bf1425ed54ac902199f517c18",
+      "required_by": ["demographic validation"],
+      "redistribution_status": "REVIEW_REQUIRED"
+    },
+    {
+      "logical_id": "net_migration_netherlands",
+      "path": "../data/raw/validation/Migration_Net.csv",
+      "sha256": "4caff391be60aec230f6131a3c0716825fbdd5cbabc7b3a59c52f10811d4636a",
+      "required_by": ["demographic validation"],
+      "redistribution_status": "REVIEW_REQUIRED"
+    }
+  ],
+  "literature": {
+    "path": "../literature",
+    "identity_source": "configs/diagnosis_triangulation_orchestration_20260922.json and run_diagnosis_triangulation_orchestration.py",
+    "redistribution_status": "REVIEW_REQUIRED"
+  },
+  "handoff_blockers": [
+    "record acquisition/source and license or redistribution status for each input",
+    "decide whether collaborators receive files or acquisition instructions"
+  ]
+}

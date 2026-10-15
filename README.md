@@ -1,237 +1,147 @@
-# HIV Transmission Model
+# HIV PrEP model
 
-**Author:** Rishi Malhotra — Thesis Research
-**Status:** Phase 2 — converting the submitted MSc thesis into a publishable manuscript
-**Version:** V13.24 (see `CHANGELOG.md`)
-**Last updated:** 2026-09-15
+Discrete-time stochastic HIV transmission and prevention model for the
+Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
 
-> ## Start here
->
-> **`STATE_OF_PLAY_2026-09-11.md`** — the broad Phase 2 state captured on 2026-09-11.
-> It is an historical snapshot; its statements that C-1, A-5, or production-path history
-> matching have not run are superseded by the dated 2026-09-15 calibration records below.
->
-> Then, depending on what you are doing:
-> - **task board** → `PHASE2_AGENT_HANDOFF_2026-09-09.md` (§1A is the binding verification
->   and academic-integrity standard for all work in this repo)
-> - **gates and decision log** → `PHASE2_DEVELOPMENT_CHECKLIST.md`
-> - **reasoning behind the Phase 2 decisions** → `PHASE2_STRATEGY_BRIEF_2026-09-06.md`
-> - **calibration method and current operating guide** →
->   `documentation/guides/HISTORY_MATCHING_GUIDE.md`
-> - **calibration build rationale and historical decisions** →
->   `HISTORY_MATCHING_BUILD_SPEC.md`
-> - **Wave 1 declaration** → `HM_BASELINE_LEARNING_RUN_2026-09-15.md`
-> - **Wave 2 focused-continuation declaration** →
->   `HM_FOCUSED_CONTINUATION_RUN_2026-09-15.md`
-> - **prepared many-seed confirmation** →
->   `HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md`
-> - **work specified but not yet done** → the `TASK_BRIEF_*.md` files
->
-> **Everything below this box describes the V11-era model and is retained for structural
-> orientation only. It was last revised 2026-03-03 and predates the V12–V13 work, the
-> Phase 2 rebuild, and every finding in the state-of-play document. Do not rely on it for
-> version, status, calibration or results claims.**
+## Current status
 
----
+- **Code status:** robust-NROY implementation accepted after isolated guarded
+  review, subject to the active production-readiness corrections below.
+- **Scientific production status:** **not yet production-ready**. Do not launch
+  production calibration, identity, pilot, M1 confirmation, PSA, or policy
+  runs without the explicit gate described in the current readiness package.
+- **Current workstream:** shared M0/M1 stochastic config, robust-NROY methods
+  corrections, signed inputs, seed audit, measured pilot, and collaborator
+  handoff cleanup.
+- **Historical results:** preserved for their recorded code snapshots. They are
+  not automatically current-code evidence.
 
-## Overview
+Start with:
 
-Discrete-time stochastic population model of HIV transmission in the Netherlands,
-built for thesis research on HIV prevention interventions (PrEP cost-effectiveness).
-Population flows from birth → childhood pool (ages 0–14) → sexual debut (age 15) →
-orientation and activity assignment → HIV transmission system.
+1. [documentation/INDEX.md](documentation/INDEX.md)
+2. [robust-NROY readiness package](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md)
+3. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
+4. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
 
-Calibration target: Dutch HIV epidemic 1970–2020 (RIVM / ATHENA cohort data).
+Older root-level task briefs and runbooks are retained for provenance. A dated
+document is not current authority unless the documentation index says so.
 
----
+## Intended collaborator use
 
-## Version History
+Collaborators are research operators, not code maintainers. The supported
+handoff must let them select a reviewed configuration or parameter profile,
+validate it, run an approved workflow, and inspect results without editing
+Python. Until that operator workflow is completed and validated, this
+repository should not be handed over as a self-service production model.
 
-| Version | Date | Key Changes |
-|---------|------|-------------|
-| V10.0 | 2026-02-26 | Config restructure 17→7 keys; ConfigReader; config_utils.py |
-| V11.0 | 2026-03-03 | Contact balance fix; Garnett ε parameterisation (18 mixing params → 2) |
-| V11.2 | 2026-03-03 | Parameter tier metadata (fixed/estimated/uncertain) on 22 params |
+## Safety boundary
 
-Previous versions archived in ../v10/.
+Code acceptance is not scientific acceptance, and scientific acceptance is not
+authorization to spend compute.
 
----
+The production sequence is fail-closed:
 
-## Project Structure
+1. review and sign the complete plan;
+2. freeze the stochastic M0/M1 config and acceptance inputs;
+3. prove seed disjointness;
+4. separately authorize and pass the M0/M1 identity gate;
+5. separately authorize and measure a representative pilot;
+6. price and approve the full design;
+7. separately authorize positive-p M1 search and confirmation;
+8. obtain zero-blocker validation and independent final review;
+9. separately authorize production dispatch.
 
-```
-v11/
-├── run_v3.py                  # Main simulation engine (entry point)
-├── engine_v3.py               # SimulationEngineV3 + ConfigValidator
-├── demography.py              # Aging, fertility, migration, childhood pool
-├── migration.py               # Net migration module
-├── transmission_corrected.py  # Per-act transmission probability calculations
-├── output_writer.py           # CSV/XLSX output writer
-├── config_reader.py           # V10-native config reader (ConfigReader class)
-├── config_utils.py            # extract_value(), extract_tier(), get_params_by_tier(),
-│                              #   validate_tier_schema()
-├── schedule_utils.py          # Time-varying ART/PrEP schedule interpolation
-├── state_snapshot.py          # StateSnapshot (baseline freezing — BACKLOG-4)
-├── scenario_executor.py       # Scenario comparison runner
-├── run_scenarios.py           # CLI entry point for scenario runs
-├── validation.py              # Post-run validation utilities
-├── regression_test.py         # Quick smoke test against v11_configuration.json
-├── requirements.txt
-│
-├── configs/
-│   ├── v11_configuration.json   # ← CANONICAL config (V11.2)
-│   ├── v6_golden_reference.json # Golden reference for ConfigReader tests
-│   ├── v10_configuration.json   # Legacy V10 config (used by legacy tests)
-│   ├── v10_v6_rel_pop.json      # Legacy V6-format config (backward-compat tests)
-│   └── v10_*.json               # Other legacy test configs
-│
-├── tests/
-│   ├── test_config_reader.py    # 11 tests — ConfigReader V11 correctness
-│   ├── test_contact_balance.py  #  6 tests — Garnett ε contact balance
-│   ├── test_parameter_tiers.py  #  6 tests — V11.2 tier metadata schema
-│   ├── test_migration.py        # Migration module tests
-│   ├── test_art_dependent_progression.py
-│   ├── test_births_deaths_by_timestep.py
-│   └── [other test files]
-│
-├── diagnostics/               # One-off diagnostic scripts (not part of test suite)
-├── outputs/                   # Simulation output CSVs
-└── documentation/
-    ├── BACKLOG.md             # ← All deferred items with priority + blocker notes
-    ├── MASTER_REFERENCES.md   # ← All literature citations + mathematical formulas
-    ├── DOCUMENTATION_INDEX.md
-    ├── model_notes/           # Design decisions, implementation plans, discussions
-    ├── patches/               # Patch notes for each version increment
-    ├── features/              # Feature design docs
-    ├── guides/                # User/developer guides
-    ├── investigations/        # Root cause analyses and calibration investigations
-    ├── quick_reference/       # One-page cheat sheets
-    └── validation/            # Validation reports and test results
+See the [gated checklist](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/GATED_EXECUTION_CHECKLIST.md).
+
+## Repository layout
+
+```text
+configs/          model, calibration, target, HTA, and experiment declarations
+data/reference/   small tracked reference inputs
+diagnostics/      diagnostic analyses, not the primary production interface
+documentation/    current guides, reports, and historical decision records
+tests/            source, integration, artifact, and engine-facing verification
+tools/            audits and evidence builders
+run_v3.py         simulator implementation
+run_robust_nroy_freeze.py
+                  fail-closed robust-NROY preparation/execution interface
+outputs/          ignored local scientific artifacts; not present in a clone
 ```
 
----
+Python modules remain at the root because their paths participate in imports
+and scientific provenance hashes. They will not be moved merely for tidiness.
 
-## Quick Start
+## Environment
 
-Run base case (1970-2020 Dutch HIV simulation):
 ```bash
-python regression_test.py
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
-Run full V11 test suite:
+Long-running/external experiment environments may additionally use
+`requirements-overnight.txt`. Record Python, NumPy, pandas, SciPy, platform,
+and machine versions with every production artifact.
+
+## External inputs
+
+Large/raw inputs and the literature library are intentionally outside Git.
+Active workflows currently expect sibling roots:
+
+```text
+../data/raw/
+../literature/
+```
+
+Do not substitute similarly named files. Use the hashes and acquisition notes
+in [data/README.md](data/README.md) and
+[data/external_inputs.json](data/external_inputs.json). A source-only clone can
+run the portable test lane; external-data and artifact lanes require the
+documented mounted inputs.
+
+## Testing
+
+No-engine guarded tests patch real `SimulationEngineV3` construction to skip,
+so a green guarded run does **not** prove engine identity or production
+readiness.
+
 ```bash
-python tests/test_config_reader.py
-python tests/test_contact_balance.py
-python tests/test_parameter_tiers.py
+# Current robust-NROY source gate; no scientific engine construction.
+.venv/bin/python -m pytest -p pytest_no_engine_guard -q \
+  tests/test_nroy_contract_design.py \
+  tests/test_nroy_pipeline_stages.py \
+  tests/test_nroy_execution_sharding.py \
+  tests/test_nroy_execution_recovery.py \
+  tests/test_nroy_graph_report.py \
+  tests/test_nroy_identity_gate_artifact.py \
+  tests/test_prepare_robust_nroy_acceptance_inputs.py
 ```
 
-Load and inspect config programmatically:
-```python
-import json
-from config_reader import ConfigReader
-from config_utils import get_params_by_tier, validate_tier_schema
+See [documentation/guides/TESTING.md](documentation/guides/TESTING.md) before
+interpreting skipped tests or running artifact/engine lanes.
 
-with open("configs/v11_configuration.json") as f:
-    raw = json.load(f)
+## Ordinary model use
 
-reader = ConfigReader(raw)
-print(reader.get_config_version())      # "11.2"
+The simulator accepts an ordinary configuration and does not require
+calibration machinery. The canonical production candidate is being replaced by
+one stochastic config with an optional stage-structured diagnosis block:
 
-# List all Tier 3 (uncertain/PSA) parameters
-uncertain = get_params_by_tier(raw, "uncertain")
-for path, entry in uncertain:
-    print(f"{path}: {entry['value']}  [{entry['distribution']['type']}]")
+- M0: optional M1 mechanism disabled;
+- M1: mechanism explicitly enabled and the additional probability injected;
+- exact M1 `p=0` with routine hazard scale `1.0`: legacy-path identity boundary.
 
-# Validate tier schema compliance
-violations = validate_tier_schema(raw)
-assert violations == [], violations
-```
+Until the new config and operator commands are reviewed and registered, do not
+infer a canonical production config from filenames such as `model_final.json`.
 
----
+## Results and artifacts
 
-## Model Architecture
+`outputs/` is ignored and may contain historical, incomplete, superseded, or
+current artifacts. Path presence is not evidence status. Use the artifact
+catalog and each artifact's manifest/checksums. Never reseal an old artifact
+against current code.
 
-### Population Tensor
-Shape: (orientations=3, age_bins=20, activities=3, hiv_stages=4, prep_states=2)
+## Citation and licensing
 
-- Orientations: Female | Heterosexual_Male | MSM
-- Age bins: 15-19 through 80+ (sexually active); 0-14 in childhood pool
-- Activities: Low (3 acts/yr) | Medium (10 acts/yr) | High (50 acts/yr)
-- HIV stages: Susceptible | Acute | Chronic | AIDS
-- PrEP states: None | OnPrEP
-
-### Timestep
-Quarterly (3-month steps), 1970-2020 = 200 steps.
-
-### Contact Mixing (V11 — Garnett ε)
-```
-ρ(i→j) = ε·δᵢⱼ + (1−ε) · [N(j)·c(j)] / Σₖ[N(k)·c(k)]
-
-ε_hetero = 0.20  (Dutch heterosexual network — RIVM SOA Monitor)
-ε_msm    = 0.42  (Amsterdam MSM cohort — Xiridou et al. 2003)
-```
-Heterosexual contacts use a female-driven partnership pool (contact balance fix).
-MSM contacts use a symmetric averaged pool.
-See documentation/MASTER_REFERENCES.md §1.1.
-
-### Parameter Tiers (V11.2)
-All epidemiological parameters carry tier metadata:
-- fixed     (12 params) — pinned from literature; not varied
-- estimated  (4 params) — calibrated against Dutch data; have bounds + calibration_target
-- uncertain  (6 params) — genuinely unknown; have distribution for future PSA runner
-
-See documentation/MASTER_REFERENCES.md §4 for full parameter-to-reference mapping.
-
----
-
-## Key Files for Development
-
-| Task | File |
-|------|------|
-| Change transmission biology | configs/v11_configuration.json → disease.* |
-| Change mixing assortativity | configs/v11_configuration.json → mixing.epsilon_* |
-| Change PrEP scenario | configs/v11_configuration.json → interventions.* |
-| Engine step loop | run_v3.py → _step_* methods |
-| Config reading / validation | config_reader.py, config_utils.py, engine_v3.py |
-| Tier introspection | config_utils.py → get_params_by_tier(), validate_tier_schema() |
-| Backlog / next steps | documentation/BACKLOG.md |
-| Literature / formulas | documentation/MASTER_REFERENCES.md |
-
----
-
-## Open Backlog (Top Items)
-
-Full register with blockers and priorities: documentation/BACKLOG.md
-
-1. BACKLOG-2 — Calibration runner (close the 12% population gap at 2015)
-2. BACKLOG-1 — PSA runner (sample Tier 3 uncertain params; requires calibration first)
-3. BACKLOG-4 — Wire StateSnapshot baseline freezing for counterfactual analysis
-4. BACKLOG-3 — Zero-population guard in migration.py (before PSA)
-5. BACKLOG-6 — Fix mass balance test failure in test_high_prevalence_stress.py
-
----
-
-## Dependencies
-
-```
-numpy
-pandas
-scipy       (future PSA runner)
-openpyxl    (xlsx output)
-```
-
-Install: pip install -r requirements.txt
-
----
-
-## References
-
-All literature citations and mathematical formulas: documentation/MASTER_REFERENCES.md
-
-Key references:
-- Garnett & Anderson (1994) — ε mixing parameterisation, contact balance identity
-- Boily et al. (2009) — per-act transmission probabilities
-- Cohen et al. (2011) — ART transmission reduction (HPTN052)
-- Bekker et al. / PURPOSE-1 (2024) — Lenacapavir efficacy
-- Briggs et al. (2012) — ISPOR-SMDM parameter tier framework
-- van Sighem et al. (2015) — ATHENA Dutch HIV monitoring data
+Publication metadata and redistribution decisions are being prepared as part
+of the handoff pass. Do not redistribute raw data, literature PDFs, or model
+artifacts until their source-specific permissions are recorded.
