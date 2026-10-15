@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import run_post2015_stock_flow_decomposition as audit
+from coupled_calibration_search import ContractError
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "configs/post2015_stock_flow_decomposition_20260921.json"
+STALE_SEARCH_ERROR = (
+    "code changed since the search: "
+    "['aids_observation.py', 'calib_extractor.py', 'config_utils.py', "
+    "'run_coupled_calibration.py', 'run_lhs_calibration.py', 'run_v3.py']"
+)
 
 
 class Groups:
@@ -52,15 +58,13 @@ def test_stock_vector_is_activity_resolved_and_linear():
     assert combined[0, audit.METRICS.index("on_art_plhiv_msm")] == 3
 
 
-def test_validation_is_read_only(monkeypatch):
+def test_historical_lineage_is_rejected_for_module_hash_mismatch(monkeypatch):
     import run_v3
 
     def forbidden(*args, **kwargs):
         raise AssertionError("validation must not construct an engine")
 
     monkeypatch.setattr(run_v3.SimulationEngineV3, "__init__", forbidden)
-    result = audit.validate(PLAN)
-    assert result["ok"]
-    assert result["trajectory_budget"] == 20
-    assert result["simulations_started"] == 0
-    assert result["activity_movement"].startswith("not_applicable")
+    with pytest.raises(ContractError) as caught:
+        audit.validate(PLAN)
+    assert str(caught.value) == STALE_SEARCH_ERROR

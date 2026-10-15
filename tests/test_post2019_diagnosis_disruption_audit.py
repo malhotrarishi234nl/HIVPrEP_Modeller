@@ -7,36 +7,48 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import run_coupled_calibration as rcc
 import run_post2019_diagnosis_disruption_audit as audit
 from coupled_calibration_search import ContractError
 from schedule_utils import TimeSchedule
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "configs/post2019_diagnosis_disruption_audit_20260921.json"
+STALE_SEARCH_ERROR = (
+    "code changed since the search: "
+    "['aids_observation.py', 'calib_extractor.py', 'config_utils.py', "
+    "'run_coupled_calibration.py', 'run_lhs_calibration.py', 'run_v3.py']"
+)
 
 
-def _base(candidate_id=1326):
-    plan = audit.load_plan(PLAN)
-    source, search, _ = audit._context(plan)
-    prepared = rcc.load_prepared(Path(search["context"]["prepared_dir"]))
-    raw = rcc._raw_record(source, candidate_id)
-    space = json.loads(prepared["state"]["paths"]["calib_space"].read_text())
-    return rcc.injected_config(prepared["state"]["base_config"], raw["params"], space)
+def _synthetic_base():
+    """Minimal pure fixture for profile transforms, never a calibration claim."""
+    return {
+        "run_control": {"deterministic_mode": {"value": False}},
+        "transmission_model": {
+            "disease": {
+                "diagnosis": {
+                    "msm_relative_diagnosis": {
+                        "enabled": {"value": True},
+                        "schedule": {
+                            "value": {"1996": 0.7, "2004": 0.9, "2019": 1.0},
+                        },
+                    },
+                },
+            },
+        },
+    }
 
 
-def test_validation_is_read_only_and_budgeted(monkeypatch):
+def test_historical_lineage_is_rejected_for_module_hash_mismatch(monkeypatch):
     import run_v3
 
     def forbidden(*args, **kwargs):
         raise AssertionError("validation must not construct an engine")
 
     monkeypatch.setattr(run_v3.SimulationEngineV3, "__init__", forbidden)
-    result = audit.validate(PLAN)
-    assert result["ok"]
-    assert result["trajectory_budget"] == 60
-    assert result["seed_preflight"]["overlap"] == []
-    assert result["simulations_started"] == 0
+    with pytest.raises(ContractError) as caught:
+        audit.validate(PLAN)
+    assert str(caught.value) == STALE_SEARCH_ERROR
 
 
 def test_profiles_are_neutral_before_2020_bounded_balanced_and_recovered():
@@ -53,7 +65,7 @@ def test_profiles_are_neutral_before_2020_bounded_balanced_and_recovered():
 
 def test_profile_changes_only_post2019_msm_diagnosis_anchors():
     plan = audit.load_plan(PLAN)
-    base = _base()
+    base = _synthetic_base()
     changed = audit.apply_profile(base, plan["profiles"][1])
     expected = json.loads(json.dumps(base))
     base_2019 = expected["transmission_model"]["disease"]["diagnosis"][

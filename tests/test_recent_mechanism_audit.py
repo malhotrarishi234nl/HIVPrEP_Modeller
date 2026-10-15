@@ -1,45 +1,71 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-import run_coupled_calibration as rcc
 import run_recent_mechanism_audit as audit
 from coupled_calibration_search import ContractError
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "configs/recent_mechanism_audit_20260921.json"
+STALE_SEARCH_ERROR = (
+    "code changed since the search: "
+    "['aids_observation.py', 'calib_extractor.py', 'config_utils.py', "
+    "'run_coupled_calibration.py', 'run_lhs_calibration.py', 'run_v3.py']"
+)
 
 
-def _candidate_base(candidate_id=1326):
-    plan = audit.load_plan(PLAN)
-    source, search, _ = audit.source_context(plan)
-    prepared = rcc.load_prepared(Path(search["context"]["prepared_dir"]))
-    raw = rcc._raw_record(source, candidate_id)
-    space_json = json.loads(prepared["state"]["paths"]["calib_space"].read_text())
-    return rcc.injected_config(prepared["state"]["base_config"], raw["params"], space_json)
+def _synthetic_base():
+    """Minimal pure fixture for mechanism transforms, never a calibration claim."""
+    return {
+        "run_control": {"deterministic_mode": {"value": False}},
+        "prep_schedules": {
+            "Oral_PrEP": {
+                "initiation": {
+                    "schedule": {"2019": 0.01, "2025": 0.03, "2026": 0.04},
+                },
+                "advanced": {"historical_stock_corridor": {"enabled": True}},
+            },
+        },
+        "interventions": {
+            "art": {
+                "schedule": {
+                    "initiation": {"value": {"2015": 0.6, "2020": 0.8}},
+                },
+            },
+        },
+        "transmission_model": {
+            "disease": {
+                "advanced": {"art_transmission_reduction": {"value": 0.9}},
+                "diagnosis": {
+                    "msm_relative_diagnosis": {
+                        "enabled": {"value": True},
+                        "schedule": {
+                            "value": {"1996": 0.7, "2004": 0.9, "2019": 1.0},
+                        },
+                    },
+                },
+            },
+        },
+    }
 
 
-def test_validation_is_read_only_and_uses_stable_confirmed_candidates(monkeypatch):
+def test_historical_lineage_is_rejected_for_module_hash_mismatch(monkeypatch):
     import run_v3
 
     def forbidden(*args, **kwargs):
         raise AssertionError("validation must not construct an engine")
 
     monkeypatch.setattr(run_v3.SimulationEngineV3, "__init__", forbidden)
-    result = audit.validate(PLAN)
-    assert result["ok"]
-    assert result["candidate_ids"] == [1326, 1788]
-    assert result["trajectory_budget"] == 180
-    assert result["seed_preflight"]["overlap"] == []
-    assert result["simulations_started"] == 0
+    with pytest.raises(ContractError) as caught:
+        audit.validate(PLAN)
+    assert str(caught.value) == STALE_SEARCH_ERROR
 
 
 def test_prep_variants_change_only_declared_historical_controls():
-    base = _candidate_base()
+    base = _synthetic_base()
     off = audit.apply_variant(base, "prep_corridor_off")
     assert off["prep_schedules"]["Oral_PrEP"]["advanced"][
         "historical_stock_corridor"]["enabled"] is False
@@ -53,7 +79,7 @@ def test_prep_variants_change_only_declared_historical_controls():
 
 
 def test_art_and_diagnosis_variants_are_bounded_and_specific():
-    base = _candidate_base()
+    base = _synthetic_base()
     art = audit.apply_variant(base, "art_transmission_reduction_0_80")
     assert art["transmission_model"]["disease"]["advanced"][
         "art_transmission_reduction"]["value"] == 0.80
@@ -69,4 +95,4 @@ def test_art_and_diagnosis_variants_are_bounded_and_specific():
 
 def test_unknown_variant_is_refused():
     with pytest.raises(ContractError, match="unknown audit variant"):
-        audit.apply_variant(_candidate_base(), "invented")
+        audit.apply_variant(_synthetic_base(), "invented")
