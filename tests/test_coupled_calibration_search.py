@@ -9,6 +9,7 @@ that artifact rather than repeating those runs.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from concurrent.futures import Future
 from pathlib import Path
@@ -24,6 +25,10 @@ if str(ROOT) not in sys.path:
 import coupled_calibration_search as ccs  # noqa: E402
 import run_coupled_calibration as rcc  # noqa: E402
 from coupled_calibration_search import ContractError  # noqa: E402
+from tools import audit_robust_nroy_seeds as seed_audit_tool  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tests"))
+import nroy_fixtures as nroy_fx  # noqa: E402
 
 
 # ==========================================================================
@@ -97,111 +102,109 @@ def _write_json(path: Path, payload: dict) -> Path:
     return path
 
 
+def _real_seed_audit(root: Path, *, smoke: list[int]) -> tuple[Path, dict]:
+    """Generate one FINAL audit through the repository's real 1.3 pipeline."""
+    audit_root = root / "seed_audit_sources"
+    audit_plan = nroy_fx.write_signed_plan(audit_root)
+    bound_plan = rcc.nc.FrozenPlan.load(audit_plan, root=ROOT)
+    candidate = _write_json(audit_root / "candidate_seed_blocks.json", {
+        "schema": seed_audit_tool.CANDIDATE_SCHEMA,
+        "discovery": list(bound_plan.seeds.discovery),
+        "confirmation": list(bound_plan.seeds.confirmation),
+        "smoke": smoke,
+        "proposal_rng": bound_plan.seeds.proposal_rng,
+    })
+    source = _write_json(audit_root / "seed_scan_source.json", {"fixture": "no prior RNG use"})
+    subprocess.run(["git", "init", "-q"], cwd=audit_root, check=True)
+    subprocess.run(["git", "add", source.name], cwd=audit_root, check=True)
+    (audit_root / "outputs").mkdir(exist_ok=True)
+
+    external = []
+    for kind in ("REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD"):
+        review = _write_json(audit_root / f"external_{kind.lower()}.json", {
+            "schema": seed_audit_tool.EXTERNAL_REVIEW_SCHEMA,
+            "location_kind": kind,
+            "review_status": "REVIEWED_NONE",
+            "reviewer": "pytest-owner",
+            "reviewed_utc": "2026-10-15T00:00:00Z",
+            "searched_locations": [f"isolated-{kind.lower()}-fixture"],
+            "searched_accounts_or_owners": ["pytest-owner"],
+            "search_method": "Inspected the isolated no-engine fixture.",
+            "search_started_utc": "2026-10-15T00:00:00Z",
+            "search_completed_utc": "2026-10-15T00:00:00Z",
+            "indexed_sources": [],
+            "no_additional_source_basis": "The isolated fixture has no other source.",
+        })
+        external.append({
+            "kind": kind,
+            "status": "REVIEWED_NONE",
+            "coverage_decision": "The isolated fixture has no external seed source.",
+            "evidence": [{
+                "path": review.name,
+                "sha256": ccs.sha256_file(review),
+                "description": "Typed external-location review.",
+            }],
+            "reviewer": "pytest-owner",
+            "reviewed_utc": "2026-10-15T00:00:00Z",
+        })
+    scope = _write_json(audit_root / "scope.json", {
+        "schema": seed_audit_tool.SCOPE_SCHEMA,
+        "owner_scope": {
+            "status": "APPROVED",
+            "approved_by": "pytest-owner",
+            "approved_utc": "2026-10-15T00:00:00Z",
+            "scope_statement": "All isolated no-engine fixture sources are covered.",
+        },
+        "source_coverage": {"status": "COMPLETE"},
+        "tracked_repository": {
+            "pathspecs": [source.name],
+            "text_extensions": [".json"],
+            "explicit_exclusions": [],
+        },
+        "external_execution_locations": external,
+        "outputs": {
+            "root": "outputs",
+            "json_basename_globs": ["*manifest*.json"],
+            "json_lines_basename_globs": ["*results*.jsonl"],
+            "text_extensions": [".md"],
+            "max_scanned_file_bytes": 1024 * 1024,
+        },
+        "evidence_example_limit": 100,
+        "parsed_seed_source_limit": 10,
+        "limitations": [],
+    })
+    resolutions = _write_json(audit_root / "resolutions.json", {
+        "schema": seed_audit_tool.RESOLUTION_SCHEMA,
+        "status": "REVIEWED",
+        "scope_manifest_sha256": ccs.sha256_file(scope),
+        "exact_resolutions": [],
+        "reviewed_rules": [],
+        "excluded_output_dispositions": [],
+        "excluded_output_index_review": None,
+        "limitations": [],
+    })
+    artifact = seed_audit_tool.build_audit(
+        audit_root,
+        scope,
+        candidate,
+        plan_path=audit_plan,
+        resolution_path=resolutions,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert artifact["passed"] is True, artifact["unresolved"]
+    return _write_json(root / "seed_audit.json", artifact), {
+        "discovery": list(bound_plan.seeds.discovery),
+        "confirmation": list(bound_plan.seeds.confirmation),
+        "proposal_rng": bound_plan.seeds.proposal_rng,
+    }
+
+
 def _runnable_plan(root: Path) -> Path:
     plan = rcc.strict_json_object(OPTION_B_PLAN, what="test Option B plan")
     plan["design"]["name"] = f"test_option_b_{root.name}"
-    plan["seeds"]["discovery"] = list(range(4_000_000_000, 4_000_000_005))
-    plan["seeds"]["confirmation"] = list(range(4_000_000_100, 4_000_000_120))
     plan["seeds"]["smoke"] = list(range(4_000_000_200, 4_000_000_203))
-    plan["seeds"]["proposal_rng"] = 4_000_000_300
-    candidate_payload = {
-        "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
-        "discovery": plan["seeds"]["discovery"],
-        "confirmation": plan["seeds"]["confirmation"],
-        "smoke": plan["seeds"]["smoke"],
-        "proposal_rng": plan["seeds"]["proposal_rng"],
-    }
-    candidate_path = _write_json(root / "candidate_seed_blocks.json", candidate_payload)
-    scope_path = _write_json(root / "seed_scope.json", {
-        "schema": "robust_nroy_seed_source_scope/1.2.0",
-        "owner_scope": {"status": "APPROVED"},
-        "source_coverage": {"status": "COMPLETE"},
-    })
-    resolution_payload = {
-        "schema": "robust_nroy_seed_finding_resolutions/1.1.0",
-        "status": "REVIEWED",
-        "scope_manifest_sha256": ccs.sha256_file(scope_path),
-        "exact_resolutions": [],
-    }
-    resolution_path = _write_json(root / "seed_resolutions.json", resolution_payload)
-    candidate_blocks = {
-        "status": "SUPPLIED",
-        "path": str(candidate_path),
-        "file_sha256": ccs.sha256_file(candidate_path),
-        "discovery": plan["seeds"]["discovery"],
-        "confirmation": plan["seeds"]["confirmation"],
-        "smoke": plan["seeds"]["smoke"],
-        "proposal_rng": plan["seeds"]["proposal_rng"],
-        "sha256": ccs.sha256_json(candidate_payload),
-    }
-    audit = {
-        "schema": "robust_nroy_seed_audit/1.3.0",
-        "status": "FINAL",
-        "passed": True,
-        "production_eligible": True,
-        "deterministic": True,
-        "generated_utc": "2026-10-15T00:00:00Z",
-        "command": "pytest synthetic FINAL seed audit fixture",
-        "plan_path": str(root / "runnable_plan.json"),
-        "plan_sha256": "a" * 64,
-        "scope_manifest": {
-            "path": str(scope_path),
-            "sha256": ccs.sha256_file(scope_path),
-            "owner_scope_status": "APPROVED",
-            "source_coverage_status": "COMPLETE",
-        },
-        "source_inventory": {
-            "counts_by_kind": {},
-            "inventory_sha256": "b" * 64,
-            "scanned_content_index_sha256": "c" * 64,
-            "excluded_output_index_sha256": "d" * 64,
-            "scanned_files": 0,
-            "excluded_output_files": 0,
-            "excluded_output_bytes": 0,
-            "excluded_output_index": [],
-        },
-        "finding_resolutions": {
-            "path": str(resolution_path),
-            "file_sha256": ccs.sha256_file(resolution_path),
-            "status": "REVIEWED",
-            "unresolved": 0,
-            "resolved_rng": 0,
-            "resolved_non_rng": 0,
-            "payload_sha256": ccs.sha256_json(resolution_payload),
-            "excluded_output": {
-                "status": "REVIEWED", "resolved": 0, "unresolved": 0,
-                "coverage_mode": None,
-            },
-        },
-        "parsed_prior_seeds": [],
-        "parsed_prior_seed_count": 0,
-        "ambiguous_references": {
-            "detected_count": 0, "count": 0, "resolved_count": 0,
-            "examples": [], "examples_truncated": 0,
-        },
-        "unparseable_references": {
-            "detected_count": 0, "count": 0, "resolved_count": 0,
-            "examples": [], "examples_truncated": 0,
-        },
-        "candidate_blocks": candidate_blocks,
-        "disjointness": {"status": "PROVEN", "checks": {
-            "discovery_vs_confirmation": [],
-            "proposal_vs_discovery": [],
-            "proposal_vs_confirmation": [],
-            "discovery_vs_prior": [],
-            "confirmation_vs_prior": [],
-            "proposal_vs_prior": [],
-            "smoke_vs_discovery": [],
-            "smoke_vs_confirmation": [],
-            "smoke_vs_proposal": [],
-            "smoke_vs_prior": [],
-        }},
-        "overlaps": [],
-        "unresolved": [],
-        "limitations": [],
-    }
-    audit["artifact_sha256"] = ccs.sha256_json(audit)
-    audit_path = _write_json(root / "seed_audit.json", audit)
+    audit_path, audited = _real_seed_audit(root, smoke=plan["seeds"]["smoke"])
+    plan["seeds"].update(audited)
     plan["inputs"]["seed_audit"] = str(audit_path)
     plan["inputs"]["seed_audit_status"] = "FINAL"
     plan["inputs"]["expected_sha256"]["seed_audit"] = ccs.sha256_file(audit_path)
@@ -210,6 +213,11 @@ def _runnable_plan(root: Path) -> Path:
 
 def _stage_authorization(root: Path, stage: str, plan_path: Path,
                          upstream: dict[str, str]) -> Path:
+    decision = _write_json(root / f"decision_evidence_{stage}.json", {
+        "decision": f"authorize {stage} for the exact bound inputs",
+        "approved_by": "pytest-owner",
+        "approved_utc": "2026-10-15T00:00:00Z",
+    })
     return _write_json(root / f"authorize_{stage}.json", {
         "schema": rcc.STAGE_AUTHORIZATION_SCHEMA,
         "status": rcc.STAGE_AUTHORIZED,
@@ -218,12 +226,16 @@ def _stage_authorization(root: Path, stage: str, plan_path: Path,
         "upstream_sha256": upstream,
         "approver_id": "pytest-owner",
         "approved_utc": "2026-10-15T00:00:00Z",
-        "decision_evidence_sha256": "e" * 64,
+        "decision_evidence_path": str(decision),
+        "decision_evidence_sha256": ccs.sha256_file(decision),
     })
 
 
 def _search_evidence(root: Path, plan_path: Path, prepared: Path,
-                     smoke_dir: Path) -> tuple[Path, Path]:
+                     smoke_dir: Path, *, workers: int = 1, n_batches: int = 1,
+                     wall_time_cap: float = ccs.WALL_TIME_CAP_SECONDS,
+                     seconds_per_trajectory: float = 1.0,
+                     approved_cost_ceiling: float | None = None) -> tuple[Path, Path]:
     prepared_binding = rcc.artifact_binding(prepared, "prepared")
     smoke_binding = rcc.artifact_binding(
         smoke_dir, "smoke", extra_files=("SMOKE_RESULT.json",)
@@ -239,18 +251,59 @@ def _search_evidence(root: Path, plan_path: Path, prepared: Path,
         "machine_profile": "pytest-serial",
         "measured_utc": "2026-10-15T00:00:00Z",
         "sample_trajectories": 6,
-        "seconds_per_trajectory": 1.0,
+        "seconds_per_trajectory": seconds_per_trajectory,
     })
+    pricing_source = _write_json(root / "pricing_source.json", {
+        "schema": rcc.PRICING_SOURCE_SCHEMA,
+        "status": "FINAL",
+        "machine_profile": "pytest-serial",
+        "currency_or_credit_unit": "test-credit",
+        "resource_unit": "worker",
+        "billing_unit": "resource_hour",
+        "seconds_per_billing_unit": 3600,
+        "unit_price": 1.0,
+        "source_reference": "pytest exact rate fixture",
+        "effective_utc": "2026-10-15T00:00:00Z",
+    })
+    plan = rcc.RunnerPlan(rcc.strict_json_object(plan_path, what="runnable plan"))
+    initial = rcc.strict_json_object(
+        prepared / "initial_archive.json", what="initial archive"
+    )["vectors"]
+    trajectories = (len(initial) + n_batches * ccs.BATCH_SIZE) * len(plan.discovery_seeds)
+    expected_runtime = trajectories * seconds_per_trajectory / workers
+    expected_resource_seconds = expected_runtime * workers
+    expected_cost = expected_resource_seconds / 3600.0
+    wall_cap_resource_seconds = wall_time_cap * workers
+    wall_cap_cost = wall_cap_resource_seconds / 3600.0
+    ceiling = (max(1.0, expected_cost * 2.0) if approved_cost_ceiling is None
+               else approved_cost_ceiling)
     pricing = _write_json(root / "pricing_approval.json", {
         "schema": rcc.PRICING_APPROVAL_SCHEMA,
         "status": "APPROVED",
         "plan_sha256": ccs.sha256_file(plan_path),
         "measured_benchmark_sha256": ccs.sha256_file(benchmark),
         "machine_profile": "pytest-serial",
+        "worker_count": workers,
+        "total_authorized_trajectories": trajectories,
+        "wall_time_cap_seconds": wall_time_cap,
+        "pricing_source_path": str(pricing_source),
+        "pricing_source_sha256": ccs.sha256_file(pricing_source),
+        "cost_formula": rcc.SEARCH_COST_FORMULA,
+        "cost_inputs": {
+            "currency_or_credit_unit": "test-credit",
+            "resource_unit": "worker",
+            "billing_unit": "resource_hour",
+            "seconds_per_billing_unit": 3600,
+            "unit_price": 1.0,
+        },
+        "expected_runtime_seconds": expected_runtime,
+        "expected_resource_seconds": expected_resource_seconds,
+        "expected_cost": expected_cost,
+        "wall_cap_resource_seconds": wall_cap_resource_seconds,
+        "wall_cap_cost": wall_cap_cost,
+        "approved_cost_ceiling": ceiling,
         "approved_by": "pytest-owner",
         "approved_utc": "2026-10-15T00:00:00Z",
-        "maximum_approved_cost": 1.0,
-        "currency_or_credit_unit": "test-credit",
     })
     return benchmark, pricing
 
@@ -314,6 +367,9 @@ def small_search(tmp_path_factory):
         evidence = rcc.validate_search_evidence(
             benchmark, pricing, plan_sha256=ccs.sha256_file(plan_path),
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
         search_auth = _stage_authorization(
             root, "search", plan_path, {**prepared_binding, **smoke_binding, **evidence}
@@ -526,8 +582,38 @@ def test_exact_final_seed_audit_is_required_and_plan_bound(tmp_path):
     audit["artifact_sha256"] = ccs.sha256_json(audit)
     _write_json(audit_path, audit)
     payload["inputs"]["expected_sha256"]["seed_audit"] = ccs.sha256_file(audit_path)
-    with pytest.raises(ContractError, match="candidate_blocks.discovery"):
+    with pytest.raises(ContractError, match="deterministic rebuild"):
         rcc.validate_seed_audit_binding(rcc.RunnerPlan(payload))
+
+
+def test_seed_audit_refuses_invented_inventory_and_unbound_plan_hash(tmp_path):
+    plan_path = _runnable_plan(tmp_path)
+    payload = rcc.strict_json_object(plan_path, what="runnable plan")
+    audit_path = Path(payload["inputs"]["seed_audit"])
+
+    invented = rcc.strict_json_object(audit_path, what="seed audit")
+    assert invented["source_inventory"]["scanned_files"] > 0
+    invented["source_inventory"]["scanned_files"] = 0
+    invented["source_inventory"]["inventory_sha256"] = "f" * 64
+    invented.pop("artifact_sha256")
+    invented["artifact_sha256"] = ccs.sha256_json(invented)
+    _write_json(audit_path, invented)
+    payload["inputs"]["expected_sha256"]["seed_audit"] = ccs.sha256_file(audit_path)
+    with pytest.raises(ContractError, match="deterministic rebuild"):
+        rcc.validate_seed_audit_binding(rcc.RunnerPlan(payload))
+
+    # A syntactically valid digest is not plan provenance.
+    fresh_path = _runnable_plan(tmp_path / "fresh")
+    fresh = rcc.strict_json_object(fresh_path, what="fresh runnable plan")
+    audit_path = Path(fresh["inputs"]["seed_audit"])
+    unbound = rcc.strict_json_object(audit_path, what="seed audit")
+    unbound["plan_sha256"] = "f" * 64
+    unbound.pop("artifact_sha256")
+    unbound["artifact_sha256"] = ccs.sha256_json(unbound)
+    _write_json(audit_path, unbound)
+    fresh["inputs"]["expected_sha256"]["seed_audit"] = ccs.sha256_file(audit_path)
+    with pytest.raises(ContractError, match="exact bound plan"):
+        rcc.validate_seed_audit_binding(rcc.RunnerPlan(fresh))
 
 
 def test_malformed_manifest_cannot_hide_reused_smoke_seed(tmp_path):
@@ -590,7 +676,9 @@ def test_stage_authorization_is_exactly_stage_plan_and_upstream_bound(tmp_path):
         )
 
 
-@pytest.mark.parametrize("field", ["approver_id", "approved_utc", "decision_evidence_sha256"])
+@pytest.mark.parametrize("field", [
+    "approver_id", "approved_utc", "decision_evidence_path", "decision_evidence_sha256",
+])
 def test_stage_authorization_requires_owner_provenance(tmp_path, field):
     plan_path = _runnable_plan(tmp_path)
     path = _stage_authorization(tmp_path, "prepare", plan_path, {})
@@ -602,6 +690,30 @@ def test_stage_authorization_requires_owner_provenance(tmp_path, field):
         rcc.require_stage_authorization(
             path, stage="prepare", plan=plan, plan_sha256=ccs.sha256_file(plan_path),
             upstream_sha256={},
+        )
+
+
+def test_stage_authorization_requires_exact_bound_owner_evidence(tmp_path):
+    plan_path = _runnable_plan(tmp_path)
+    plan = rcc.RunnerPlan(rcc.strict_json_object(plan_path, what="runnable plan"))
+    auth_path = _stage_authorization(tmp_path, "prepare", plan_path, {})
+    auth = rcc.strict_json_object(auth_path, what="stage authorization")
+    evidence_path = Path(auth["decision_evidence_path"])
+    original = rcc.strict_json_object(evidence_path, what="decision evidence")
+
+    evidence_path.unlink()
+    with pytest.raises(ContractError, match="decision evidence is missing"):
+        rcc.require_stage_authorization(
+            auth_path, stage="prepare", plan=plan,
+            plan_sha256=ccs.sha256_file(plan_path), upstream_sha256={},
+        )
+
+    # Semantically equivalent JSON has different bytes and is not the file the owner bound.
+    evidence_path.write_text(json.dumps(original, sort_keys=True), encoding="utf-8")
+    with pytest.raises(ContractError, match="hash is stale"):
+        rcc.require_stage_authorization(
+            auth_path, stage="prepare", plan=plan,
+            plan_sha256=ccs.sha256_file(plan_path), upstream_sha256={},
         )
 
 
@@ -636,6 +748,9 @@ def test_search_evidence_is_required_and_exactly_bound(small_search, tmp_path):
         rcc.validate_search_evidence(
             None, None, plan_sha256=ccs.sha256_file(small_search["plan"]),
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
     pricing = rcc.strict_json_object(small_search["pricing"], what="pricing")
     pricing["measured_benchmark_sha256"] = "0" * 64
@@ -645,6 +760,69 @@ def test_search_evidence_is_required_and_exactly_bound(small_search, tmp_path):
             small_search["benchmark"], changed,
             plan_sha256=ccs.sha256_file(small_search["plan"]),
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
+        )
+
+
+def test_search_execution_spec_binds_cli_workers_and_exact_derived_cost(small_search):
+    prepared_binding = rcc.artifact_binding(small_search["prepared"], "prepared")
+    smoke_binding = rcc.artifact_binding(
+        small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    trajectories = (SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5
+    with pytest.raises(ContractError, match="worker count differs"):
+        rcc.validate_search_evidence(
+            small_search["benchmark"], small_search["pricing"],
+            plan_sha256=ccs.sha256_file(small_search["plan"]),
+            prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=2, total_authorized_trajectories=trajectories,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
+        )
+
+
+def test_search_execution_spec_refuses_extreme_runtime_and_tiny_ceiling(
+        small_search, tmp_path):
+    evidence_root = tmp_path / "extreme_execution_spec"
+    evidence_root.mkdir()
+    benchmark, pricing = _search_evidence(
+        evidence_root, small_search["plan"], small_search["prepared"],
+        small_search["smoke"], seconds_per_trajectory=1e100,
+        approved_cost_ceiling=1e-100,
+    )
+    prepared_binding = rcc.artifact_binding(small_search["prepared"], "prepared")
+    smoke_binding = rcc.artifact_binding(
+        small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    with pytest.raises(ContractError, match="expected runtime exceeds|expected cost exceeds"):
+        rcc.validate_search_evidence(
+            benchmark, pricing, plan_sha256=ccs.sha256_file(small_search["plan"]),
+            prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
+        )
+
+
+def test_search_execution_spec_refuses_cost_above_ceiling(small_search, tmp_path):
+    evidence_root = tmp_path / "underpriced_execution_spec"
+    evidence_root.mkdir()
+    benchmark, pricing = _search_evidence(
+        evidence_root, small_search["plan"], small_search["prepared"],
+        small_search["smoke"], approved_cost_ceiling=1e-100,
+    )
+    prepared_binding = rcc.artifact_binding(small_search["prepared"], "prepared")
+    smoke_binding = rcc.artifact_binding(
+        small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    with pytest.raises(ContractError, match="expected cost exceeds"):
+        rcc.validate_search_evidence(
+            benchmark, pricing, plan_sha256=ccs.sha256_file(small_search["plan"]),
+            prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
 
 
@@ -1461,6 +1639,9 @@ def test_crash_and_resume_matches_an_uninterrupted_run(small_search, tmp_path, t
         small_search["benchmark"], small_search["pricing"],
         plan_sha256=ccs.sha256_file(plan_path), prepared_binding=prepared_binding,
         smoke_binding=smoke_binding,
+        workers=1,
+        total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+        wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
     )
     search_auth = _stage_authorization(
         tmp_path, "search", plan_path, {**prepared_binding, **smoke_binding, **evidence}
@@ -1485,6 +1666,15 @@ def test_crash_and_resume_matches_an_uninterrupted_run(small_search, tmp_path, t
         **rcc.resume_integrity_binding(interrupted),
     }
     resume_auth = _stage_authorization(tmp_path, "resume", plan_path, resume_upstream)
+    with pytest.raises(ContractError, match="resume execution settings differ"):
+        rcc.run_search(
+            None, None, interrupted, workers=2, n_batches=1, resume=True,
+            worker=lambda payload: pytest.fail("changed workers must fail before dispatch"),
+            executor_factory=SerialExecutor, plan_path=plan_path,
+            authorization_path=resume_auth,
+            measured_benchmark_path=small_search["benchmark"],
+            pricing_approval_path=small_search["pricing"],
+        )
     resumed = rcc.run_search(
         None, None, interrupted, workers=1, n_batches=1, resume=True,
         worker=surrogate_worker, executor_factory=SerialExecutor,
@@ -1543,14 +1733,23 @@ def test_resume_refuses_a_completed_search(small_search):
 def test_wall_time_cap_marks_partial_and_writes_no_shortlist(small_search, tmp_path):
     prepared, smoke_dir = small_search["prepared"], small_search["smoke"]
     ticks = iter([0.0] + [1e9] * 10_000)  # the first check passes, every later one is past due
+    evidence_root = tmp_path / "one_second_execution_spec"
+    evidence_root.mkdir()
+    benchmark, pricing = _search_evidence(
+        evidence_root, small_search["plan"], prepared, smoke_dir,
+        wall_time_cap=1.0, seconds_per_trajectory=0.001,
+    )
     prepared_binding = rcc.artifact_binding(prepared, "prepared")
     smoke_binding = rcc.artifact_binding(
         smoke_dir, "smoke", extra_files=("SMOKE_RESULT.json",)
     )
     evidence = rcc.validate_search_evidence(
-        small_search["benchmark"], small_search["pricing"],
+        benchmark, pricing,
         plan_sha256=ccs.sha256_file(small_search["plan"]),
         prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+        workers=1,
+        total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+        wall_time_cap_seconds=1.0,
     )
     search_auth = _stage_authorization(
         tmp_path, "search", small_search["plan"],
@@ -1560,8 +1759,8 @@ def test_wall_time_cap_marks_partial_and_writes_no_shortlist(small_search, tmp_p
                             worker=surrogate_worker, executor_factory=SerialExecutor,
                             clock=lambda: next(ticks), wall_time_cap=1.0,
                             plan_path=small_search["plan"], authorization_path=search_auth,
-                            measured_benchmark_path=small_search["benchmark"],
-                            pricing_approval_path=small_search["pricing"])
+                            measured_benchmark_path=benchmark,
+                            pricing_approval_path=pricing)
     assert result["status"] == ccs.STATUS_PARTIAL_TIME_LIMIT
     manifest = json.loads((tmp_path / "timed" / "manifest.json").read_text())
     assert "CANNOT be reported as completed negative evidence" in manifest["partial_run_warning"]
@@ -1837,6 +2036,9 @@ def test_a_simulator_failure_marks_the_search_failed(small_search, tmp_path):
         small_search["benchmark"], small_search["pricing"],
         plan_sha256=ccs.sha256_file(small_search["plan"]),
         prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+        workers=1,
+        total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+        wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
     )
     search_auth = _stage_authorization(
         tmp_path, "search", small_search["plan"],

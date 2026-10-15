@@ -24,6 +24,7 @@ import contextlib
 import copy
 import io
 import json
+import math
 import os
 import re
 import subprocess
@@ -53,10 +54,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 DEFAULT_PLAN = ROOT / "configs/coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json"
-STAGE_AUTHORIZATION_SCHEMA = "coupled_calibration_stage_authorization/1.1.0"
+STAGE_AUTHORIZATION_SCHEMA = "coupled_calibration_stage_authorization/1.2.0"
 STAGE_AUTHORIZED = "AUTHORIZED"
 MEASURED_BENCHMARK_SCHEMA = "coupled_calibration_measured_benchmark/1.0.0"
-PRICING_APPROVAL_SCHEMA = "coupled_calibration_pricing_approval/1.0.0"
+PRICING_APPROVAL_SCHEMA = "coupled_calibration_pricing_approval/1.1.0"
+PRICING_SOURCE_SCHEMA = "robust_nroy_pricing_source/1.0.0"
+SEARCH_COST_FORMULA = "trajectory_seconds_to_resource_hour/v1"
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 #: Modules whose content defines a result.  Frozen at preparation and re-verified
@@ -289,7 +292,9 @@ def _require_utc(value, *, what: str) -> str:
 
 
 def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
-    """Require exact FINAL seed-audit evidence before any stage can use integer seeds."""
+    """Require a reproducible repository-1.3 audit before using integer seeds."""
+    from tools import audit_robust_nroy_seeds as seed_audit_tool  # noqa: PLC0415
+
     inputs = plan.inputs
     path_text = inputs.get("seed_audit")
     expected_status = inputs.get("seed_audit_status")
@@ -310,20 +315,7 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
             f"seed-audit hash changed: expected {expected_hash}, found {actual_hash}"
         )
     audit = strict_json_object(path, what="seed-audit artifact")
-    required_fields = {
-        "schema", "status", "production_eligible", "deterministic", "generated_utc",
-        "command", "passed", "plan_path", "plan_sha256", "scope_manifest",
-        "source_inventory", "finding_resolutions", "parsed_prior_seeds",
-        "parsed_prior_seed_count", "ambiguous_references", "unparseable_references",
-        "candidate_blocks", "disjointness", "overlaps", "unresolved", "limitations",
-        "artifact_sha256",
-    }
-    if not required_fields.issubset(audit):
-        raise ContractError(
-            f"seed-audit artifact lacks required 1.3 fields: "
-            f"{sorted(required_fields - set(audit))}"
-        )
-    if audit.get("schema") != "robust_nroy_seed_audit/1.3.0":
+    if audit.get("schema") != seed_audit_tool.SCHEMA:
         raise ContractError("seed-audit artifact must use robust_nroy_seed_audit/1.3.0")
     if audit.get("status") != expected_status:
         raise ContractError(
@@ -334,105 +326,51 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
     if audit.get("deterministic") is not True:
         raise ContractError("seed-audit artifact is not declared deterministic")
     _require_utc(audit.get("generated_utc"), what="seed-audit generated_utc")
-    if not isinstance(audit.get("command"), str) or not audit["command"].strip():
-        raise ContractError("seed-audit artifact has no producing command")
-    _require_sha256(audit.get("plan_sha256"), what="seed-audit plan_sha256")
-    recorded_artifact_sha = audit.get("artifact_sha256")
-    audit_without_sha = dict(audit)
-    audit_without_sha.pop("artifact_sha256", None)
-    if recorded_artifact_sha != ccs.sha256_json(audit_without_sha):
-        raise ContractError("seed-audit artifact_sha256 is missing or stale")
-    if audit.get("unresolved") != [] or audit.get("overlaps") != []:
-        raise ContractError("seed-audit artifact retains unresolved findings or overlaps")
+
+    audit_plan_path = _bound_evidence_path(
+        audit.get("plan_path"), what="seed-audit bound plan"
+    )
+    if audit.get("plan_sha256") != ccs.sha256_file(audit_plan_path):
+        raise ContractError("seed-audit plan_sha256 does not match its exact bound plan")
     scope = audit.get("scope_manifest")
-    if not isinstance(scope, dict) or scope.get("owner_scope_status") != "APPROVED" \
-            or scope.get("source_coverage_status") != "COMPLETE":
-        raise ContractError("seed-audit scope is not owner-approved with complete coverage")
-    scope_path = _bound_evidence_path(scope.get("path"), what="seed-audit scope manifest")
-    if ccs.sha256_file(scope_path) != _require_sha256(
-            scope.get("sha256"), what="seed-audit scope manifest sha256"):
-        raise ContractError("seed-audit scope-manifest hash is stale")
-    scope_payload = strict_json_object(scope_path, what="seed-audit scope manifest")
-    if scope_payload.get("schema") != "robust_nroy_seed_source_scope/1.2.0":
-        raise ContractError("seed-audit scope manifest is not repository schema 1.2")
-    owner_scope = scope_payload.get("owner_scope")
-    source_coverage = scope_payload.get("source_coverage")
-    if not isinstance(owner_scope, dict) or owner_scope.get("status") != "APPROVED" \
-            or not isinstance(source_coverage, dict) \
-            or source_coverage.get("status") != "COMPLETE":
-        raise ContractError("seed-audit scope payload is not approved and complete")
-    inventory = audit.get("source_inventory")
-    if not isinstance(inventory, dict):
-        raise ContractError("seed-audit source_inventory is missing")
-    for field in (
-        "inventory_sha256", "scanned_content_index_sha256", "excluded_output_index_sha256",
-    ):
-        _require_sha256(inventory.get(field), what=f"seed-audit source_inventory.{field}")
-    for field in ("scanned_files", "excluded_output_files", "excluded_output_bytes"):
-        if type(inventory.get(field)) is not int or inventory[field] < 0:
-            raise ContractError(f"seed-audit source_inventory.{field} must be non-negative")
-    if not isinstance(inventory.get("counts_by_kind"), dict) \
-            or not isinstance(inventory.get("excluded_output_index"), list):
-        raise ContractError("seed-audit source inventory lacks coverage indexes")
     resolutions = audit.get("finding_resolutions")
-    if not isinstance(resolutions, dict) or resolutions.get("status") != "REVIEWED" \
-            or resolutions.get("unresolved") != 0:
-        raise ContractError("seed-audit finding resolutions are not complete and reviewed")
-    excluded = resolutions.get("excluded_output")
-    if not isinstance(excluded, dict) or excluded.get("status") != "REVIEWED" \
-            or excluded.get("unresolved") != 0:
-        raise ContractError("seed-audit excluded-output coverage is not completely reviewed")
+    blocks = audit.get("candidate_blocks")
+    if not isinstance(scope, dict) or not isinstance(resolutions, dict) \
+            or not isinstance(blocks, dict):
+        raise ContractError("seed-audit lacks scope, resolutions, or candidate provenance")
+    scope_path = _bound_evidence_path(scope.get("path"), what="seed-audit scope manifest")
     resolution_path = _bound_evidence_path(
         resolutions.get("path"), what="seed-audit finding resolutions"
     )
-    if ccs.sha256_file(resolution_path) != _require_sha256(
-            resolutions.get("file_sha256"), what="seed-audit finding-resolutions sha256"):
-        raise ContractError("seed-audit finding-resolutions hash is stale")
-    resolution_payload = strict_json_object(
-        resolution_path, what="seed-audit finding resolutions"
+    candidate_path = _bound_evidence_path(
+        blocks.get("path"), what="seed-audit candidate seed blocks"
     )
-    if resolution_payload.get("schema") != "robust_nroy_seed_finding_resolutions/1.1.0" \
-            or resolution_payload.get("status") != "REVIEWED" \
-            or resolution_payload.get("scope_manifest_sha256") != scope["sha256"]:
-        raise ContractError("seed-audit finding-resolution provenance is invalid")
-    for field in ("resolved_rng", "resolved_non_rng"):
-        if type(resolutions.get(field)) is not int or resolutions[field] < 0:
-            raise ContractError(f"seed-audit finding_resolutions.{field} is invalid")
-    resolution_payload_sha = _require_sha256(
-        resolutions.get("payload_sha256"),
-        what="seed-audit finding_resolutions.payload_sha256",
-    )
-    if resolution_payload_sha != ccs.sha256_json(resolution_payload):
-        raise ContractError("seed-audit finding-resolution payload hash is stale")
-    if type(excluded.get("resolved")) is not int or excluded["resolved"] < 0 \
-            or excluded.get("coverage_mode") not in (None, "EXACT_PER_FILE"):
-        raise ContractError("seed-audit excluded-output review metadata is invalid")
-    for field in ("ambiguous_references", "unparseable_references"):
-        findings = audit.get(field)
-        if not isinstance(findings, dict) or findings.get("count") != 0 \
-                or findings.get("examples") != [] or findings.get("examples_truncated") != 0:
-            raise ContractError(f"seed-audit retains unresolved {field}")
-        if type(findings.get("detected_count")) is not int \
-                or findings.get("detected_count", -1) < 0 \
-                or findings.get("resolved_count") != findings.get("detected_count"):
-            raise ContractError(f"seed-audit {field} coverage counts are inconsistent")
-    prior_rows = audit.get("parsed_prior_seeds")
-    if not isinstance(prior_rows, list) or audit.get("parsed_prior_seed_count") != len(prior_rows):
-        raise ContractError("seed-audit parsed-prior seed count is inconsistent")
-    prior_seeds: set[int] = set()
-    for index, row in enumerate(prior_rows):
-        if not isinstance(row, dict) or "seed" not in row:
-            raise ContractError(f"seed-audit parsed_prior_seeds[{index}] is malformed")
-        seed = nc.require_rng_seed(row["seed"], what=f"seed-audit parsed_prior_seeds[{index}]")
-        if seed in prior_seeds:
-            raise ContractError("seed-audit parsed-prior seeds contain a duplicate")
-        prior_seeds.add(seed)
-    disjointness = audit.get("disjointness")
-    if not isinstance(disjointness, dict) or disjointness.get("status") != "PROVEN":
-        raise ContractError("seed-audit artifact does not prove disjointness")
-    blocks = audit.get("candidate_blocks")
-    if not isinstance(blocks, dict) or blocks.get("status") != "SUPPLIED":
-        raise ContractError("seed-audit artifact lacks supplied candidate_blocks")
+    scope_root = ROOT if scope_path.resolve().is_relative_to(ROOT.resolve()) else scope_path.parent
+    try:
+        scope_payload = seed_audit_tool.load_scope(scope_path, root=scope_root)
+        resolution_payload = seed_audit_tool.load_resolutions(
+            resolution_path, scope_sha256=ccs.sha256_file(scope_path)
+        )
+        candidate = seed_audit_tool.load_candidate_blocks(candidate_path)
+        rebuilt = seed_audit_tool.build_audit(
+            scope_root,
+            scope_path,
+            candidate_path,
+            plan_path=audit_plan_path,
+            resolution_path=resolution_path,
+            generated_utc=audit.get("generated_utc"),
+        )
+    except (OSError, ValueError, nc.ContractError, json.JSONDecodeError) as exc:
+        raise ContractError(f"seed-audit source chain cannot be rebuilt: {exc}") from exc
+    if scope_payload.get("owner_scope", {}).get("status") != "APPROVED" \
+            or scope_payload.get("source_coverage", {}).get("status") != "COMPLETE":
+        raise ContractError("seed-audit scope is not owner-approved and complete")
+    if rebuilt != audit:
+        raise ContractError(
+            "seed-audit differs from a deterministic rebuild of its current sources"
+        )
+    if candidate is None:
+        raise ContractError("seed-audit candidate blocks are missing")
     expected_blocks = {
         "discovery": list(plan.discovery_seeds),
         "confirmation": list(plan.confirmation_seeds),
@@ -440,14 +378,8 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
         "proposal_rng": plan.proposal_rng_seed,
     }
     for field, expected in expected_blocks.items():
-        if blocks.get(field) != expected:
+        if candidate.get(field) != expected or blocks.get(field) != expected:
             raise ContractError(f"seed-audit candidate_blocks.{field} does not match the plan")
-    candidate_path = _bound_evidence_path(
-        blocks.get("path"), what="seed-audit candidate seed blocks"
-    )
-    if ccs.sha256_file(candidate_path) != _require_sha256(
-            blocks.get("file_sha256"), what="seed-audit candidate-block file_sha256"):
-        raise ContractError("seed-audit candidate-block file hash is stale")
     candidate_payload = strict_json_object(candidate_path, what="candidate seed blocks")
     expected_candidate_payload = {
         "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
@@ -455,25 +387,6 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
     }
     if candidate_payload != expected_candidate_payload:
         raise ContractError("seed-audit candidate-block file does not exactly match the plan")
-    expected_candidate_sha = ccs.sha256_json(expected_candidate_payload)
-    if blocks.get("sha256") != expected_candidate_sha:
-        raise ContractError("seed-audit candidate_blocks.sha256 does not match the plan")
-    expected_checks = {
-        "discovery_vs_confirmation", "proposal_vs_discovery",
-        "proposal_vs_confirmation", "discovery_vs_prior",
-        "confirmation_vs_prior", "proposal_vs_prior", "smoke_vs_discovery",
-        "smoke_vs_confirmation", "smoke_vs_proposal", "smoke_vs_prior",
-    }
-    checks = disjointness.get("checks")
-    if not isinstance(checks, dict) or set(checks) != expected_checks \
-            or any(value != [] for value in checks.values()):
-        raise ContractError("seed-audit disjointness checks are incomplete or non-empty")
-    all_candidate_seeds = {
-        *plan.discovery_seeds, *plan.confirmation_seeds, *plan.smoke_seeds,
-        plan.proposal_rng_seed,
-    }
-    if prior_seeds & all_candidate_seeds:
-        raise ContractError("seed-audit candidate seeds overlap parsed prior use")
     return {
         "path": str(path), "sha256": actual_hash, "status": expected_status,
         "resolution_path": str(resolution_path),
@@ -488,6 +401,18 @@ def _bound_evidence_path(value, *, what: str) -> Path:
     path = Path(value)
     if not path.is_absolute():
         path = ROOT / path
+    if not path.is_file():
+        raise ContractError(f"{what} is missing: {path}")
+    return path
+
+
+def _referenced_evidence_path(owner: Path, value, *, what: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ContractError(f"{what} path is missing")
+    path = Path(value)
+    if not path.is_absolute():
+        beside_owner = Path(owner).parent / path
+        path = beside_owner if beside_owner.is_file() else ROOT / path
     if not path.is_file():
         raise ContractError(f"{what} is missing: {path}")
     return path
@@ -548,7 +473,8 @@ def require_stage_authorization(
     payload = strict_json_object(path, what=f"{stage} stage authorization")
     required = {
         "schema", "status", "stage", "plan_sha256", "upstream_sha256",
-        "approver_id", "approved_utc", "decision_evidence_sha256",
+        "approver_id", "approved_utc", "decision_evidence_path",
+        "decision_evidence_sha256",
     }
     if set(payload) != required:
         raise ContractError(
@@ -566,10 +492,16 @@ def require_stage_authorization(
     if not isinstance(payload["approver_id"], str) or not payload["approver_id"].strip():
         raise ContractError("stage authorization approver_id must be non-empty")
     _require_utc(payload["approved_utc"], what="stage authorization approved_utc")
-    _require_sha256(
+    decision_sha256 = _require_sha256(
         payload["decision_evidence_sha256"],
         what="stage authorization decision_evidence_sha256",
     )
+    decision_path = _referenced_evidence_path(
+        path, payload["decision_evidence_path"], what="stage decision evidence"
+    )
+    if ccs.sha256_file(decision_path) != decision_sha256:
+        raise ContractError("stage decision-evidence hash is stale")
+    strict_json_object(decision_path, what="stage decision evidence")
     expected_plan_hash = _require_sha256(plan_sha256, what="exact plan file sha256")
     if _require_sha256(payload["plan_sha256"], what="authorization plan_sha256") \
             != expected_plan_hash:
@@ -1581,10 +1513,25 @@ def validate_search_evidence(
     plan_sha256: str,
     prepared_binding: dict[str, str],
     smoke_binding: dict[str, str],
+    workers: int,
+    total_authorized_trajectories: int,
+    wall_time_cap_seconds: float,
 ) -> dict[str, str]:
     """Require exact measured timing and owner-approved pricing before search spend."""
     if measured_benchmark_path is None or pricing_approval_path is None:
         raise ContractError("search/resume requires measured benchmark and pricing approval")
+
+    def positive_finite(value, what: str) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ContractError(f"{what} must be positive finite")
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ContractError(f"{what} must be positive finite") from exc
+        if not math.isfinite(numeric) or numeric <= 0:
+            raise ContractError(f"{what} must be positive finite")
+        return numeric
+
     benchmark_path = Path(measured_benchmark_path)
     pricing_path = Path(pricing_approval_path)
     benchmark = strict_json_object(benchmark_path, what="measured benchmark")
@@ -1613,17 +1560,31 @@ def validate_search_evidence(
     _require_utc(benchmark["measured_utc"], what="measured benchmark measured_utc")
     if type(benchmark["sample_trajectories"]) is not int or benchmark["sample_trajectories"] < 1:
         raise ContractError("measured benchmark sample_trajectories must be positive")
-    seconds = benchmark["seconds_per_trajectory"]
-    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) \
-            or not np.isfinite(seconds) or seconds <= 0:
-        raise ContractError("measured benchmark seconds_per_trajectory must be positive finite")
+    seconds = positive_finite(
+        benchmark["seconds_per_trajectory"],
+        "measured benchmark seconds_per_trajectory",
+    )
     benchmark_sha256 = ccs.sha256_file(benchmark_path)
+
+    if type(workers) is not int or not 1 <= workers <= ABSOLUTE_HPC_WORKER_CAP:
+        raise ContractError("execution worker count is outside the allowed integer domain")
+    if type(total_authorized_trajectories) is not int \
+            or total_authorized_trajectories < 1:
+        raise ContractError("total authorized trajectory count must be a positive integer")
+    wall_time_cap_value = positive_finite(
+        wall_time_cap_seconds, "execution wall-time cap"
+    )
+    if wall_time_cap_value > ccs.WALL_TIME_CAP_SECONDS:
+        raise ContractError("execution wall-time cap must be positive and within the plan cap")
 
     pricing = strict_json_object(pricing_path, what="pricing approval")
     required_pricing = {
         "schema", "status", "plan_sha256", "measured_benchmark_sha256",
-        "machine_profile", "approved_by", "approved_utc", "maximum_approved_cost",
-        "currency_or_credit_unit",
+        "machine_profile", "worker_count", "total_authorized_trajectories",
+        "wall_time_cap_seconds", "pricing_source_path", "pricing_source_sha256",
+        "cost_formula", "cost_inputs", "expected_runtime_seconds",
+        "expected_resource_seconds", "expected_cost", "wall_cap_resource_seconds",
+        "wall_cap_cost", "approved_cost_ceiling", "approved_by", "approved_utc",
     }
     if set(pricing) != required_pricing:
         raise ContractError("pricing approval fields differ from the exact schema")
@@ -1634,16 +1595,93 @@ def validate_search_evidence(
         raise ContractError("pricing approval does not bind the exact plan and benchmark")
     if pricing["machine_profile"] != benchmark["machine_profile"]:
         raise ContractError("pricing approval machine profile differs from the benchmark")
+    if type(pricing["worker_count"]) is not int or pricing["worker_count"] != workers:
+        raise ContractError("pricing approval worker count differs from this execution")
+    if type(pricing["total_authorized_trajectories"]) is not int \
+            or pricing["total_authorized_trajectories"] != total_authorized_trajectories:
+        raise ContractError(
+            "pricing approval trajectory count differs from this execution"
+        )
+    authored_wall_cap = positive_finite(
+        pricing["wall_time_cap_seconds"], "pricing approval wall-time cap"
+    )
+    if authored_wall_cap != wall_time_cap_value:
+        raise ContractError("pricing approval wall-time cap differs from this execution")
     if not isinstance(pricing["approved_by"], str) or not pricing["approved_by"].strip():
         raise ContractError("pricing approval approved_by must be non-empty")
     _require_utc(pricing["approved_utc"], what="pricing approval approved_utc")
-    cost = pricing["maximum_approved_cost"]
-    if isinstance(cost, bool) or not isinstance(cost, (int, float)) \
-            or not np.isfinite(cost) or cost <= 0:
-        raise ContractError("pricing approval maximum_approved_cost must be positive finite")
-    if not isinstance(pricing["currency_or_credit_unit"], str) \
-            or not pricing["currency_or_credit_unit"].strip():
-        raise ContractError("pricing approval currency_or_credit_unit must be non-empty")
+
+    source_sha256 = _require_sha256(
+        pricing["pricing_source_sha256"], what="pricing source sha256"
+    )
+    source_path = _referenced_evidence_path(
+        pricing_path, pricing["pricing_source_path"], what="pricing source"
+    )
+    if ccs.sha256_file(source_path) != source_sha256:
+        raise ContractError("pricing source hash is stale")
+    source = strict_json_object(source_path, what="pricing source")
+    required_source = {
+        "schema", "status", "machine_profile", "currency_or_credit_unit",
+        "resource_unit", "billing_unit", "seconds_per_billing_unit", "unit_price",
+        "source_reference", "effective_utc",
+    }
+    if set(source) != required_source:
+        raise ContractError("pricing source fields differ from the exact schema")
+    if source["schema"] != PRICING_SOURCE_SCHEMA or source["status"] != "FINAL":
+        raise ContractError("pricing source is not FINAL on the current schema")
+    if source["machine_profile"] != benchmark["machine_profile"]:
+        raise ContractError("pricing source machine profile differs from the benchmark")
+    for field in ("currency_or_credit_unit", "resource_unit", "source_reference"):
+        if not isinstance(source[field], str) or not source[field].strip():
+            raise ContractError(f"pricing source {field} must be non-empty")
+    if source["resource_unit"] != "worker":
+        raise ContractError("coupled search pricing requires worker resource units")
+    if source["billing_unit"] != "resource_hour":
+        raise ContractError("pricing source billing_unit must be resource_hour")
+    _require_utc(source["effective_utc"], what="pricing source effective_utc")
+
+    seconds_per_unit = positive_finite(
+        source["seconds_per_billing_unit"], "pricing source seconds_per_billing_unit"
+    )
+    unit_price = positive_finite(source["unit_price"], "pricing source unit_price")
+    if source["billing_unit"] == "resource_hour" and seconds_per_unit != 3600.0:
+        raise ContractError("resource_hour pricing must use 3600 seconds per billing unit")
+    expected_inputs = {
+        "currency_or_credit_unit": source["currency_or_credit_unit"],
+        "resource_unit": source["resource_unit"],
+        "billing_unit": source["billing_unit"],
+        "seconds_per_billing_unit": source["seconds_per_billing_unit"],
+        "unit_price": source["unit_price"],
+    }
+    if pricing["cost_formula"] != SEARCH_COST_FORMULA \
+            or pricing["cost_inputs"] != expected_inputs:
+        raise ContractError("pricing approval does not bind the exact pricing formula and inputs")
+
+    expected_runtime = (float(total_authorized_trajectories) * seconds) / workers
+    expected_resource_seconds = expected_runtime * workers
+    expected_cost = expected_resource_seconds / seconds_per_unit * unit_price
+    wall_cap_resource_seconds = wall_time_cap_value * workers
+    wall_cap_cost = wall_cap_resource_seconds / seconds_per_unit * unit_price
+    derived = {
+        "expected_runtime_seconds": expected_runtime,
+        "expected_resource_seconds": expected_resource_seconds,
+        "expected_cost": expected_cost,
+        "wall_cap_resource_seconds": wall_cap_resource_seconds,
+        "wall_cap_cost": wall_cap_cost,
+    }
+    if not all(math.isfinite(value) and value > 0 for value in derived.values()):
+        raise ContractError("derived execution runtime/cost is not positive finite")
+    if expected_runtime > wall_time_cap_value:
+        raise ContractError("expected runtime exceeds the authorized wall-time cap")
+    for field, expected in derived.items():
+        actual = positive_finite(pricing[field], f"pricing approval {field}")
+        if not math.isclose(actual, expected, rel_tol=1e-12, abs_tol=0.0):
+            raise ContractError(f"pricing approval {field} differs from the derived value")
+    ceiling = positive_finite(
+        pricing["approved_cost_ceiling"], "pricing approval approved_cost_ceiling"
+    )
+    if expected_cost > ceiling:
+        raise ContractError("derived expected cost exceeds the approved cost ceiling")
     return {
         "measured_benchmark": benchmark_sha256,
         "pricing_approval": ccs.sha256_file(pricing_path),
@@ -2049,12 +2087,44 @@ def run_search(
     smoke_binding = artifact_binding(
         Path(smoke_dir), "smoke", extra_files=("SMOKE_RESULT.json",)
     )
+    if type(workers) is not int or not 1 <= workers <= ABSOLUTE_HPC_WORKER_CAP:
+        raise ContractError("workers must be an integer within the absolute execution cap")
+    if type(n_batches) is not int or not 0 <= n_batches <= ccs.N_BATCHES:
+        raise ContractError("n_batches must be an integer within the declared design")
+    try:
+        wall_time_cap_value = float(wall_time_cap)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ContractError("wall_time_cap must be a finite numeric value") from exc
+    if isinstance(wall_time_cap, bool) or not isinstance(wall_time_cap, (int, float)) \
+            or not math.isfinite(wall_time_cap_value) \
+            or not 0 < wall_time_cap_value <= ccs.WALL_TIME_CAP_SECONDS:
+        raise ContractError("wall_time_cap must be positive and within the declared plan cap")
+    planned_vectors = len(prepared["initial"]) + n_batches * ccs.BATCH_SIZE
+    if planned_vectors > ccs.MAX_DISCOVERY_VECTORS:
+        raise ContractError(
+            f"{planned_vectors} discovery vectors exceed the declared maximum "
+            f"{ccs.MAX_DISCOVERY_VECTORS}"
+        )
+    total_authorized_trajectories = (
+        planned_vectors * len(prepared["contract"].discovery_seeds)
+    )
+    if resume and (
+        context.get("n_batches") != n_batches
+        or context.get("workers") != workers
+        or context.get("wall_time_cap_seconds") != wall_time_cap_value
+    ):
+        raise ContractError(
+            "resume execution settings differ from the authorized partial-search context"
+        )
     search_evidence = validate_search_evidence(
         measured_benchmark_path,
         pricing_approval_path,
         plan_sha256=matching_plan["file_sha256"],
         prepared_binding=prepared_binding,
         smoke_binding=smoke_binding,
+        workers=workers,
+        total_authorized_trajectories=total_authorized_trajectories,
+        wall_time_cap_seconds=wall_time_cap_value,
     )
     upstream_sha256 = {**prepared_binding, **smoke_binding, **search_evidence}
     if resume:
@@ -2106,10 +2176,11 @@ def run_search(
             "search_evidence_sha256": search_evidence,
             "module_sha256": module_hashes(), "input_sha256": state["hashes"],
             "n_batches": int(n_batches), "workers": int(workers),
+            "total_authorized_trajectories": total_authorized_trajectories,
             "execution_mode": (
                 "hpc_override" if workers > ccs.MAX_WORKERS else "reviewed_local"
             ),
-            "wall_time_cap_seconds": float(wall_time_cap),
+            "wall_time_cap_seconds": wall_time_cap_value,
             "stage_authorization": authorization,
             "environment": environment(), "started_utc": now(),
         })
@@ -2124,11 +2195,6 @@ def run_search(
         proposals_by_id.setdefault(int(entry["candidate_id"]), entry)
     archive, completed, dispatched, launched = _restore_archive(
         output_dir, space, targets, discovery_replicates, proposals_by_id)
-    planned_vectors = len(initial) + int(n_batches) * ccs.BATCH_SIZE
-    if planned_vectors > ccs.MAX_DISCOVERY_VECTORS:
-        raise ContractError(
-            f"{planned_vectors} discovery vectors exceed the declared maximum "
-            f"{ccs.MAX_DISCOVERY_VECTORS}")
     budget = ccs.TrajectoryBudget(cap=planned_vectors * discovery_replicates)
     if prepared["manifest"].get("engineering_reduced_archive"):
         print("coupled search: WARNING -- this preparation uses a REDUCED initial archive "
@@ -2164,7 +2230,7 @@ def run_search(
               flush=True)
 
     started = clock()
-    deadline = started + float(wall_time_cap)
+    deadline = started + wall_time_cap_value
     status = ccs.STATUS_SEARCH_COMPLETE
     stopped_reason = ""
 

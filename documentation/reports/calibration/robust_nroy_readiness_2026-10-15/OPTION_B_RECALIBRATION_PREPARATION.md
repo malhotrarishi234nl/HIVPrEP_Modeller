@@ -77,10 +77,11 @@ cannot execute without the current lowercase source-workbook hash and exact fina
 binding.
 
 Each write or engine stage also requires `--authorization` pointing to a strict JSON object with
-schema `coupled_calibration_stage_authorization/1.1.0`, status `AUTHORIZED`, exactly one of
+schema `coupled_calibration_stage_authorization/1.2.0`, status `AUTHORIZED`, exactly one of
 `prepare`, `smoke`, `search`, `resume`, or `confirmation`, the byte-exact plan SHA-256, and the
 exact upstream hashes required by that stage. Every grant records a non-empty approver identifier,
-an ISO-8601 UTC approval time, and the exact decision-evidence SHA-256.
+an ISO-8601 UTC approval time, and both the path and byte-exact SHA-256 of the owner decision
+evidence. Older grants are execution-ineligible.
 
 Preparation has no upstream stage artifact. Smoke binds both the preparation manifest and its
 verified `artifacts.json`. Search binds the preparation and smoke manifests and both verified
@@ -88,8 +89,15 @@ artifact indexes (plus the smoke result), and requires `--measured-benchmark` an
 `--pricing-approval`. The benchmark uses
 `coupled_calibration_measured_benchmark/1.0.0`, is `FINAL`, names the exact plan, preparation and
 smoke hashes, machine profile, sample size and measured seconds per trajectory. Pricing uses
-`coupled_calibration_pricing_approval/1.0.0`, is `APPROVED`, and binds the exact plan, benchmark,
-machine profile, approver, approval time and maximum priced ceiling.
+`coupled_calibration_pricing_approval/1.1.0`, is `APPROVED`, and binds the exact plan, benchmark,
+machine profile, CLI worker count, total authorized discovery trajectories, wall-time cap, and a
+hash-verified `robust_nroy_pricing_source/1.0.0`. The source supplies the currency or credit unit,
+worker resource unit, resource-hour conversion, rate and provenance. The runner recomputes expected
+runtime, resource-seconds, expected cost and cap-derived cost from the measured timing and exact
+execution scale; every authored value must match, arithmetic must remain finite, expected runtime
+must fit the plan wall cap, and expected cost must not exceed the owner-approved ceiling. The
+pricing-approval file hash is itself an upstream prerequisite of the search or resume grant, so a
+worker, scale, timing, rate or ceiling change requires a new execution specification and grant.
 
 Resume additionally binds the verified partial-search manifest and `artifacts.json`, plus the
 exact search-context hash and a canonical bundle hash over dispatch, result and proposal journals.
