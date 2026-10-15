@@ -142,6 +142,7 @@
 
   "archive_following": {
     "quota": "UNSIGNED",
+    "quota_note": "Total prepared cells per anchor. Must equal the complete frozen direction x scale x sign design; it may not truncate a direction or declared scale.",
     "scales": "UNSIGNED",
     "scales_proposal": [0.025, 0.05],
     "neighbour_rule": "UNSIGNED",
@@ -149,7 +150,8 @@
     "neighbour_rule_note": "Must be one of nroy_design.ARCHIVE_NEIGHBOUR_RULES. 'k_nearest_low_J_archive_vectors' orders consultation by J ascending and REQUIRES a 'j' column in the archive table supplied to prepare --archive; nroy_design.archive_directions refuses to fall back to a distance-only ordering, because that would mean the signed rule is not the rule that ran.",
     "neighbour_count": "UNSIGNED",
     "neighbour_count_note": "How many archive neighbours each anchor consults. This is a local direction-estimation choice; the graph now uses complete pairwise distances and has no neighbour-count setting. No proposal in either specification.",
-    "rank_truncation": "UNSIGNED",
+    "max_directions": "UNSIGNED",
+    "max_directions_note": "Maximum retained directions per declared archive-following source. This is a deterministic count cap, not numerical rank estimation.",
     "source_pool": "UNSIGNED",
     "source_pool_proposal": [
       "low_j_archive_vectors",
@@ -162,6 +164,7 @@
 
   "cross_block": {
     "quota": "UNSIGNED",
+    "quota_note": "Total prepared cells per anchor. With S scales, the quota must be a multiple of 2*S and implies quota/(2*S) frozen cross-block directions.",
     "scales": "UNSIGNED",
     "scales_proposal": [0.025, 0.05]
   },

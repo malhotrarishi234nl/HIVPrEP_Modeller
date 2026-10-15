@@ -1862,7 +1862,19 @@ def handoff_audit(
         quota = int(quotas.get(kernel, 0))
         if quota < 0:
             problems.append(f"kernel {kernel!r}: quota must be non-negative, got {quota}")
-        if kernel in quotas and n_dispatched != quota:
+        if kernel in quotas and kernel in nc.CELL_QUOTA_KERNELS:
+            if n_proposed != quota:
+                problems.append(
+                    f"kernel {kernel!r}: proposed {n_proposed} design cells but cell "
+                    f"quota is {quota}"
+                )
+            expected_dispatch = n_proposed - n_rejected
+            if n_dispatched != expected_dispatch:
+                problems.append(
+                    f"kernel {kernel!r}: dispatched {n_dispatched} but "
+                    f"{expected_dispatch} of {n_proposed} design cells survived rejection"
+                )
+        elif kernel in quotas and n_dispatched != quota:
             problems.append(
                 f"kernel {kernel!r}: dispatched {n_dispatched} but quota is {quota}"
             )
@@ -1888,6 +1900,9 @@ def handoff_audit(
         rows.append({
             "kernel_id": kernel,
             "quota": quota,
+            "quota_basis": (
+                "design_cells" if kernel in nc.CELL_QUOTA_KERNELS else "accepted_proposals"
+            ),
             "n_proposed": n_proposed,
             "n_rejected": n_rejected,
             "n_dispatched": n_dispatched,

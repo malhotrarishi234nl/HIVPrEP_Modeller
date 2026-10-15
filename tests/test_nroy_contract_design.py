@@ -103,7 +103,10 @@ def test_missing_signature_block_is_refused(tmp_path):
         ({"separation.min_neighbour_neighbour": float("nan")}, "must be positive"),
         ({"budget.wall_time_cap_seconds": float("inf")}, "finite and positive"),
         ({"ambient.max_attempts_per_anchor": 0}, "must be positive"),
+        ({"archive_following.quota": 0}, "must be positive"),
+        ({"archive_following.max_directions": 0}, "must be positive"),
         ({"archive_following.scales": [0.025, float("nan")]}, "finite positive"),
+        ({"cross_block.quota": 5}, "complete direction x scale x sign"),
     ],
 )
 def test_cross_field_validation_fails_closed(tmp_path, override, message):
@@ -448,12 +451,83 @@ def test_duplicate_vectors_do_not_count_as_two_neighbours():
         anchor, space, validator, stage=nc.STAGE_DISCOVERY,
         kernel=nc.KERNEL_ARCHIVE_FOLLOWING,
         directions=[(direction, "d", ("A1", "X"))] * 4,
-        scales=[0.025], quota=4, seed=1,
+        scales=[0.025], quota=8, seed=1,
         min_anchor_sep=1e-6, min_neighbour_sep=1e-6, max_attempts=100,
     )
     hashes = [p.vector_hash for p in outcome.accepted]
     assert len(hashes) == len(set(hashes)), "duplicates must not fill a quota"
     assert nd.REASON_DUPLICATE in outcome.rejection_counts
+
+
+def test_directed_design_visits_every_direction_scale_and_sign():
+    space = fx.m0_space()
+    anchor = nd.Anchor.build("A1", fx.interior_vector(space), space)
+    validator = nd.Validator(space=space.space, model=space)
+    first = np.zeros(space.n)
+    first[0] = 1.0
+    second = np.zeros(space.n)
+    second[1] = 1.0
+    outcome = nd.directed_probes(
+        anchor, space, validator, stage=nc.STAGE_DISCOVERY,
+        kernel=nc.KERNEL_ARCHIVE_FOLLOWING,
+        directions=[
+            (first, "first", ("A1", "X")),
+            (second, "second", ("A1", "Y")),
+        ],
+        scales=[0.02, 0.04], quota=8, seed=1,
+        min_anchor_sep=1e-6, min_neighbour_sep=1e-6, max_attempts=8,
+    )
+    assert outcome.attempts == 8
+    assert not outcome.rejected
+    assert [proposal.direction_class for proposal in outcome.accepted] == [
+        "first", "first", "first", "first",
+        "second", "second", "second", "second",
+    ]
+    assert [proposal.scale for proposal in outcome.accepted] == [
+        0.02, 0.02, 0.04, 0.04,
+        0.02, 0.02, 0.04, 0.04,
+    ]
+
+
+def test_partial_directed_quota_and_attempt_budget_fail_closed():
+    space = fx.m0_space()
+    anchor = nd.Anchor.build("A1", fx.interior_vector(space), space)
+    validator = nd.Validator(space=space.space, model=space)
+    direction = np.zeros(space.n)
+    direction[0] = 1.0
+    kwargs = dict(
+        anchor=anchor, model=space, validator=validator, stage=nc.STAGE_DISCOVERY,
+        kernel=nc.KERNEL_ARCHIVE_FOLLOWING,
+        directions=[(direction, "d", ("A1", "X"))], scales=[0.02, 0.04],
+        seed=1, min_anchor_sep=1e-6, min_neighbour_sep=1e-6,
+    )
+    with pytest.raises(ContractError, match="partial quota"):
+        nd.directed_probes(**kwargs, quota=2, max_attempts=4)
+    with pytest.raises(ContractError, match="cannot visit all 4 cells"):
+        nd.directed_probes(**kwargs, quota=4, max_attempts=3)
+
+
+def test_boundary_infeasible_directed_cells_remain_explicit_and_unresolved():
+    space = fx.m0_space()
+    anchor = nd.Anchor.build("AT_BOUND", space.as_dict(space.space.lower.copy()), space)
+    validator = nd.Validator(space=space.space, model=space)
+    direction = np.zeros(space.n)
+    direction[0] = 1.0
+    outcome = nd.directed_probes(
+        anchor, space, validator, stage=nc.STAGE_DISCOVERY,
+        kernel=nc.KERNEL_ARCHIVE_FOLLOWING,
+        directions=[(direction, "boundary", ("AT_BOUND", "X"))],
+        scales=[0.02, 0.04], quota=4, seed=1,
+        min_anchor_sep=1e-6, min_neighbour_sep=1e-6, max_attempts=4,
+    )
+    assert outcome.attempts == 4
+    assert len(outcome.accepted) + len(outcome.rejected) == 4
+    assert {proposal.scale for proposal in outcome.rejected} == {0.02, 0.04}
+    assert outcome.exhausted, "infeasible cells must leave the design unresolved"
+    rejected_cells = outcome.as_row()["rejected_cells"]
+    assert len(rejected_cells) == len(outcome.rejected)
+    assert {cell["scale"] for cell in rejected_cells} == {0.02, 0.04}
+    assert all(cell["rejection_reasons"] for cell in rejected_cells)
 
 
 def test_minimum_separation_is_enforced():

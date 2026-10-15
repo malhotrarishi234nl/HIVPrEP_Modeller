@@ -1291,14 +1291,14 @@ def test_a_declared_source_that_cannot_contribute_is_refused():
         nd.correlation_following_directions(
             anchor, space, source_pool=[nd.SOURCE_LOW_J_ARCHIVE],
             confirmed=[anchor.params], confirmed_ids=["A0"],
-            neighbour_count=2, rank_truncation=2,
+            neighbour_count=2, max_directions=2,
             neighbour_rule="k_nearest_in_normalised_metric",
         )
     with pytest.raises(ContractError, match="no other confirmed vector"):
         nd.correlation_following_directions(
             anchor, space, source_pool=[nd.SOURCE_CONFIRMED_DIFFERENCES],
             confirmed=[anchor.params], confirmed_ids=["A0"],
-            neighbour_count=2, rank_truncation=2,
+            neighbour_count=2, max_directions=2,
             neighbour_rule="k_nearest_in_normalised_metric",
         )
 
@@ -1311,7 +1311,7 @@ def test_an_undeclared_source_contributes_nothing():
         anchor, space, source_pool=[nd.SOURCE_CONFIRMED_DIFFERENCES],
         archive=vectors[1:], archive_ids=["Z1", "Z2"], archive_j=[0.1, 0.2],
         confirmed=vectors, confirmed_ids=["A0", "A1", "A2"],
-        neighbour_count=2, rank_truncation=4,
+        neighbour_count=2, max_directions=4,
         neighbour_rule="k_nearest_in_normalised_metric",
     )
     assert directions
@@ -1349,7 +1349,7 @@ def test_the_low_j_rule_refuses_to_fall_back_to_distance_only():
     with pytest.raises(ContractError, match="no J values were supplied"):
         nd.archive_directions(
             anchor, space, archive=vectors[1:], archive_ids=["Z1", "Z2"],
-            neighbour_count=2, rank_truncation=2,
+            neighbour_count=2, max_directions=2,
             neighbour_rule="k_nearest_low_J_archive_vectors",
         )
 
@@ -1362,13 +1362,13 @@ def test_the_low_j_rule_consults_in_j_order(tmp_path):
     # first while the distance rule must not.
     by_j = nd.archive_directions(
         anchor, space, archive=vectors[1:], archive_ids=["Z1", "Z2", "Z3"],
-        archive_j=[9.0, 5.0, 0.1], neighbour_count=1, rank_truncation=1,
+        archive_j=[9.0, 5.0, 0.1], neighbour_count=1, max_directions=1,
         neighbour_rule="k_nearest_low_J_archive_vectors",
     )
     assert [parents[1] for _, _, parents in by_j] == ["Z3"]
     by_distance = nd.archive_directions(
         anchor, space, archive=vectors[1:], archive_ids=["Z1", "Z2", "Z3"],
-        archive_j=[9.0, 5.0, 0.1], neighbour_count=3, rank_truncation=3,
+        archive_j=[9.0, 5.0, 0.1], neighbour_count=3, max_directions=3,
         neighbour_rule="k_nearest_in_normalised_metric",
     )
     assert len(by_distance) == 3
@@ -1398,6 +1398,7 @@ def test_the_declared_archive_pool_reaches_a_real_design(tmp_path):
     harness = Harness(
         tmp_path,
         **{
+            "archive_following.quota": 8,
             "archive_following.source_pool": [
                 nd.SOURCE_LOW_J_ARCHIVE, nd.SOURCE_CONFIRMED_DIFFERENCES,
                 nd.SOURCE_CROSS_BLOCK,

@@ -331,8 +331,9 @@ def local_support_table(
         variance_unstable_only = bool(confirming) and all(
             unstable.get(n.design_id, False) for n in confirming
         )
-        # The ambient kernel is the one whose directions can be infeasible at a
-        # bound, so its coverage is the one that bears on isolation.
+        # Ambient coverage bears directly on isolation. Exhaustion from any
+        # frozen local kernel also keeps the anchor unresolved: an infeasible
+        # directed cell is missing evidence, not evidence of no support.
         ambient_coverage = coverage.get((anchor_id, nc.KERNEL_AMBIENT))
         support = nc.classify_local_support(
             neighbours,

@@ -813,7 +813,7 @@ def build_designs(
             confirmed=[a.params for a in anchors],
             confirmed_ids=[a.anchor_id for a in anchors],
             neighbour_count=archive_neighbours,
-            rank_truncation=int(plan.require("archive_following.rank_truncation")),
+            max_directions=int(plan.require("archive_following.max_directions")),
             neighbour_rule=archive_rule,
         )
         archive_outcome = nd.directed_probes(
@@ -829,15 +829,21 @@ def build_designs(
         offset += 1000
 
         if run_cross_block:
+            cross_scales = [float(s) for s in plan.require("cross_block.scales")]
+            cross_quota = int(plan.require("cross_block.quota"))
+            cross_direction_count = nd.direction_count_for_complete_quota(
+                quota=cross_quota,
+                scales=cross_scales,
+                kernel=nc.KERNEL_CROSS_BLOCK,
+            )
             cross = nd.cross_block_directions(
                 anchor, model, seed=seed,
-                count=max(1, int(plan.require("cross_block.quota"))),
+                count=cross_direction_count,
             )
             cross_outcome = nd.directed_probes(
                 anchor, model, validator, stage=stage, kernel=nc.KERNEL_CROSS_BLOCK,
                 directions=cross,
-                scales=[float(s) for s in plan.require("cross_block.scales")],
-                quota=int(plan.require("cross_block.quota")), seed=seed,
+                scales=cross_scales, quota=cross_quota, seed=seed,
                 min_anchor_sep=min_anchor, min_neighbour_sep=min_neighbour,
                 max_attempts=max_attempts, index_offset=offset,
             )
@@ -1295,8 +1301,14 @@ def command_prepare(args: argparse.Namespace) -> int:
     else:
         ne.atomic_write_frame(
             out / "kernel_outcomes.csv",
-            pd.DataFrame([{**o.as_row(), "rejection_counts": json.dumps(o.rejection_counts)}
-                          for o in outcomes]),
+            pd.DataFrame([
+                {
+                    **row,
+                    "rejection_counts": json.dumps(row["rejection_counts"]),
+                    "rejected_cells": json.dumps(row["rejected_cells"]),
+                }
+                for row in (outcome.as_row() for outcome in outcomes)
+            ]),
         )
     ne.atomic_write_frame(
         out / "anchors.csv",

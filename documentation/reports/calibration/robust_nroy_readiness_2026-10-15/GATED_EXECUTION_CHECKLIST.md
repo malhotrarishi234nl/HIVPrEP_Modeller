@@ -3,19 +3,20 @@
 Every gate is fail-closed. Completion of one gate does not authorize the next
 engine-running gate.
 
-- [ ] Directed-probe preparation constructs the complete declared
-  `direction x scale x sign` design; no total quota can silently omit a scale.
-- [ ] The misleading `rank_truncation` decision is replaced by an honestly
-  named `max_directions` contract, unless a genuine rank-revealing algorithm is
-  separately specified and tested.
-- [ ] The graph implementation uses complete pairwise distances followed by a
-  deterministic Kruskal MST; no arbitrary graph neighbour count remains. The
-  code and no-engine tests are complete, but this gate stays open until its
-  plan values receive scientific review/sign-off.
-- [ ] The promotion variance formula is a direct one-sided 95% upper bound at
-  proposed `alpha=0.05`, used only for allocation. The code is complete and
-  final nominal acceptance is unchanged, but this gate stays open until the
-  alpha receives scientific review/sign-off.
+- [x] Directed-probe preparation constructs the complete declared
+  `direction x scale x sign` design; incompatible partial quotas and attempt
+  budgets fail closed, while boundary-infeasible cells remain explicit
+  rejected/unresolved cells. This is code acceptance only; the numeric design
+  choices remain unsigned.
+- [x] The misleading `rank_truncation` decision is replaced by the honest
+  `max_directions` count cap. No rank-revealing algorithm is claimed or added;
+  the numeric cap remains a scientific/methods decision.
+- [x] The graph implementation uses complete pairwise distances followed by a
+  deterministic Kruskal MST; no arbitrary graph neighbour count remains. This
+  is code acceptance only; the rule remains unsigned scientific/methods input.
+- [x] The promotion variance formula is a direct one-sided 95% upper bound at
+  proposed `alpha=0.05`, used only for allocation. Final nominal acceptance is
+  unchanged; alpha remains unsigned scientific/methods input.
 - [ ] One canonical stochastic config supports standalone M0 and optional M1;
   the production adapter sets the model switch explicitly and its no-engine
   config-route tests pass.
@@ -36,4 +37,6 @@ engine-running gate.
 - [ ] `.venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan>` returns zero blockers.
 - [ ] Only then request a new, separate authorization for production dispatch.
 
-Current stopping point: first two gates are open, so no engine gate may run.
+Current stopping point: the first two implementation gates are closed, but the
+design values remain unsigned and later scientific/evidence gates are open, so
+no engine gate may run.

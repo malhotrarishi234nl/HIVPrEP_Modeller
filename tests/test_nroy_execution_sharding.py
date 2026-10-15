@@ -64,11 +64,21 @@ def build_design(n_anchors: int = 3, quota: int = 4, model=None, seed: int = 31)
             outcomes.append(out)
             proposals.extend(out.accepted)
             offset += 1000
-        cross = nd.cross_block_directions(anchor, space, seed=seed, count=quota)
+        # ``quota`` sizes each ambient scale in this generic ledger fixture.
+        # A directed kernel needs complete +/- pairs, so round its independent
+        # fixture size up to the next complete two-cell design.
+        cross_quota = 2 * max(1, (int(quota) + 1) // 2)
+        cross = nd.cross_block_directions(
+            anchor, space, seed=seed,
+            count=nd.direction_count_for_complete_quota(
+                quota=cross_quota, scales=[0.025], kernel=nc.KERNEL_CROSS_BLOCK,
+            ),
+        )
         out = nd.directed_probes(
             anchor, space, validator, stage=nc.STAGE_DISCOVERY,
             kernel=nc.KERNEL_CROSS_BLOCK, directions=cross, scales=[0.025],
-            quota=quota, seed=seed, min_anchor_sep=1e-6, min_neighbour_sep=1e-6,
+            quota=cross_quota, seed=seed,
+            min_anchor_sep=1e-6, min_neighbour_sep=1e-6,
             max_attempts=2000, index_offset=offset,
         )
         outcomes.append(out)
@@ -690,11 +700,29 @@ def test_handoff_audit_enforces_count_conservation():
     )
     assert int(audit.loc[0, "n_confirmed"]) == 3
 
+    directed = ne.handoff_audit(
+        proposed={nc.KERNEL_CROSS_BLOCK: 4},
+        rejected={nc.KERNEL_CROSS_BLOCK: 1},
+        dispatched={nc.KERNEL_CROSS_BLOCK: 3},
+        completed={nc.KERNEL_CROSS_BLOCK: 3},
+        promoted={nc.KERNEL_CROSS_BLOCK: 2},
+        confirmed={nc.KERNEL_CROSS_BLOCK: 1},
+        quotas={nc.KERNEL_CROSS_BLOCK: 4},
+    )
+    assert directed.loc[0, "quota_basis"] == "design_cells"
+
     with pytest.raises(ContractError, match="exceeds dispatched"):
         ne.handoff_audit(
             proposed={nc.KERNEL_AMBIENT: 12}, rejected={nc.KERNEL_AMBIENT: 4},
             dispatched={nc.KERNEL_AMBIENT: 8}, completed={nc.KERNEL_AMBIENT: 9},
             promoted={}, confirmed={}, quotas=quotas,
+        )
+    with pytest.raises(ContractError, match="proposed 3 design cells"):
+        ne.handoff_audit(
+            proposed={nc.KERNEL_CROSS_BLOCK: 3}, rejected={},
+            dispatched={nc.KERNEL_CROSS_BLOCK: 3},
+            completed={nc.KERNEL_CROSS_BLOCK: 3}, promoted={}, confirmed={},
+            quotas={nc.KERNEL_CROSS_BLOCK: 4},
         )
     with pytest.raises(ContractError, match="entirely missing|produced nothing"):
         ne.handoff_audit(
@@ -708,7 +736,7 @@ def test_handoff_audit_enforces_count_conservation():
 # ==========================================================================
 
 def test_interrupted_and_resumed_run_matches_an_uninterrupted_reference():
-    space, _, proposals, _ = build_design(n_anchors=2, quota=3)
+    space, _, proposals, _ = build_design(n_anchors=2, quota=4)
     _, reference, vectors = reference_merge(proposals, space)
 
     ledger = make_ledger(proposals)

@@ -61,11 +61,12 @@ TEST_SIGNATURES: dict[str, object] = {
     "ambient.quota_per_scale": 4,
     "ambient.direction_generator": "gaussian_unit_sphere",
     "ambient.max_attempts_per_anchor": 2000,
+    # One retained confirmed-difference direction x two scales x two signs.
     "archive_following.quota": 4,
     "archive_following.scales": [0.025, 0.05],
     "archive_following.neighbour_rule": "k_nearest_in_normalised_metric",
     "archive_following.neighbour_count": 3,
-    "archive_following.rank_truncation": 4,
+    "archive_following.max_directions": 1,
     "archive_following.source_pool": ["confirmed_differences", "cross_block_directions"],
     "cross_block.quota": 4,
     "cross_block.scales": [0.025, 0.05],

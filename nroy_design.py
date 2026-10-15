@@ -33,8 +33,10 @@ import nroy_contract as nc
 from coupled_calibration_search import ContractError
 
 #: Bumped whenever the geometry of any kernel changes.  Recorded per proposal,
-#: so a design can never be silently mixed across kernel versions.
-KERNEL_VERSION = "1.0.0"
+#: so a design can never be silently mixed across kernel versions.  Version
+#: 1.1.0 makes every directed design the complete direction x scale x sign
+#: product rather than allowing a total quota to truncate later scales.
+KERNEL_VERSION = "1.1.0"
 
 #: Declared direction generators.  The plan must name one; the code never
 #: infers it from a default (spec sec. 3.1).
@@ -150,6 +152,11 @@ class KernelOutcome:
             "kernel_id": self.kernel,
             "anchor_id": self.anchor_id,
             "quota": int(self.quota),
+            "quota_basis": (
+                "design_cells"
+                if self.kernel in nc.CELL_QUOTA_KERNELS
+                else "accepted_proposals"
+            ),
             "n_proposed": int(self.attempts),
             "n_accepted": len(self.accepted),
             "n_rejected": len(self.rejected),
@@ -157,6 +164,17 @@ class KernelOutcome:
             "redraw_exhausted": bool(self.exhausted),
             "feasible_direction_coverage": self.feasible_direction_coverage,
             "rejection_counts": dict(sorted(self.rejection_counts.items())),
+            "rejected_cells": [
+                {
+                    "design_id": proposal.design_id,
+                    "scale": float(proposal.scale),
+                    "direction_class": proposal.direction_class,
+                    "parent_ids": list(proposal.parent_ids),
+                    "pre_constraint_vector_hash": proposal.pre_constraint_vector_hash,
+                    "rejection_reasons": list(proposal.rejection_reasons),
+                }
+                for proposal in self.rejected
+            ],
         }
 
 
@@ -584,14 +602,14 @@ def archive_directions(
     archive: Sequence[Mapping[str, float]],
     archive_ids: Sequence[str],
     neighbour_count: int,
-    rank_truncation: int,
+    max_directions: int,
     neighbour_rule: str,
     archive_j: Sequence[float] | None = None,
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
     """Reproducible directions derived from nearby archive vectors.
 
     Returns ``(direction, direction_class, parent_ids)`` triples.  The source
-    pool, neighbour rule, neighbour count and rank truncation come from the
+    pool, neighbour rule, neighbour count and maximum direction count come from the
     plan and are frozen before any outcome is evaluated.
 
     ``neighbour_rule`` is the signed choice of *which* archive vectors an
@@ -660,7 +678,7 @@ def archive_directions(
             DIRCLASS_ARCHIVE_DIFF,
             (anchor.anchor_id, str(archive_ids[position])),
         ))
-        if len(out) >= int(rank_truncation):
+        if len(out) >= int(max_directions):
             break
     return out
 
@@ -671,7 +689,7 @@ def confirmed_difference_directions(
     *,
     confirmed: Sequence[Mapping[str, float]],
     confirmed_ids: Sequence[str],
-    rank_truncation: int,
+    max_directions: int,
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
     """Directions along differences between confirmed vectors (spec sec. 3.2)."""
     if len(confirmed) != len(confirmed_ids):
@@ -693,7 +711,7 @@ def confirmed_difference_directions(
             DIRCLASS_CONFIRMED_DIFF,
             (anchor.anchor_id, str(confirmed_ids[position])),
         ))
-        if len(out) >= int(rank_truncation):
+        if len(out) >= int(max_directions):
             break
     return out
 
@@ -786,7 +804,7 @@ def correlation_following_directions(
     confirmed: Sequence[Mapping[str, float]] = (),
     confirmed_ids: Sequence[str] = (),
     neighbour_count: int,
-    rank_truncation: int,
+    max_directions: int,
     neighbour_rule: str,
 ) -> list[tuple[np.ndarray, str, tuple[str, ...]]]:
     """Assemble the archive-following directions from the *declared* sources.
@@ -815,7 +833,7 @@ def correlation_following_directions(
             out.extend(archive_directions(
                 anchor, model, archive=archive, archive_ids=archive_ids,
                 archive_j=archive_j, neighbour_count=neighbour_count,
-                rank_truncation=rank_truncation, neighbour_rule=neighbour_rule,
+                max_directions=max_directions, neighbour_rule=neighbour_rule,
             ))
         elif kind == SOURCE_CONFIRMED_DIFFERENCES:
             others = [
@@ -830,7 +848,7 @@ def correlation_following_directions(
                 )
             out.extend(confirmed_difference_directions(
                 anchor, model, confirmed=confirmed, confirmed_ids=confirmed_ids,
-                rank_truncation=rank_truncation,
+                max_directions=max_directions,
             ))
     return out
 
@@ -857,6 +875,33 @@ def assert_cross_block_declared(source_pool: Sequence[str], quota: int) -> bool:
     return declared
 
 
+def direction_count_for_complete_quota(
+    *, quota: int, scales: Sequence[float], kernel: str
+) -> int:
+    """Return the direction count implied by a complete signed probe quota.
+
+    Each direction contributes both signs at every declared scale.  This
+    helper is used only when the direction basis is generated from the quota
+    itself (currently the cross-block kernel).  Other directed kernels first
+    freeze their basis and let :func:`directed_probes` check the quota against
+    that basis.
+    """
+    declared_scales = tuple(float(scale) for scale in scales)
+    if not declared_scales:
+        raise ContractError(f"{kernel} must declare at least one probe scale")
+    cells_per_direction = 2 * len(declared_scales)
+    count = int(quota)
+    if count < 0:
+        raise ContractError(f"{kernel} quota must be non-negative; got {count}")
+    if count % cells_per_direction:
+        raise ContractError(
+            f"{kernel} quota {count} cannot form a complete direction x scale x sign "
+            f"design: each direction requires {cells_per_direction} cells for "
+            f"{len(declared_scales)} scales"
+        )
+    return count // cells_per_direction
+
+
 def directed_probes(
     anchor: Anchor,
     model: nc.ModelSpace,
@@ -873,18 +918,46 @@ def directed_probes(
     max_attempts: int,
     index_offset: int = 0,
 ) -> KernelOutcome:
-    """Walk declared directions at declared scales, in both senses.
+    """Walk the complete declared direction x scale x sign design.
 
     Paired moves: each direction is tried at ``+scale`` and ``-scale``, which
     is what makes a correlated ridge detectable rather than only its
     one-sided tail.  Order is frozen (direction, scale, sign) so the design is
-    reproducible; invalid proposals are skipped, never clipped.
+    reproducible; invalid proposals remain explicit rejected cells, never
+    clipped or replaced.
+
+    ``quota`` is an independent signed check on the derived Cartesian-product
+    size.  It must equal ``len(directions) * len(scales) * 2``.  A partial
+    quota or an attempt budget too small to visit every cell is refused before
+    proposal generation, so a declared scale can never be silently omitted.
     """
-    outcome = KernelOutcome(kernel=kernel, anchor_id=anchor.anchor_id, quota=int(quota))
-    if int(quota) == 0:
-        return outcome
-    if not directions:
-        outcome.exhausted = True
+    declared_scales = tuple(float(scale) for scale in scales)
+    if not declared_scales or not np.all(np.isfinite(declared_scales)):
+        raise ContractError(
+            f"{kernel} directed-probe scales must be non-empty and finite: "
+            f"{list(declared_scales)}"
+        )
+    if any(scale <= 0.0 for scale in declared_scales):
+        raise ContractError(
+            f"{kernel} directed-probe scales must be positive: {list(declared_scales)}"
+        )
+    expected_cells = len(directions) * len(declared_scales) * 2
+    if int(quota) != expected_cells:
+        raise ContractError(
+            f"{kernel} quota {int(quota)} is incompatible with the complete directed "
+            f"design: {len(directions)} directions x {len(declared_scales)} scales x "
+            f"2 signs = {expected_cells} cells. A partial quota may not truncate a "
+            "declared direction or scale."
+        )
+    if int(max_attempts) < expected_cells:
+        raise ContractError(
+            f"{kernel} max_attempts {int(max_attempts)} cannot visit all {expected_cells} "
+            "cells in the complete direction x scale x sign design"
+        )
+    outcome = KernelOutcome(
+        kernel=kernel, anchor_id=anchor.anchor_id, quota=expected_cells
+    )
+    if expected_cells == 0:
         return outcome
     anchor_u = anchor.u(model)
     seen: dict[str, Proposal] = {}
@@ -892,13 +965,9 @@ def directed_probes(
     index = int(index_offset)
     tried = feasible = 0
 
-    for scale in [float(s) for s in scales]:
-        for direction, dir_class, parents in directions:
+    for direction, dir_class, parents in directions:
+        for scale in declared_scales:
             for sign in (1.0, -1.0):
-                if len(outcome.accepted) >= int(quota):
-                    break
-                if outcome.attempts >= int(max_attempts):
-                    break
                 outcome.attempts += 1
                 tried += 1
                 u_new = anchor_u + sign * scale * np.asarray(direction, dtype=float)
@@ -1053,13 +1122,25 @@ def assert_quotas(
 ) -> None:
     """Every declared kernel quota must be met exactly (spec sec. 3, sec. 5).
 
-    Checked before dispatch and again after merge.  A missing kernel family or
-    an unmet quota is fatal: it is an execution defect, not a scientific
-    result about the model's geometry.
+    Directed-kernel quotas count every frozen design cell, including explicit
+    boundary rejections; other quotas count accepted proposals. Checked before
+    dispatch and again after merge. A missing kernel family or an unmet quota
+    is fatal: it is an execution defect, not a scientific result about the
+    model's geometry.
     """
     produced: dict[str, int] = {}
     for outcome in outcomes:
-        produced[outcome.kernel] = produced.get(outcome.kernel, 0) + len(outcome.accepted)
+        if outcome.kernel in nc.CELL_QUOTA_KERNELS:
+            if outcome.attempts != len(outcome.accepted) + len(outcome.rejected):
+                raise ContractError(
+                    f"kernel {outcome.kernel!r} for anchor {outcome.anchor_id!r} has "
+                    f"{outcome.attempts} attempted cells but "
+                    f"{len(outcome.accepted)} accepted + {len(outcome.rejected)} rejected"
+                )
+            count = outcome.attempts
+        else:
+            count = len(outcome.accepted)
+        produced[outcome.kernel] = produced.get(outcome.kernel, 0) + count
     problems: list[str] = []
     for kernel, quota in quotas.items():
         got = produced.get(kernel, 0)
@@ -1068,7 +1149,7 @@ def assert_quotas(
         elif got != int(quota):
             problems.append(f"kernel {kernel!r} produced {got} proposals, quota is {int(quota)}")
     for outcome in outcomes:
-        if outcome.exhausted:
+        if outcome.exhausted and outcome.kernel not in nc.CELL_QUOTA_KERNELS:
             problems.append(
                 f"kernel {outcome.kernel!r} for anchor {outcome.anchor_id!r} exhausted its "
                 f"redraw budget after {outcome.attempts} attempts with "
@@ -1077,7 +1158,8 @@ def assert_quotas(
     if problems:
         raise KernelExhaustedError(
             f"{what}: kernel quotas are not satisfied; a kernel may not fall back to another "
-            "kernel or pad its quota.\n" + "\n".join(f"  - {p}" for p in problems)
+            "kernel, pad its quota, or omit a frozen design cell.\n"
+            + "\n".join(f"  - {p}" for p in problems)
         )
 
 

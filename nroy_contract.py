@@ -126,6 +126,10 @@ KERNEL_FAMILIES = (
     KERNEL_P_BOUNDARY,
     KERNEL_ANCHOR,
 )
+#: These kernels freeze a finite Cartesian product before dispatch. Their
+#: signed quota counts attempted design cells, including cells rejected as
+#: infeasible at a boundary. Other kernel quotas count accepted proposals.
+CELL_QUOTA_KERNELS = frozenset({KERNEL_ARCHIVE_FOLLOWING, KERNEL_CROSS_BLOCK})
 
 # Stage names.  A stage may only parent its exact declared successor.
 STAGE_PREPARE = "prepare"
@@ -323,15 +327,21 @@ REQUIRED_DECISIONS: dict[str, str] = {
         "redraw budget per anchor; it decides when a kernel fails preparation, so it is a "
         "declared computational choice that must be frozen before simulation"
     ),
-    "archive_following.quota": "correlation-following probe quota per anchor",
+    "archive_following.quota": (
+        "complete correlation-following direction x scale x sign cell count per anchor"
+    ),
     "archive_following.scales": "correlation-following probe scales",
     "archive_following.neighbour_rule": "archive neighbour rule",
     "archive_following.neighbour_count": (
         "how many archive neighbours each anchor consults; a frozen local-design choice"
     ),
-    "archive_following.rank_truncation": "rank truncation for archive directions",
+    "archive_following.max_directions": (
+        "maximum retained directions per declared archive-following source"
+    ),
     "archive_following.source_pool": "declared source pool for archive directions",
-    "cross_block.quota": "cross-block probe quota per anchor",
+    "cross_block.quota": (
+        "complete cross-block direction x scale x sign cell count per anchor"
+    ),
     "cross_block.scales": "cross-block probe scales",
     "separation.min_anchor_neighbour": "minimum anchor-neighbour separation",
     "separation.min_neighbour_neighbour": "minimum neighbour-neighbour separation",
@@ -1853,7 +1863,7 @@ class FrozenPlan:
             "ambient.quota_per_scale",
             "ambient.max_attempts_per_anchor",
             "archive_following.neighbour_count",
-            "archive_following.rank_truncation",
+            "archive_following.max_directions",
         )
         for path in positive_integer_paths:
             if int(self.require(path)) <= 0:
@@ -1863,6 +1873,20 @@ class FrozenPlan:
             values = [float(value) for value in self.require(path)]
             if not values or not np.all(np.isfinite(values)) or any(value <= 0.0 for value in values):
                 raise ContractError(f"{path} must contain finite positive values: {values}")
+
+        if int(self.require("archive_following.quota")) <= 0:
+            raise ContractError("archive_following.quota must be positive")
+        if int(self.require("cross_block.quota")) < 0:
+            raise ContractError("cross_block.quota must be non-negative")
+        cross_scales = [float(value) for value in self.require("cross_block.scales")]
+        cross_quota = int(self.require("cross_block.quota"))
+        cells_per_direction = 2 * len(cross_scales)
+        if cross_quota % cells_per_direction:
+            raise ContractError(
+                f"cross_block.quota {cross_quota} cannot form a complete direction x "
+                f"scale x sign design; {len(cross_scales)} scales require a multiple "
+                f"of {cells_per_direction} cells"
+            )
 
         quotas = self.kernel_quotas()
         if not quotas:

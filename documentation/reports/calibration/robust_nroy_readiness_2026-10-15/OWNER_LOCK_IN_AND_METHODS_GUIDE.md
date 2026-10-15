@@ -121,24 +121,28 @@ checks, not as universal constants taken from the literature.
 
 These must be closed before the methods choices above are signed.
 
-### 1. Declared directed-probe scales are not guaranteed coverage
+### 1. Declared directed-probe scales: implementation corrected
 
-The current directed-probe implementation visits all directions at the first
-scale and stops when a total quota is filled. A quota of four can therefore
-exercise only `0.025` while the plan declares both `0.025` and `0.05`.
+The former directed-probe implementation visited all directions at the first
+scale and stopped when a total quota was filled. A quota of four could therefore
+exercise only `0.025` while the plan declared both `0.025` and `0.05`.
 
-Required correction: freeze the direction basis, construct the complete
-`direction x scale x sign` design, and derive the trajectory count from it.
-An incompatible partial quota must fail rather than truncate a declared scale.
+Implemented correction: the direction basis is frozen first and preparation
+constructs the complete `direction x scale x sign` design. The signed quota is
+an independent check of that derived cell count; a partial quota or undersized
+attempt budget fails before generation. Boundary-infeasible cells are retained
+as explicit rejections and leave the design unresolved rather than being
+clipped or replaced. Numeric scales and counts still require methods sign-off.
 
-### 2. `rank_truncation` is not numerical rank truncation
+### 2. Direction-count terminology: implementation corrected
 
-The current field retains the first N direction vectors. It does not perform
+The former field retained the first N direction vectors. It did not perform
 SVD, QR, independence filtering, or condition-number analysis.
 
-Required correction: rename the concept to `max_directions` and retain the
-existing explicit collinearity/support checks. Do not add rank-revealing linear
-algebra unless a real analysis later requires it.
+The contract now calls this deterministic count cap `max_directions` and
+retains the existing explicit collinearity/support checks. It does not claim
+SVD, QR, independence filtering or condition-number analysis. The old
+`rank_truncation` label may remain in immutable historical artifacts only.
 
 ### 3. `k = 3` is not a literature standard — corrected in code
 
