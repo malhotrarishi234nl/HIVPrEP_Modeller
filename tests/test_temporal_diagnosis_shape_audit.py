@@ -1,38 +1,54 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-import run_coupled_calibration as rcc
 import run_temporal_diagnosis_shape_audit as audit
+from coupled_calibration_search import ContractError
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "configs/temporal_diagnosis_shape_audit_20260921.json"
 
 
-def _base(candidate_id=1326):
-    plan = audit.load_plan(PLAN)
-    source, search, _ = audit._context(plan)
-    prepared = rcc.load_prepared(Path(search["context"]["prepared_dir"]))
-    raw = rcc._raw_record(source, candidate_id)
-    space = json.loads(prepared["state"]["paths"]["calib_space"].read_text())
-    return rcc.injected_config(prepared["state"]["base_config"], raw["params"], space)
+def _synthetic_base():
+    """Small current-code fixture for temporal geometry, not a historical search product."""
+    return {
+        "run_control": {"deterministic_mode": {"value": False}},
+        "transmission_model": {
+            "disease": {
+                "diagnosis": {
+                    "schedule": {
+                        "value": {"1996": 0.10, "2005": 0.20, "2019": 0.35},
+                        "interpolation": {"value": "linear"},
+                    },
+                    "msm_relative_diagnosis": {
+                        "enabled": {"value": True},
+                        "schedule": {
+                            "value": {"1996": 1.10, "2005": 1.25, "2019": 1.40},
+                            "interpolation": {"value": "linear"},
+                        },
+                    },
+                }
+            }
+        },
+    }
 
 
-def test_validation_is_read_only_and_budgeted(monkeypatch):
+def test_historical_lineage_is_refused_for_module_hash_mismatch(monkeypatch):
     import run_v3
 
     def forbidden(*args, **kwargs):
         raise AssertionError("validation must not construct an engine")
 
     monkeypatch.setattr(run_v3.SimulationEngineV3, "__init__", forbidden)
-    result = audit.validate(PLAN)
-    assert result["ok"]
-    assert result["trajectory_budget"] == 110
-    assert result["seed_preflight"]["overlap"] == []
-    assert result["simulations_started"] == 0
+    with pytest.raises(ContractError, match="code changed since the search") as caught:
+        audit.validate(PLAN)
+    assert "run_coupled_calibration.py" in str(caught.value)
+
+
+def test_frozen_plan_contract_remains_budgeted():
+    assert audit.load_plan(PLAN)["trajectory_budget"] == 110
 
 
 @pytest.mark.parametrize("profile_id", [
@@ -42,7 +58,7 @@ def test_validation_is_read_only_and_budgeted(monkeypatch):
 def test_geometry_profiles_preserve_every_original_anchor(profile_id):
     plan = audit.load_plan(PLAN)
     profile = next(value for value in plan["profiles"] if value["id"] == profile_id)
-    base = _base()
+    base = _synthetic_base()
     changed = audit.apply_profile(
         base, profile, quarter_step=plan["profile_contract"]["quarter_step"])
     assert audit._float_anchors(audit._base_block(base)).items() <= \
@@ -63,7 +79,7 @@ def test_post2019_profiles_leave_existing_anchors_and_pre2020_schedule_unchanged
     plan = audit.load_plan(PLAN)
     profile = next(value for value in plan["profiles"]
                    if value["id"] == "recent_late_up_30")
-    base = _base()
+    base = _synthetic_base()
     changed = audit.apply_profile(
         base, profile, quarter_step=plan["profile_contract"]["quarter_step"])
     rows_base = audit._schedule_rows(base, 1326, "baseline")
