@@ -209,9 +209,13 @@ robust-NROY stage rows and must be costed under their own authorization where
 applicable.
 
 The seed audit now has
-a read-only deterministic v1.1 inventory tool, a proposed all-tracked-file
+a read-only deterministic v1.2 inventory tool, a proposed all-tracked-file
 source-scope manifest, and a strict hash-bound reviewed-resolution contract.
-The committed v1.0 mounted-output artifact remains historical until v1.1 is
+Every output excluded from seed parsing is indexed by path, kind, size, and
+content SHA-256 and requires an exact per-file or exact whole-index review;
+external location classes require separate typed review records. Production
+validation rebuilds the audit from current sources instead of trusting a
+self-consistent JSON assertion. The committed v1.0 mounted-output artifact remains historical until v1.2 is
 regenerated where that private output tree is present. The gate cannot pass
 until the owner approves the complete source scope, every ambiguity has an
 exact reviewed RNG/NON_RNG disposition, and candidate discovery, confirmation,

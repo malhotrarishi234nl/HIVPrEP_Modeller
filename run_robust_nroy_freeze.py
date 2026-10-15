@@ -1039,7 +1039,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         required_schema = {
             "measured_pilot": MEASURED_PILOT_SCHEMA,
             "priced_budget": PRICED_BUDGET_SCHEMA,
-            "seed_disjointness_audit": "robust_nroy_seed_audit/1.1.0",
+            "seed_disjointness_audit": seed_audit_tool.SCHEMA,
         }[key]
         if str(payload.get("schema", "")) != required_schema:
             problems.append(
@@ -1068,6 +1068,12 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
 
     audit = loaded.get("seed_disjointness_audit", {})
     if audit:
+        scope_payload: Mapping | None = None
+        scope_path: Path | None = None
+        scope_root: Path | None = None
+        resolution_payload: Mapping | None = None
+        resolution_path: Path | None = None
+        candidate_path: Path | None = None
         recorded_artifact_sha = str(audit.get("artifact_sha256", ""))
         audit_without_sha = dict(audit)
         audit_without_sha.pop("artifact_sha256", None)
@@ -1106,7 +1112,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                     )
                 if not isinstance(scope_payload, Mapping) or scope_payload.get(
                     "schema"
-                ) != "robust_nroy_seed_source_scope/1.1.0":
+                ) != seed_audit_tool.SCOPE_SCHEMA:
                     problems.append("the seed-disjointness scope manifest has no current schema")
                 else:
                     owner_scope = scope_payload.get("owner_scope")
@@ -1121,7 +1127,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                     source_coverage = scope_payload.get("source_coverage")
                     if not isinstance(source_coverage, Mapping) or source_coverage.get(
                         "status"
-                    ) != "COMPLETE" or source_coverage.get("exclusions_reviewed") is not True:
+                    ) != "COMPLETE":
                         problems.append(
                             "the seed-disjointness source scope lacks complete coverage review"
                         )
@@ -1175,16 +1181,25 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 "counts_by_kind"
             ):
                 problems.append("the seed-disjointness audit has no source-inventory counts")
-            for field in ("inventory_sha256", "scanned_content_index_sha256"):
+            for field in (
+                "inventory_sha256", "scanned_content_index_sha256",
+                "excluded_output_index_sha256",
+            ):
                 if not _is_sha256(inventory.get(field)):
                     problems.append(f"the seed-disjointness audit has no valid {field}")
-            for field in ("scanned_files", "excluded_output_files"):
+            for field in (
+                "scanned_files", "excluded_output_files", "excluded_output_bytes"
+            ):
                 try:
                     count = int(inventory.get(field, -1))
                 except (TypeError, ValueError):
                     count = -1
                 if count < 0:
                     problems.append(f"the seed-disjointness audit has invalid {field}")
+            if not isinstance(inventory.get("excluded_output_index"), list):
+                problems.append(
+                    "the seed-disjointness audit has no excluded-output content index"
+                )
         parsed_prior = audit.get("parsed_prior_seeds")
         if not isinstance(parsed_prior, list):
             problems.append("the seed-disjointness audit has no parsed-prior-seed list")
@@ -1284,6 +1299,29 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             problems.append("the seed-disjointness audit records unresolved findings")
         if not isinstance(audit.get("limitations"), list):
             problems.append("the seed-disjointness audit has no limitations list")
+        if (scope_payload is not None and scope_path is not None and scope_root is not None
+                and resolution_payload is not None and resolution_path is not None
+                and candidate_path is not None and candidate_path.is_file()):
+            try:
+                rebuilt_audit = seed_audit_tool.build_audit(
+                    scope_root,
+                    scope_path,
+                    candidate_path,
+                    plan_path=Path(plan.plan_path),
+                    resolution_path=resolution_path,
+                    generated_utc=str(audit.get("generated_utc", "")),
+                )
+            except (OSError, ValueError, nc.ContractError, json.JSONDecodeError) as exc:
+                problems.append(
+                    "the seed-disjointness audit cannot be rebuilt from current sources: "
+                    f"{exc}"
+                )
+            else:
+                if rebuilt_audit != audit:
+                    problems.append(
+                        "the seed-disjointness audit differs from a deterministic rebuild "
+                        "of the current scope, resolutions, candidates, plan, and mounted sources"
+                    )
     pilot = loaded.get("measured_pilot", {})
     pilot_path = paths.get("measured_pilot")
     pilot_facts: dict[str, object] | None = None

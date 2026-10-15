@@ -11,6 +11,7 @@ No simulation engine is constructed and no trajectory is run.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -664,6 +665,31 @@ def test_validate_subcommand_uses_strict_plan_json(tmp_path, capsys, text, probl
     assert problem in captured.err
 
 
+def _write_typed_external_review(
+        tmp_path: Path, kind: str, *, status: str, reviewer: str,
+        reviewed_utc: str) -> list[dict]:
+    path = tmp_path / f"external_review_{kind.lower()}.json"
+    path.write_text(json.dumps({
+        "schema": seed_audit_tool.EXTERNAL_REVIEW_SCHEMA,
+        "location_kind": kind,
+        "review_status": status,
+        "reviewer": reviewer,
+        "reviewed_utc": reviewed_utc,
+        "searched_locations": [f"isolated-{kind.lower()}-fixture"],
+        "searched_accounts_or_owners": ["fixture-owner"],
+        "search_method": "Inspected the isolated verification fixture.",
+        "search_started_utc": reviewed_utc,
+        "search_completed_utc": reviewed_utc,
+        "indexed_sources": [],
+        "no_additional_source_basis": "The isolated fixture has no additional source.",
+    }))
+    return [{
+        "path": path.name,
+        "sha256": ccs.sha256_file(path),
+        "description": f"Typed {kind} review record.",
+    }]
+
+
 def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dict[str, Path]:
     base = Path(str(plan.require("models.base_config")))
     if not base.is_absolute():
@@ -887,13 +913,11 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
     }
     paths["priced_budget"].write_text(json.dumps(priced))
 
-    external_review = tmp_path / "seed_external_location_review.json"
-    external_review.write_text(json.dumps({"review": "isolated verification fixture"}))
-    external_evidence = [{
-        "path": external_review.name,
-        "sha256": ccs.sha256_file(external_review),
-        "description": "Hash-bound external-location review fixture.",
-    }]
+    seed_scan_source = tmp_path / "seed_scan_source.json"
+    seed_scan_source.write_text(json.dumps({"fixture": "no prior RNG values"}))
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", seed_scan_source.name], cwd=tmp_path, check=True)
+    (tmp_path / "outputs").mkdir(exist_ok=True)
     scope = tmp_path / "seed_scope.json"
     scope.write_text(json.dumps({
         "schema": seed_audit_tool.SCOPE_SCHEMA,
@@ -903,9 +927,9 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
             "approved_utc": "2026-10-15T00:00:00Z",
             "scope_statement": "Every verification source is covered.",
         },
-        "source_coverage": {"status": "COMPLETE", "exclusions_reviewed": True},
+        "source_coverage": {"status": "COMPLETE"},
         "tracked_repository": {
-            "pathspecs": ["."],
+            "pathspecs": [seed_scan_source.name],
             "text_extensions": [".json", ".md", ".py", ".txt"],
             "explicit_exclusions": [],
         },
@@ -914,7 +938,13 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
                 "kind": kind,
                 "status": "REVIEWED_NONE",
                 "coverage_decision": "No additional source exists in this fixture.",
-                "evidence": external_evidence,
+                "evidence": _write_typed_external_review(
+                    tmp_path,
+                    kind,
+                    status="REVIEWED_NONE",
+                    reviewer="verification owner",
+                    reviewed_utc="2026-10-15T00:00:00Z",
+                ),
                 "reviewer": "verification owner",
                 "reviewed_utc": "2026-10-15T00:00:00Z",
             }
@@ -936,6 +966,8 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "scope_manifest_sha256": ccs.sha256_file(scope),
         "exact_resolutions": [],
         "reviewed_rules": [],
+        "excluded_output_dispositions": [],
+        "excluded_output_index_review": None,
         "limitations": [],
     }
     resolutions.write_text(json.dumps(resolutions_payload))
@@ -947,64 +979,15 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "proposal_rng": plan.seeds.proposal_rng,
     }
     candidate_source.write_text(json.dumps(candidate_payload))
-    empty_checks = {
-        key: [] for key in (
-            "discovery_vs_confirmation", "proposal_vs_discovery",
-            "proposal_vs_confirmation", "discovery_vs_prior",
-            "confirmation_vs_prior", "proposal_vs_prior",
-        )
-    }
-    seed_audit = {
-        "schema": seed_audit_tool.SCHEMA,
-        "status": "FINAL",
-        "production_eligible": True,
-        "deterministic": True,
-        "generated_utc": "2026-10-15T00:00:00Z",
-        "command": "verification seed-audit fixture",
-        "passed": True,
-        "plan_path": plan.plan_path,
-        "plan_sha256": plan.plan_sha256,
-        "scope_manifest": {
-            "path": str(scope),
-            "sha256": ccs.sha256_file(scope),
-            "owner_scope_status": "APPROVED",
-            "source_coverage_status": "COMPLETE",
-        },
-        "source_inventory": {
-            "counts_by_kind": {"test": 1},
-            "inventory_sha256": ccs.sha256_json({"inventory": "test"}),
-            "scanned_content_index_sha256": ccs.sha256_json({"content": "test"}),
-            "scanned_files": 1,
-            "excluded_output_files": 0,
-        },
-        "finding_resolutions": {
-            "path": str(resolutions),
-            "file_sha256": ccs.sha256_file(resolutions),
-            "status": "REVIEWED",
-            "resolved_rng": 0,
-            "resolved_non_rng": 0,
-            "unresolved": 0,
-            "payload_sha256": seed_audit_tool.canonical_sha256(resolutions_payload),
-        },
-        "parsed_prior_seeds": [],
-        "parsed_prior_seed_count": 0,
-        "ambiguous_references": {"detected_count": 0, "count": 0, "resolved_count": 0, "examples": [], "examples_truncated": 0},
-        "unparseable_references": {"detected_count": 0, "count": 0, "resolved_count": 0, "examples": [], "examples_truncated": 0},
-        "candidate_blocks": {
-            "status": "SUPPLIED",
-            "path": str(candidate_source),
-            "file_sha256": ccs.sha256_file(candidate_source),
-            "discovery": list(plan.seeds.discovery),
-            "confirmation": list(plan.seeds.confirmation),
-            "proposal_rng": plan.seeds.proposal_rng,
-            "sha256": seed_audit_tool.canonical_sha256(candidate_payload),
-        },
-        "disjointness": {"status": "PROVEN", "checks": empty_checks, "reason": None},
-        "overlaps": [],
-        "unresolved": [],
-        "limitations": [],
-    }
-    seed_audit["artifact_sha256"] = seed_audit_tool.canonical_sha256(seed_audit)
+    seed_audit = seed_audit_tool.build_audit(
+        tmp_path,
+        scope,
+        candidate_source,
+        plan_path=Path(plan.plan_path),
+        resolution_path=resolutions,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert seed_audit["passed"] is True
     paths["seed_disjointness_audit"].write_text(json.dumps(seed_audit))
     return paths
 
@@ -1125,6 +1108,21 @@ def test_production_readiness_fails_on_load_bearing_evidence_drift(
     paths[artifact].write_text(json.dumps(payload))
     assert any(
         expected_problem in problem for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_production_readiness_rejects_self_consistent_forged_seed_audit(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    audit_path = paths["seed_disjointness_audit"]
+    forged = json.loads(audit_path.read_text())
+    forged["source_inventory"]["inventory_sha256"] = "f" * 64
+    _reseal_seed_audit(audit_path, forged)
+
+    assert any(
+        "differs from a deterministic rebuild" in problem
+        for problem in runner._production_readiness_problems(plan)
     )
 
 
@@ -1544,14 +1542,7 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
 
     prior = tmp_path / "prior_seed_source.json"
     prior.write_text(json.dumps({"seeds": {"simulation_seeds": [1, 2, 3]}}))
-    (tmp_path / "outputs").mkdir()
-    external_review = tmp_path / "seed_external_location_review.json"
-    external_review.write_text(json.dumps({"review": "isolated verification fixture"}))
-    external_evidence = [{
-        "path": external_review.name,
-        "sha256": ccs.sha256_file(external_review),
-        "description": "Hash-bound external-location review fixture.",
-    }]
+    (tmp_path / "outputs").mkdir(exist_ok=True)
     scope = tmp_path / "approved_seed_scope.json"
     scope.write_text(json.dumps({
         "schema": seed_audit_tool.SCOPE_SCHEMA,
@@ -1561,7 +1552,7 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
             "approved_utc": "2026-10-15T00:00:00Z",
             "scope_statement": "Every test seed source is covered.",
         },
-        "source_coverage": {"status": "COMPLETE", "exclusions_reviewed": True},
+        "source_coverage": {"status": "COMPLETE"},
         "tracked_repository": {
             "pathspecs": ["prior_seed_source.json"],
             "text_extensions": [".md", ".py", ".txt"],
@@ -1570,9 +1561,15 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
         "external_execution_locations": [
             {
                 "kind": kind,
-                "status": "COVERED",
+                "status": "REVIEWED_NONE",
                 "coverage_decision": "Covered by the isolated verification fixture.",
-                "evidence": external_evidence,
+                "evidence": _write_typed_external_review(
+                    tmp_path,
+                    kind,
+                    status="REVIEWED_NONE",
+                    reviewer="verification owner",
+                    reviewed_utc="2026-10-15T00:00:00Z",
+                ),
                 "reviewer": "verification owner",
                 "reviewed_utc": "2026-10-15T00:00:00Z",
             }
@@ -1603,6 +1600,8 @@ def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
         "scope_manifest_sha256": ccs.sha256_file(scope),
         "exact_resolutions": [],
         "reviewed_rules": [],
+        "excluded_output_dispositions": [],
+        "excluded_output_index_review": None,
         "limitations": [],
     }))
     monkeypatch.setattr(

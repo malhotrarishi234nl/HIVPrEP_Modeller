@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_seed_source_scope/1.1.0",
+  "schema": "robust_nroy_seed_source_scope/1.2.0",
   "status": "PROPOSED_NOT_APPROVED",
   "owner_scope": {
     "status": "UNRESOLVED",
@@ -9,8 +9,7 @@
   },
   "source_coverage": {
     "status": "UNRESOLVED",
-    "exclusions_reviewed": false,
-    "reason": "The repository and mounted project outputs have been inventoried conservatively, but the owner has not confirmed that they exhaust all historical execution locations or reviewed every excluded format."
+    "reason": "The repository and mounted project outputs have been inventoried conservatively, but the owner has not confirmed that they exhaust all historical execution locations or supplied byte-exact dispositions for every excluded format."
   },
   "tracked_repository": {
     "pathspecs": [
@@ -56,7 +55,7 @@
     {
       "kind": "REMOTE_HPC",
       "status": "UNRESOLVED",
-      "coverage_decision": "Confirm whether every Snellius or other remote-HPC seed-bearing manifest and log has been copied into the mounted outputs scope; otherwise add a hash-bound source.",
+      "coverage_decision": "Create a distinct typed REMOTE_HPC review naming the Snellius or other locations/accounts searched, method and time; hash-index every recovered source or document the evidence-based no-source conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -64,7 +63,7 @@
     {
       "kind": "CLOUD",
       "status": "UNRESOLVED",
-      "coverage_decision": "Confirm whether every cloud/VM run seed-bearing manifest and log has been copied into the mounted outputs scope; otherwise add a hash-bound source.",
+      "coverage_decision": "Create a distinct typed CLOUD review naming every cloud/VM location/account searched, method and time; hash-index every recovered source or document the evidence-based no-source conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -72,7 +71,7 @@
     {
       "kind": "DELETED_LOCAL",
       "status": "UNRESOLVED",
-      "coverage_decision": "Review backups and provenance records for deleted local runs and record either recovered evidence or a signed no-recovery disposition.",
+      "coverage_decision": "Create a distinct typed DELETED_LOCAL review naming backups, provenance records and owners searched, method and time; hash-index recovered sources or document the evidence-based no-recovery conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -80,7 +79,7 @@
     {
       "kind": "COLLABORATOR_HELD",
       "status": "UNRESOLVED",
-      "coverage_decision": "Ask collaborators whether they hold seed-bearing run artifacts not present in the mounted repository outputs and bind any supplied evidence by hash.",
+      "coverage_decision": "Create a distinct typed COLLABORATOR_HELD review naming the collaborators or custodians checked, method and time; hash-index supplied sources or document the evidence-based no-source conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -118,8 +117,8 @@
   "parsed_seed_source_limit": 8,
   "limitations": [
     "The mounted outputs tree is not asserted to include deleted, remote, cloud, HPC, or collaborator-held runs; each class has an explicit unresolved coverage decision above.",
-    "Raw output JSON files whose basenames do not match the declared metadata patterns are inventoried but not content-scanned; many are large repeated candidate records.",
-    "Archives, spreadsheets, PDFs, NPZ files, images, and other binary formats are inventoried but not opened. Their seed provenance remains unresolved unless separately reviewed.",
+    "Raw output JSON files whose basenames do not match the declared metadata patterns are not seed-parsed; many are large repeated candidate records. Each excluded file is nevertheless bound by path, kind, bytes and SHA-256 and requires an exact disposition.",
+    "Archives, spreadsheets, PDFs, NPZ files, images, and other binary formats are not opened for seed parsing. Their byte identities remain unresolved unless covered by exact per-file dispositions or one exact whole-index review.",
     "Textual seed mentions, ranges, formulas, and seed-like epidemiological parameter names are never silently converted into RNG seeds.",
     "This inventory does not allocate, recommend, reserve, or authorize any seed block or model execution."
   ]

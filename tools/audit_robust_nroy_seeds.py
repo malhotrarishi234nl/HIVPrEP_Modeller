@@ -33,10 +33,11 @@ if str(ROOT) not in sys.path:
 
 import nroy_contract as nc  # noqa: E402
 
-SCHEMA = "robust_nroy_seed_audit/1.1.0"
-SCOPE_SCHEMA = "robust_nroy_seed_source_scope/1.1.0"
+SCHEMA = "robust_nroy_seed_audit/1.2.0"
+SCOPE_SCHEMA = "robust_nroy_seed_source_scope/1.2.0"
 CANDIDATE_SCHEMA = "robust_nroy_candidate_seed_blocks/1.0.0"
-RESOLUTION_SCHEMA = "robust_nroy_seed_finding_resolutions/1.0.0"
+RESOLUTION_SCHEMA = "robust_nroy_seed_finding_resolutions/1.1.0"
+EXTERNAL_REVIEW_SCHEMA = "robust_nroy_external_seed_location_review/1.0.0"
 
 INTEGER = re.compile(r"^[+-]?\d+$")
 SPLIT_INTEGER_LIST = re.compile(r"^[+-]?\d+(?:\s*[,;]\s*[+-]?\d+)+$")
@@ -415,7 +416,13 @@ def scan_text(path: Path, relative: str, findings: Findings) -> None:
 
 def git_tracked_paths(root: Path, pathspecs: Sequence[str]) -> list[Path]:
     command = ["git", "ls-files", "-z", "--", *pathspecs]
-    completed = subprocess.run(command, cwd=root, check=True, capture_output=True)
+    try:
+        completed = subprocess.run(command, cwd=root, check=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(
+            "seed-source root is not a readable Git worktree: "
+            + exc.stderr.decode("utf-8", errors="replace").strip()
+        ) from exc
     return [root / item.decode("utf-8")
             for item in completed.stdout.split(b"\0") if item]
 
@@ -456,6 +463,13 @@ def _path_record(root: Path, path: Path, kind: str) -> dict[str, Any]:
             "kind": kind}
 
 
+def _excluded_output_record(root: Path, path: Path, kind: str) -> dict[str, Any]:
+    """Return the immutable identity of one output omitted from seed parsing."""
+    record = _path_record(root, path, kind)
+    record["sha256"] = sha256_file(path)
+    return record
+
+
 def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str, Any]]:
     findings = Findings(
         example_limit=int(scope.get("evidence_example_limit", 2000)),
@@ -463,6 +477,7 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
     )
     inventory: list[dict[str, Any]] = []
     scanned_hashes: list[dict[str, str]] = []
+    excluded_output_index: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
     max_bytes = int(scope["outputs"]["max_scanned_file_bytes"])
 
@@ -529,6 +544,9 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
             inventory.append(record)
             counts[f"output:{kind}"] = counts.get(f"output:{kind}", 0) + 1
             if kind == "excluded":
+                excluded_output_index.append(_excluded_output_record(
+                    root, path, "output:excluded"
+                ))
                 continue
             # Even a selected file that is too large to parse must have a
             # stable source identity so a later reviewed disposition can bind
@@ -547,6 +565,10 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
                     counts["output:csv_probe"] -= 1
                     counts["output:csv_without_seed_column"] = \
                         counts.get("output:csv_without_seed_column", 0) + 1
+                    excluded_output_index.append({
+                        **record,
+                        "sha256": source_hashes[relative],
+                    })
                     continue
             elif kind == "json":
                 scan_json(path, relative, findings)
@@ -560,22 +582,34 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
 
     inventory_digest = canonical_sha256(inventory)
     scanned_digest = canonical_sha256(scanned_hashes)
-    excluded_output = sum(value for key, value in counts.items()
-                          if key in {"output:excluded", "output:csv_without_seed_column"})
+    excluded_output_index.sort(key=lambda item: item["path"])
+    excluded_output_bytes = sum(int(item["bytes"]) for item in excluded_output_index)
     return findings, {
         "counts_by_kind": dict(sorted((key, value) for key, value in counts.items() if value)),
         "inventory_sha256": inventory_digest,
         "scanned_content_index_sha256": scanned_digest,
         "scanned_files": len(scanned_hashes),
-        "excluded_output_files": excluded_output,
+        "excluded_output_files": len(excluded_output_index),
+        "excluded_output_bytes": excluded_output_bytes,
+        "excluded_output_index_sha256": canonical_sha256(excluded_output_index),
+        "excluded_output_index": excluded_output_index,
     }
 
 
 def _validate_external_evidence(
-        values: object, *, label: str, root: Path | None) -> None:
+        values: object, *, label: str, root: Path | None, location_kind: str,
+        location_status: str, reviewer: object, reviewed_utc: object,
+        used_paths: set[str]) -> None:
     if not isinstance(values, list):
         raise ValueError(f"{label} must be a list")
-    seen: set[str] = set()
+    if location_status == "UNRESOLVED":
+        if values:
+            raise ValueError(f"{label} must be empty while the location is UNRESOLVED")
+        return
+    if len(values) != 1:
+        raise ValueError(f"{label} must contain exactly one typed location-review record")
+    if root is None:
+        raise ValueError(f"{label} requires a root for typed-record verification")
     required = {"path", "sha256", "description"}
     for index, evidence in enumerate(values):
         item_label = f"{label}[{index}]"
@@ -584,24 +618,112 @@ def _validate_external_evidence(
                 f"{item_label} requires exactly path, sha256, and description"
             )
         source = _validate_exact_source(evidence["path"], f"{item_label}.path")
-        if source in seen:
-            raise ValueError(f"duplicate external evidence path: {source}")
-        seen.add(source)
+        if source in used_paths:
+            raise ValueError(
+                f"external location review evidence cannot be reused across locations: {source}"
+            )
+        used_paths.add(source)
         if not SHA256.fullmatch(str(evidence["sha256"])):
             raise ValueError(f"{item_label}.sha256 must be a lowercase SHA-256")
         if not str(evidence["description"]).strip():
             raise ValueError(f"{item_label}.description is required")
-        if root is not None:
-            resolved_root = root.resolve()
-            evidence_path = (resolved_root / source).resolve()
-            if not evidence_path.is_relative_to(resolved_root) or not evidence_path.is_file():
-                raise ValueError(f"external evidence file is missing: {source}")
-            actual = sha256_file(evidence_path)
-            if actual != evidence["sha256"]:
+        resolved_root = root.resolve()
+        evidence_path = (resolved_root / source).resolve()
+        if not evidence_path.is_relative_to(resolved_root) or not evidence_path.is_file():
+            raise ValueError(f"external evidence file is missing: {source}")
+        actual = sha256_file(evidence_path)
+        if actual != evidence["sha256"]:
+            raise ValueError(
+                f"external evidence hash is stale: {source} expected "
+                f"{evidence['sha256']} but found {actual}"
+            )
+        try:
+            review = strict_json_load(evidence_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            raise ValueError(
+                f"external location review record is not strict JSON: {source}: {exc}"
+            ) from exc
+        review_required = {
+            "schema", "location_kind", "review_status", "reviewer", "reviewed_utc",
+            "searched_locations", "searched_accounts_or_owners", "search_method",
+            "search_started_utc", "search_completed_utc", "indexed_sources",
+            "no_additional_source_basis",
+        }
+        if not isinstance(review, Mapping) or set(review) != review_required:
+            raise ValueError(
+                f"external location review record has an invalid typed shape: {source}"
+            )
+        if review["schema"] != EXTERNAL_REVIEW_SCHEMA:
+            raise ValueError(f"external location review record has wrong schema: {source}")
+        if review["location_kind"] != location_kind or \
+                review["review_status"] != location_status:
+            raise ValueError(
+                f"external location review record is for a different location/status: {source}"
+            )
+        if review["reviewer"] != reviewer or review["reviewed_utc"] != reviewed_utc:
+            raise ValueError(
+                f"external location review record reviewer/time differs from scope: {source}"
+            )
+        start = review["search_started_utc"]
+        completed = review["search_completed_utc"]
+        if not valid_utc_timestamp(start) or not valid_utc_timestamp(completed) \
+                or not valid_utc_timestamp(review["reviewed_utc"]):
+            raise ValueError(
+                f"external location review record requires UTC search/review times: {source}"
+            )
+        start_time = datetime.fromisoformat(str(start)[:-1] + "+00:00")
+        completed_time = datetime.fromisoformat(str(completed)[:-1] + "+00:00")
+        review_time = datetime.fromisoformat(str(review["reviewed_utc"])[:-1] + "+00:00")
+        if start_time > completed_time or completed_time > review_time:
+            raise ValueError(
+                f"external location review record search/review chronology is invalid: {source}"
+            )
+        for field in ("searched_locations", "searched_accounts_or_owners"):
+            entries = review[field]
+            if (not isinstance(entries, list) or not entries
+                    or any(not isinstance(value, str) or not value.strip()
+                           for value in entries)
+                    or len(entries) != len(set(entries))):
                 raise ValueError(
-                    f"external evidence hash is stale: {source} expected "
-                    f"{evidence['sha256']} but found {actual}"
+                    f"external location review record requires unique non-empty {field}: {source}"
                 )
+        if not isinstance(review["search_method"], str) or not review["search_method"].strip():
+            raise ValueError(
+                f"external location review record requires search_method: {source}"
+            )
+        indexed = review["indexed_sources"]
+        if not isinstance(indexed, list):
+            raise ValueError(
+                f"external location review record indexed_sources must be a list: {source}"
+            )
+        indexed_ids: set[str] = set()
+        for source_index, indexed_source in enumerate(indexed):
+            item_label = f"{source}.indexed_sources[{source_index}]"
+            if not isinstance(indexed_source, Mapping) or set(indexed_source) != {
+                "source_id", "sha256", "disposition", "description"
+            }:
+                raise ValueError(f"{item_label} has an invalid typed shape")
+            source_id = str(indexed_source["source_id"])
+            if not source_id.strip() or source_id in indexed_ids:
+                raise ValueError(f"{item_label}.source_id is empty or duplicated")
+            indexed_ids.add(source_id)
+            if not SHA256.fullmatch(str(indexed_source["sha256"])):
+                raise ValueError(f"{item_label}.sha256 must be a lowercase SHA-256")
+            if indexed_source["disposition"] not in {"IN_SCOPE", "REVIEWED_NON_SEED"}:
+                raise ValueError(f"{item_label}.disposition is invalid")
+            if not str(indexed_source["description"]).strip():
+                raise ValueError(f"{item_label}.description is required")
+        basis = review["no_additional_source_basis"]
+        if location_status == "COVERED":
+            if not indexed or basis is not None:
+                raise ValueError(
+                    f"COVERED external review requires indexed sources and null "
+                    f"no_additional_source_basis: {source}"
+                )
+        elif (not isinstance(basis, str) or not basis.strip()):
+            raise ValueError(
+                f"REVIEWED_NONE external review requires an explicit no-source basis: {source}"
+            )
 
 
 def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
@@ -618,9 +740,6 @@ def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
                 raise ValueError(f"approved owner scope requires owner_scope.{field}")
         if not valid_utc_timestamp(payload["owner_scope"]["approved_utc"]):
             raise ValueError("owner_scope.approved_utc must be an ISO-8601 UTC timestamp")
-    if payload["source_coverage"]["status"] == "COMPLETE" and \
-            payload["source_coverage"].get("exclusions_reviewed") is not True:
-        raise ValueError("COMPLETE source coverage requires exclusions_reviewed=true")
     tracked = payload.get("tracked_repository", {})
     if not isinstance(tracked.get("pathspecs"), list) or not tracked["pathspecs"]:
         raise ValueError("tracked_repository.pathspecs must be a non-empty list")
@@ -665,6 +784,7 @@ def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
             "external_execution_locations must contain exactly REMOTE_HPC, CLOUD, "
             "DELETED_LOCAL, and COLLABORATOR_HELD"
         )
+    used_external_evidence_paths: set[str] = set()
     for item in locations:
         if set(item) != {
             "kind", "status", "coverage_decision", "evidence", "reviewer", "reviewed_utc"
@@ -678,6 +798,11 @@ def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
             item["evidence"],
             label=f"external location {item['kind']} evidence",
             root=root,
+            location_kind=str(item["kind"]),
+            location_status=str(item["status"]),
+            reviewer=item["reviewer"],
+            reviewed_utc=item["reviewed_utc"],
+            used_paths=used_external_evidence_paths,
         )
         if item["status"] != "UNRESOLVED":
             if not item["evidence"]:
@@ -777,7 +902,8 @@ def load_resolutions(path: Path, *, scope_sha256: str) -> dict[str, Any]:
     _require_exact_keys(
         payload,
         {"schema", "status", "scope_manifest_sha256", "exact_resolutions",
-         "reviewed_rules", "limitations"},
+         "reviewed_rules", "excluded_output_dispositions",
+         "excluded_output_index_review", "limitations"},
         "resolution document",
     )
     if payload.get("schema") != RESOLUTION_SCHEMA:
@@ -790,8 +916,64 @@ def load_resolutions(path: Path, *, scope_sha256: str) -> dict[str, Any]:
         raise ValueError("exact_resolutions must be a list")
     if not isinstance(payload["reviewed_rules"], list):
         raise ValueError("reviewed_rules must be a list")
+    if not isinstance(payload["excluded_output_dispositions"], list):
+        raise ValueError("excluded_output_dispositions must be a list")
     if not isinstance(payload["limitations"], list):
         raise ValueError("resolution limitations must be a list")
+
+    output_paths: set[str] = set()
+    output_required = {
+        "path", "bytes", "kind", "sha256", "disposition", "reviewer",
+        "reviewed_utc", "rationale",
+    }
+    for index, item in enumerate(payload["excluded_output_dispositions"]):
+        label = f"excluded_output_dispositions[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{label} must be an object")
+        _require_exact_keys(item, output_required, label)
+        source = _validate_exact_source(item["path"], f"{label}.path")
+        if source in output_paths:
+            raise ValueError(f"duplicate excluded-output disposition: {source}")
+        output_paths.add(source)
+        if (isinstance(item["bytes"], bool) or not isinstance(item["bytes"], int)
+                or item["bytes"] < 0):
+            raise ValueError(f"{label}.bytes must be a non-negative integer")
+        if item["kind"] not in {
+            "output:excluded", "output:csv_without_seed_column"
+        }:
+            raise ValueError(f"{label}.kind is invalid")
+        if not SHA256.fullmatch(str(item["sha256"])):
+            raise ValueError(f"{label}.sha256 must be a lowercase SHA-256")
+        if item["disposition"] != "REVIEWED_NON_SEED":
+            raise ValueError(f"{label}.disposition must be REVIEWED_NON_SEED")
+        _validate_review_fields(item, label)
+
+    index_review = payload["excluded_output_index_review"]
+    if index_review is not None:
+        if not isinstance(index_review, Mapping):
+            raise ValueError("excluded_output_index_review must be null or an object")
+        label = "excluded_output_index_review"
+        _require_exact_keys(index_review, {
+            "rule_id", "expected_file_count", "expected_total_bytes",
+            "expected_index_sha256", "disposition", "reviewer", "reviewed_utc",
+            "rationale",
+        }, label)
+        rule_id = str(index_review["rule_id"])
+        if not rule_id or WILDCARD.search(rule_id):
+            raise ValueError(f"{label}.rule_id must be exact and non-empty")
+        for field in ("expected_file_count", "expected_total_bytes"):
+            value = index_review[field]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{label}.{field} must be a non-negative integer")
+        if not SHA256.fullmatch(str(index_review["expected_index_sha256"])):
+            raise ValueError(f"{label}.expected_index_sha256 must be a lowercase SHA-256")
+        if index_review["disposition"] != "REVIEWED_NON_SEED":
+            raise ValueError(f"{label}.disposition must be REVIEWED_NON_SEED")
+        _validate_review_fields(index_review, label)
+        if payload["excluded_output_dispositions"]:
+            raise ValueError(
+                "excluded-output per-file dispositions and index review cannot overlap"
+            )
 
     exact_keys: set[tuple[Any, ...]] = set()
     exact_required = {
@@ -974,6 +1156,68 @@ def apply_resolutions(findings: Findings, payload: Mapping[str, Any] | None) -> 
     }
 
 
+def apply_excluded_output_dispositions(
+        excluded_index: Sequence[Mapping[str, Any]],
+        payload: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Require a byte-exact disposition for every output omitted from parsing."""
+    entries = [dict(item) for item in excluded_index]
+    expected_digest = canonical_sha256(entries)
+    expected_bytes = sum(int(item["bytes"]) for item in entries)
+    if payload is None:
+        return {
+            "status": "NOT_SUPPLIED",
+            "resolved": 0,
+            "unresolved": len(entries),
+            "coverage_mode": None,
+        }
+
+    index_review = payload["excluded_output_index_review"]
+    if index_review is not None:
+        if (index_review["expected_file_count"] != len(entries)
+                or index_review["expected_total_bytes"] != expected_bytes
+                or index_review["expected_index_sha256"] != expected_digest):
+            raise ValueError(
+                "excluded-output index review is stale: current count, bytes, or "
+                "content-index SHA-256 differs"
+            )
+        return {
+            "status": payload["status"],
+            "resolved": len(entries),
+            "unresolved": 0,
+            "coverage_mode": "EXACT_INDEX_REVIEW",
+        }
+
+    current = {str(item["path"]): dict(item) for item in entries}
+    claimed: set[str] = set()
+    for item in payload["excluded_output_dispositions"]:
+        source = str(item["path"])
+        expected = current.get(source)
+        identity = {
+            "path": source,
+            "bytes": item["bytes"],
+            "kind": item["kind"],
+            "sha256": item["sha256"],
+        }
+        if expected != identity:
+            raise ValueError(
+                f"excluded-output disposition is stale, missing, or extra: {source}"
+            )
+        claimed.add(source)
+    missing = sorted(set(current) - claimed)
+    if payload["status"] == "REVIEWED" and missing:
+        raise ValueError(
+            "reviewed resolution document lacks excluded-output dispositions for: "
+            + ", ".join(missing[:20])
+            + (f" (and {len(missing) - 20} more)" if len(missing) > 20 else "")
+        )
+    return {
+        "status": payload["status"],
+        "resolved": len(claimed),
+        "unresolved": len(missing),
+        "coverage_mode": "EXACT_PER_FILE" if claimed else None,
+    }
+
+
 def load_candidate_blocks(path: Path | None) -> dict[str, Any] | None:
     if path is None:
         return None
@@ -1021,6 +1265,9 @@ def build_audit(root: Path, scope_path: Path,
         if resolution_path is not None else None
     )
     resolution_summary = apply_resolutions(findings, resolution_payload)
+    excluded_output_summary = apply_excluded_output_dispositions(
+        inventory["excluded_output_index"], resolution_payload
+    )
     parsed = findings.render_parsed()
     prior = {row["seed"] for row in parsed}
 
@@ -1041,6 +1288,11 @@ def build_audit(root: Path, scope_path: Path,
         unresolved.append("reviewed seed-finding resolution document was not supplied")
     elif resolution_summary["status"] != "REVIEWED":
         unresolved.append("seed-finding resolution document remains INCOMPLETE")
+    if excluded_output_summary["unresolved"]:
+        unresolved.append(
+            f"{excluded_output_summary['unresolved']} content-bound mounted-output "
+            "exclusions lack an exact reviewed disposition"
+        )
     ambiguous_unresolved = findings.unresolved("ambiguous")
     unparseable_unresolved = findings.unresolved("unparseable")
     if ambiguous_unresolved:
@@ -1051,14 +1303,6 @@ def build_audit(root: Path, scope_path: Path,
         unresolved.append(
             f"{len(unparseable_unresolved)} selected or tracked references were unparseable"
         )
-    if inventory["excluded_output_files"] and not (
-            scope["source_coverage"]["status"] == "COMPLETE" and
-            scope["source_coverage"].get("exclusions_reviewed") is True):
-        unresolved.append(
-            f"{inventory['excluded_output_files']} mounted-output files were inventoried but not "
-            "content-scanned under the declared rules"
-        )
-
     candidate_relative = None
     if candidate_path is not None:
         candidate_relative = (
@@ -1176,6 +1420,7 @@ def build_audit(root: Path, scope_path: Path,
             "file_sha256": sha256_file(resolution_path)
             if resolution_path is not None else None,
             **resolution_summary,
+            "excluded_output": excluded_output_summary,
         },
         "parsed_prior_seeds": parsed,
         "parsed_prior_seed_count": len(parsed),

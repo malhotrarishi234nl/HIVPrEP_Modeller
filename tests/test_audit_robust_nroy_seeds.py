@@ -15,7 +15,7 @@ SCOPE = ROOT / (
 )
 
 
-def _scope(*, complete: bool, evidence_sha256: str = "0" * 64) -> dict:
+def _scope(*, complete: bool) -> dict:
     return {
         "schema": audit.SCOPE_SCHEMA,
         "owner_scope": {
@@ -26,7 +26,6 @@ def _scope(*, complete: bool, evidence_sha256: str = "0" * 64) -> dict:
         },
         "source_coverage": {
             "status": "COMPLETE" if complete else "UNRESOLVED",
-            "exclusions_reviewed": complete,
         },
         "tracked_repository": {
             "pathspecs": ["."],
@@ -36,13 +35,9 @@ def _scope(*, complete: bool, evidence_sha256: str = "0" * 64) -> dict:
         "external_execution_locations": [
             {
                 "kind": kind,
-                "status": "COVERED" if complete else "UNRESOLVED",
+                "status": "REVIEWED_NONE" if complete else "UNRESOLVED",
                 "coverage_decision": "Covered by test fixture." if complete else "Review needed.",
-                "evidence": ([{
-                    "path": "external_review.json",
-                    "sha256": evidence_sha256,
-                    "description": "Hash-bound isolated-fixture review record.",
-                }] if complete else []),
+                "evidence": [],
                 "reviewer": "Test owner" if complete else None,
                 "reviewed_utc": "2026-10-15T00:00:00Z" if complete else None,
             }
@@ -61,20 +56,44 @@ def _scope(*, complete: bool, evidence_sha256: str = "0" * 64) -> dict:
     }
 
 
+def _write_external_reviews(tmp_path: Path, scope: dict) -> None:
+    for item in scope["external_execution_locations"]:
+        if item["status"] == "UNRESOLVED":
+            continue
+        kind = item["kind"]
+        path = tmp_path / f"external_review_{kind.lower()}.json"
+        path.write_text(json.dumps({
+            "schema": audit.EXTERNAL_REVIEW_SCHEMA,
+            "location_kind": kind,
+            "review_status": item["status"],
+            "reviewer": item["reviewer"],
+            "reviewed_utc": item["reviewed_utc"],
+            "searched_locations": [f"isolated-{kind.lower()}-fixture"],
+            "searched_accounts_or_owners": ["fixture-owner"],
+            "search_method": "Inspected the isolated fixture inventory.",
+            "search_started_utc": "2026-10-15T00:00:00Z",
+            "search_completed_utc": "2026-10-15T00:00:00Z",
+            "indexed_sources": [],
+            "no_additional_source_basis": "The isolated fixture contains no other source.",
+        }))
+        item["evidence"] = [{
+            "path": path.name,
+            "sha256": audit.sha256_file(path),
+            "description": f"Typed {kind} review record.",
+        }]
+
+
 def _write_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, complete: bool = True):
     (tmp_path / "outputs").mkdir()
-    external_review = tmp_path / "external_review.json"
-    external_review.write_text(json.dumps({"review": "isolated fixture"}))
     config = tmp_path / "configs" / "prior.json"
     config.parent.mkdir()
     config.write_text(json.dumps({
         "seeds": {"discovery": [1, 2], "confirmation": [3], "proposal_rng": 9},
     }))
     scope_path = tmp_path / "scope.json"
-    scope_path.write_text(json.dumps(_scope(
-        complete=complete,
-        evidence_sha256=audit.sha256_file(external_review),
-    )))
+    payload = _scope(complete=complete)
+    _write_external_reviews(tmp_path, payload)
+    scope_path.write_text(json.dumps(payload))
     monkeypatch.setattr(audit, "git_tracked_paths", lambda root, pathspecs: [config])
     return scope_path
 
@@ -97,6 +116,8 @@ def _resolution_document(scope_path: Path, *, exact=(), rules=(), status="REVIEW
         "scope_manifest_sha256": audit.sha256_file(scope_path),
         "exact_resolutions": list(exact),
         "reviewed_rules": list(rules),
+        "excluded_output_dispositions": [],
+        "excluded_output_index_review": None,
         "limitations": [],
     }
 
@@ -395,18 +416,126 @@ def test_stale_tracked_exclusion_hash_is_fatal(tmp_path, monkeypatch):
         audit.build_audit(tmp_path, scope_path)
 
 
+def _excluded_disposition(entry: dict) -> dict:
+    return {
+        **entry,
+        "disposition": "REVIEWED_NON_SEED",
+        "reviewer": "Test reviewer",
+        "reviewed_utc": "2026-10-15T12:00:00Z",
+        "rationale": "The exact file was reviewed and contains no RNG seed evidence.",
+    }
+
+
+def _index_review(inventory: dict) -> dict:
+    return {
+        "rule_id": "review-current-excluded-output-index",
+        "expected_file_count": inventory["excluded_output_files"],
+        "expected_total_bytes": inventory["excluded_output_bytes"],
+        "expected_index_sha256": inventory["excluded_output_index_sha256"],
+        "disposition": "REVIEWED_NON_SEED",
+        "reviewer": "Test reviewer",
+        "reviewed_utc": "2026-10-15T12:00:00Z",
+        "rationale": "The exact content index was reviewed and contains no RNG seed evidence.",
+    }
+
+
+def test_same_size_excluded_output_byte_change_invalidates_disposition(
+        tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    excluded = tmp_path / "outputs" / "raw.bin"
+    excluded.write_bytes(b"abcd")
+    first = audit.build_audit(tmp_path, scope_path)
+    entry = first["source_inventory"]["excluded_output_index"][0]
+    resolution_path = tmp_path / "resolutions.json"
+    payload = _resolution_document(scope_path, status="REVIEWED")
+    payload["excluded_output_dispositions"] = [_excluded_disposition(entry)]
+    resolution_path.write_text(json.dumps(payload))
+    resolved = audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+    assert resolved["finding_resolutions"]["excluded_output"]["unresolved"] == 0
+
+    excluded.write_bytes(b"wxyz")
+    with pytest.raises(ValueError, match="stale, missing, or extra"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+
+def test_reviewed_output_dispositions_reject_missing_and_extra_files(
+        tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    for name in ("one.bin", "two.bin"):
+        (tmp_path / "outputs" / name).write_bytes(name.encode())
+    first = audit.build_audit(tmp_path, scope_path)
+    entries = first["source_inventory"]["excluded_output_index"]
+    resolution_path = tmp_path / "resolutions.json"
+    missing = _resolution_document(scope_path, status="REVIEWED")
+    missing["excluded_output_dispositions"] = [_excluded_disposition(entries[0])]
+    resolution_path.write_text(json.dumps(missing))
+    with pytest.raises(ValueError, match="lacks excluded-output dispositions"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+    extra = _resolution_document(scope_path, status="REVIEWED")
+    ghost = _excluded_disposition(entries[0])
+    ghost["path"] = "outputs/ghost.bin"
+    extra["excluded_output_dispositions"] = [
+        *map(_excluded_disposition, entries), ghost,
+    ]
+    resolution_path.write_text(json.dumps(extra))
+    with pytest.raises(ValueError, match="stale, missing, or extra"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+
+def test_stale_excluded_output_index_review_is_fatal(tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    (tmp_path / "outputs" / "raw.bin").write_bytes(b"content")
+    first = audit.build_audit(tmp_path, scope_path)
+    resolution_path = tmp_path / "resolutions.json"
+    payload = _resolution_document(scope_path, status="REVIEWED")
+    payload["excluded_output_index_review"] = _index_review(first["source_inventory"])
+    resolution_path.write_text(json.dumps(payload))
+    resolved = audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+    assert resolved["finding_resolutions"]["excluded_output"] == {
+        "status": "REVIEWED",
+        "resolved": 1,
+        "unresolved": 0,
+        "coverage_mode": "EXACT_INDEX_REVIEW",
+    }
+
+    payload["excluded_output_index_review"]["expected_index_sha256"] = "f" * 64
+    resolution_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="index review is stale"):
+        audit.build_audit(tmp_path, scope_path, resolution_path=resolution_path)
+
+
+def test_global_exclusions_reviewed_boolean_cannot_bypass_exact_dispositions(
+        tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    scope = json.loads(scope_path.read_text())
+    scope["source_coverage"]["exclusions_reviewed"] = True
+    scope_path.write_text(json.dumps(scope))
+    (tmp_path / "outputs" / "raw.bin").write_bytes(b"content")
+    result = audit.build_audit(tmp_path, scope_path)
+    assert result["disjointness"]["status"] != "PROVEN"
+    assert result["source_inventory"]["excluded_output_files"] == 1
+    assert any("content-bound mounted-output exclusions" in item
+               for item in result["unresolved"])
+
+
 def test_resolved_external_location_requires_evidence_reviewer_and_time(tmp_path):
     scope_path = tmp_path / "scope.json"
     payload = _scope(complete=True)
     payload["external_execution_locations"][0]["evidence"] = []
     scope_path.write_text(json.dumps(payload))
-    with pytest.raises(ValueError, match="requires at least one hash-bound evidence file"):
+    with pytest.raises(ValueError, match="exactly one typed location-review record"):
         audit.load_scope(scope_path)
 
 
 def test_resolved_external_location_requires_hash_bound_existing_evidence(tmp_path):
     scope_path = tmp_path / "scope.json"
-    payload = _scope(complete=True, evidence_sha256="f" * 64)
+    payload = _scope(complete=True)
+    payload["external_execution_locations"][0]["evidence"] = [{
+        "path": "external_review.json",
+        "sha256": "f" * 64,
+        "description": "Typed external review fixture.",
+    }]
     scope_path.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="external evidence file is missing"):
         audit.load_scope(scope_path, root=tmp_path)
@@ -415,6 +544,70 @@ def test_resolved_external_location_requires_hash_bound_existing_evidence(tmp_pa
     evidence.write_text("reviewed bytes")
     with pytest.raises(ValueError, match="external evidence hash is stale"):
         audit.load_scope(scope_path, root=tmp_path)
+
+
+def test_external_location_review_rejects_bare_prose_record(tmp_path):
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
+    first = payload["external_execution_locations"][0]
+    review_path = tmp_path / first["evidence"][0]["path"]
+    review_path.write_text(json.dumps({"review": "checked remote system"}))
+    first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="invalid typed shape"):
+        audit.load_scope(scope_path, root=tmp_path)
+
+
+def test_external_location_review_cannot_be_reused_across_location_classes(tmp_path):
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
+    payload["external_execution_locations"][1]["evidence"] = list(
+        payload["external_execution_locations"][0]["evidence"]
+    )
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="cannot be reused across locations"):
+        audit.load_scope(scope_path, root=tmp_path)
+
+
+def test_external_location_review_must_match_its_location_class(tmp_path):
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
+    first = payload["external_execution_locations"][0]
+    review_path = tmp_path / first["evidence"][0]["path"]
+    review = json.loads(review_path.read_text())
+    review["location_kind"] = "CLOUD"
+    review_path.write_text(json.dumps(review))
+    first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="different location/status"):
+        audit.load_scope(scope_path, root=tmp_path)
+
+
+def test_covered_external_location_requires_and_accepts_hash_indexed_sources(tmp_path):
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
+    first = payload["external_execution_locations"][0]
+    first["status"] = "COVERED"
+    review_path = tmp_path / first["evidence"][0]["path"]
+    review = json.loads(review_path.read_text())
+    review["review_status"] = "COVERED"
+    review["indexed_sources"] = [{
+        "source_id": "snellius:/project/run-001/manifest.json",
+        "sha256": "a" * 64,
+        "disposition": "IN_SCOPE",
+        "description": "Exact recovered run-manifest identity.",
+    }]
+    review["no_additional_source_basis"] = None
+    review_path.write_text(json.dumps(review))
+    first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(json.dumps(payload))
+    assert audit.load_scope(scope_path, root=tmp_path)[
+        "external_execution_locations"
+    ][0]["status"] == "COVERED"
 
 
 @pytest.mark.parametrize("field,value", [

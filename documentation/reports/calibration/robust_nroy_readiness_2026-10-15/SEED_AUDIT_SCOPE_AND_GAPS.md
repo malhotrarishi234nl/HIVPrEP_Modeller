@@ -2,7 +2,7 @@
 
 ## Current verdict
 
-`robust_nroy_seed_audit/1.1.0` is **INCOMPLETE** and cannot authorize a run.
+`robust_nroy_seed_audit/1.2.0` is **INCOMPLETE** and cannot authorize a run.
 The implementation advances the gate by making the inventory reproducible and
 reviewable; it does not choose, allocate, recommend, or reserve any seed.
 
@@ -18,7 +18,7 @@ v1.0 mounted-snapshot artifact: 74,281 output files plus 156 tracked
 configuration/documentation files, 2,905 content-scanned files, 920 distinct
 parsed RNG integers, 75,597 ambiguous references, 43 unparseable references,
 and 71,531 output files inventoried without content scanning. It is retained as
-historical evidence and must not be described as a v1.1 result. A v1.1 artifact
+historical evidence and must not be described as a v1.2 result. A v1.2 artifact
 must be regenerated where the same private `outputs/` tree is mounted; the
 isolated source checkout does not contain that untracked tree. No prior finding
 was fabricated as resolved during this change.
@@ -38,8 +38,10 @@ was fabricated as resolved during this change.
   CSV header is inspected and seed-bearing CSV columns are read, and declared
   text formats are searched for references requiring review.
 - Raw non-metadata JSON, archives, spreadsheets, PDFs, NPZ files, images, and
-  other binary formats are inventoried but not opened. This exclusion remains a
-  coverage blocker until the owner reviews it or supplies additional evidence.
+  other binary formats are not parsed for seeds. Every such file is
+  content-bound by exact path, parser-exclusion kind, byte size, and SHA-256 in
+  the audit's deterministic exclusion index. It remains a blocker until an
+  exact per-file disposition or exact whole-index review covers those bytes.
 
 The scanner recognises explicit simulation, replicate, discovery,
 confirmation, smoke, proposal/design, and other operational RNG fields. It does
@@ -49,8 +51,8 @@ Those appear as ambiguous or unparseable evidence.
 
 ## Reviewed resolution contract
 
-The v1.1 scanner accepts an optional `--resolutions` document with schema
-`robust_nroy_seed_finding_resolutions/1.0.0`. The incomplete starting template
+The v1.2 scanner accepts an optional `--resolutions` document with schema
+`robust_nroy_seed_finding_resolutions/1.1.0`. The incomplete starting template
 and JSON Schema are:
 
 - `templates/seed_finding_resolutions.json.template`
@@ -76,16 +78,24 @@ is an audit error, not an ignored resolution.
 review. Findings not matched by a valid decision remain blockers, and owner
 scope/source coverage remain independent blockers.
 
+Output exclusions have no global review switch. For manageable sets, each
+disposition repeats the exact path, kind, byte size, and SHA-256 from the fresh
+audit index. For a large inventory, one whole-index review may instead bind the
+exact file count, total bytes, and canonical SHA-256 of the complete ordered
+per-file index. The two modes cannot be mixed. Missing or extra paths, same-size
+byte changes, a stale aggregate, or an unbound file fail closed.
+
 An external execution-location row may move from `UNRESOLVED` only when it
-names its reviewer and UTC review time and cites at least one evidence file.
-Each citation is an exact repository-relative path with its raw-file SHA-256
-and a description of what it establishes. The audit verifies that the file
-exists and that its bytes still match. A bare note such as `"checked HPC"`, an
-unhashed URL, or reviewer recollection is not accepted as coverage evidence.
-For `REVIEWED_NONE`, the cited file should record the locations and records
-actually searched and the basis for concluding that no additional seed source
-was found; for `COVERED`, it should identify the copied or indexed sources now
-in scope. Global owner approval remains separately required.
+names its reviewer and UTC review time and cites exactly one distinct, typed,
+hash-bound `robust_nroy_external_seed_location_review/1.0.0` record. That
+record must match the location class, status, reviewer, and time; name the
+locations and accounts or owners checked; state the search method; and either
+index source hashes for `COVERED` or give an explicit no-source basis for
+`REVIEWED_NONE`. The four location classes cannot reuse one evidence file. A
+bare note such as `"checked HPC"`, an unhashed URL, or reviewer recollection is
+not accepted. Start from the deliberately incomplete template and schema in
+`templates/external_seed_location_review.*`; global owner approval remains
+separately required.
 
 ## Ordinary commands
 
@@ -129,7 +139,9 @@ When supplied, internal and prior-source overlaps are computed, but the result
 is only `PROVEN` when all of the following are true:
 
 1. owner scope is `APPROVED` with reviewer and date;
-2. source coverage is `COMPLETE` and declared exclusions were reviewed;
+2. source coverage is `COMPLETE`, every external location has its own valid
+   typed review record, and every mounted-output exclusion has a byte-exact
+   disposition or exact content-index review;
 3. every ambiguous or unparseable reference has an exact, current, reviewed
    RNG or NON_RNG disposition;
 4. explicit candidate discovery and confirmation blocks are internally unique;
@@ -139,6 +151,12 @@ is only `PROVEN` when all of the following are true:
 
 Even a seed-audit `PASS` is only this one evidence gate. It does not sign the
 scientific plan, prove model identity, price compute, or authorize execution.
+Before production readiness accepts that PASS, it deterministically rebuilds
+the entire audit from the current scope, resolutions, candidate blocks, signed
+plan, tracked sources, and mounted outputs and requires exact canonical
+equality. Consequently, validation reads and hashes the full declared source
+inventory; for the historical 74,281-file mount this is intentional I/O, not a
+simulation or a cached assertion.
 
 ## Exact remaining gaps
 

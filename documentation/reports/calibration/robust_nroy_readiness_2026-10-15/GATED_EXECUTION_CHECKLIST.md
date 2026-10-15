@@ -35,11 +35,11 @@ engine-running gate.
   revalidated or rerun. All 132 catalog rows are classified and none is marked
   current validated.
 - [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.
-- [x] A read-only deterministic `robust_nroy_seed_audit/1.1.0` scanner,
+- [x] A read-only deterministic `robust_nroy_seed_audit/1.2.0` scanner,
   expanded all-tracked-file source-scope manifest, strict reviewed-resolution
   schema/template, and preceding incomplete inventory artifact exist; no seed
   was allocated and no engine was run.
-- [ ] Regenerate the v1.1 inventory where the private mounted `outputs/` tree
+- [ ] Regenerate the v1.2 inventory where the private mounted `outputs/` tree
   is present; the committed v1.0 artifact remains historical until then.
 - [ ] The seed-source scope is owner-approved as exhaustive, all ambiguous and
   unparseable references are resolved, explicit candidate discovery,

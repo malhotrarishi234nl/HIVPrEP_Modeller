@@ -1,13 +1,16 @@
 {
-  "schema": "robust_nroy_seed_finding_resolutions/1.0.0",
+  "schema": "robust_nroy_seed_finding_resolutions/1.1.0",
   "status": "INCOMPLETE",
-  "scope_manifest_sha256": "d56a2e9ea3ea93b47ff991392b43f7d4e8bc2b1ce22846f7b44d1a22f19d3143",
+  "scope_manifest_sha256": "3b6fcb5528fea13427ceeab26aa268f521409bce13e91176c177bac3eaebc87c",
   "exact_resolutions": [],
   "reviewed_rules": [],
+  "excluded_output_dispositions": [],
+  "excluded_output_index_review": null,
   "limitations": [
     "INCOMPLETE TEMPLATE ONLY. No finding has been classified and this document cannot close the seed gate.",
     "Copy a finding's exact kind, source, location, source_sha256 and value_sha256 from a freshly generated audit. Do not infer or edit those bindings.",
     "RNG decisions must state the exact integer or integers and role; NON_RNG decisions must carry null rng_role and no RNG integers.",
-    "Reviewed rules may use only the bounded selector types in the schema and must bind the exact matched finding count and canonical matched-ID SHA-256."
+    "Reviewed finding rules may use only the bounded selector types in the schema and must bind the exact matched finding count and canonical matched-ID SHA-256.",
+    "Every mounted-output file omitted from seed parsing must be disposed either by an exact path/kind/size/SHA-256 record or by one whole-index review binding the exact file count, total bytes, and canonical content-index SHA-256."
   ]
 }

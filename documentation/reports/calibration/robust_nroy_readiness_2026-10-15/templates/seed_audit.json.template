@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_seed_audit/1.1.0",
+  "schema": "robust_nroy_seed_audit/1.2.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "deterministic": true,
@@ -14,7 +14,16 @@
     "owner_scope_status": "UNRESOLVED",
     "source_coverage_status": "UNRESOLVED"
   },
-  "source_inventory": {},
+  "source_inventory": {
+    "counts_by_kind": {},
+    "inventory_sha256": null,
+    "scanned_content_index_sha256": null,
+    "scanned_files": 0,
+    "excluded_output_files": 0,
+    "excluded_output_bytes": 0,
+    "excluded_output_index_sha256": null,
+    "excluded_output_index": []
+  },
   "finding_resolutions": {
     "path": null,
     "file_sha256": null,
@@ -22,7 +31,13 @@
     "resolved_rng": 0,
     "resolved_non_rng": 0,
     "unresolved": 0,
-    "payload_sha256": null
+    "payload_sha256": null,
+    "excluded_output": {
+      "status": "NOT_SUPPLIED",
+      "resolved": 0,
+      "unresolved": 0,
+      "coverage_mode": null
+    }
   },
   "parsed_prior_seeds": [],
   "parsed_prior_seed_count": 0,
@@ -56,6 +71,7 @@
   "overlaps": [],
   "unresolved": [],
   "limitations": [
-    "A passing audit must bind an owner-approved complete source scope, resolve ambiguous and unparseable references, and compare explicit candidate blocks against parsed prior seeds."
+    "A passing audit must bind an owner-approved complete source scope, resolve ambiguous and unparseable references, byte-bind and explicitly dispose every output excluded from parsing, and compare explicit candidate blocks against parsed prior seeds.",
+    "Production readiness deterministically rebuilds this artifact from the current scope, resolutions, candidate blocks, plan, repository sources, and mounted outputs; a hand-authored or stale FINAL document is rejected."
   ]
 }

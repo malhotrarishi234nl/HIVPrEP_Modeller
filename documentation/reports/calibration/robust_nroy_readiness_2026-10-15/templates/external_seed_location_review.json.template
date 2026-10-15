@@ -1,0 +1,14 @@
+{
+  "schema": "robust_nroy_external_seed_location_review/1.0.0",
+  "location_kind": "<REMOTE_HPC|CLOUD|DELETED_LOCAL|COLLABORATOR_HELD>",
+  "review_status": "<COVERED|REVIEWED_NONE>",
+  "reviewer": null,
+  "reviewed_utc": null,
+  "searched_locations": [],
+  "searched_accounts_or_owners": [],
+  "search_method": "",
+  "search_started_utc": null,
+  "search_completed_utc": null,
+  "indexed_sources": [],
+  "no_additional_source_basis": null
+}
