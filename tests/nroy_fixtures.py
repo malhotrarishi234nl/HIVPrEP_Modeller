@@ -269,6 +269,30 @@ def write_m1_anchor_evidence(
     base_config = Path(str(plan.require("models.base_config")))
     if not base_config.is_absolute():
         base_config = ROOT / base_config
+    seed_result_dir = tmp_path / "m1_seed_results"
+    seed_result_dir.mkdir(parents=True, exist_ok=True)
+    candidate_rows = []
+    for index, anchor in enumerate(anchors):
+        seed_result_path = seed_result_dir / f"candidate_{index:04d}.json"
+        seed_result_path.write_text(json.dumps({
+            "candidate_id": anchor.anchor_id,
+            "vector_hash": anchor.vector_hash,
+            "confirmation_seeds": list(plan.seeds.confirmation),
+            "fixture_warning": "fabricated seed-level result transport",
+        }, indent=1))
+        candidate_rows.append({
+            "candidate_id": anchor.anchor_id,
+            "vector_hash": anchor.vector_hash,
+            "p_value": float(anchor.params[model.p_name]),
+            "n_replicates": plan.k_confirmation,
+            "nominal_i_max": 0.0,
+            "nominal_pass": True,
+            "per_seed_joint_vector_hashes": [
+                anchor.vector_hash for _seed in plan.seeds.confirmation
+            ],
+            "seed_result_artifact_path": str(seed_result_path.relative_to(tmp_path)),
+            "seed_result_artifact_sha256": ccs.sha256_file(seed_result_path),
+        })
     payload = {
         "schema": runner.M1_ANCHOR_EVIDENCE_SCHEMA,
         "status": "FINAL",
@@ -288,25 +312,7 @@ def write_m1_anchor_evidence(
         "target_order": list(plan.targets.frozen_order),
         "p_parameter": str(plan.require("p_parameter.name")),
         "confirmation_seeds": list(plan.seeds.confirmation),
-        "candidates": [
-            {
-                "candidate_id": anchor.anchor_id,
-                "vector_hash": anchor.vector_hash,
-                "p_value": float(anchor.params[model.p_name]),
-                "n_replicates": plan.k_confirmation,
-                "nominal_i_max": 0.0,
-                "nominal_pass": True,
-                "per_seed_joint_vector_hashes": [
-                    anchor.vector_hash for _seed in plan.seeds.confirmation
-                ],
-                "seed_result_artifact_sha256": ccs.sha256_json({
-                    "candidate_id": anchor.anchor_id,
-                    "confirmation_seeds": list(plan.seeds.confirmation),
-                    "fixture": True,
-                }),
-            }
-            for anchor in anchors
-        ],
+        "candidates": candidate_rows,
         "fixture_warning": (
             "FABRICATED by the verification suite to test evidence validation; "
             "not production confirmation evidence"

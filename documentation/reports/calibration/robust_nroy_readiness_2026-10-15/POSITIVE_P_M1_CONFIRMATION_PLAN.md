@@ -28,7 +28,9 @@ vectors, p=0 rows, or marginal recombination fail closed.
   and Boolean `nominal_pass = (I_max <= 3)`. Sensitivity-only or upper-variance-
   bound passes are not confirmations.
 - Preserve seed-level complete target vectors and their hashes; do not store
-  only aggregate scores.
+  only aggregate scores. Each candidate must reference that seed-result
+  artifact by a package-local relative path plus its exact SHA-256. Absolute
+  paths and paths that escape the evidence package fail closed.
 
 The final evidence must validate against
 `robust_nroy_m1_anchor_confirmation/1.0.0`; the template is

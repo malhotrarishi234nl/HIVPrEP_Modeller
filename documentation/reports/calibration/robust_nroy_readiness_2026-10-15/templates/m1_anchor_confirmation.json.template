@@ -26,6 +26,7 @@
       "nominal_i_max": null,
       "nominal_pass": null,
       "per_seed_joint_vector_hashes": [],
+      "seed_result_artifact_path": null,
       "seed_result_artifact_sha256": null
     }
   ],

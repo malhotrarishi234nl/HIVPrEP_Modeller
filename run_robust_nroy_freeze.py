@@ -64,6 +64,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import shutil
 import sqlite3
 import sys
 import time
@@ -116,6 +117,23 @@ def _evidence_path(value: object) -> Path | None:
 def _paths_match(recorded: object, expected: Path) -> bool:
     path = _evidence_path(recorded)
     return path is not None and path.resolve() == expected.resolve()
+
+
+def _portable_evidence_file(evidence_path: Path, recorded: object) -> Path | None:
+    """Resolve a package-local file reference without allowing absolute/traversal paths."""
+    text = str(recorded or "").strip()
+    if not text:
+        return None
+    relative = Path(text)
+    if relative.is_absolute():
+        return None
+    package_root = evidence_path.resolve().parent
+    resolved = (package_root / relative).resolve()
+    try:
+        resolved.relative_to(package_root)
+    except ValueError:
+        return None
+    return resolved
 
 
 def _registry_bindings(text: str) -> tuple[str, dict[str, str], set[str]]:
@@ -827,6 +845,40 @@ def _validate_stage_artifacts(
     except ContractError as exc:
         raise ContractError(f"{what}: stage artifact validation failed: {exc}") from exc
 
+    if (
+        str(manifest.get("model") or "") == nc.MODEL_M1
+        and str(manifest.get("stage") or "") == nc.STAGE_DISCOVERY
+    ):
+        evidence_path = Path(stage_dir) / M1_ANCHOR_EVIDENCE_FILENAME
+        evidence = json.loads(evidence_path.read_text())
+        seed_result_paths: list[str] = []
+        for row in evidence.get("candidates", ()):
+            candidate_id = str(row.get("candidate_id", "<unknown>"))
+            resolved = _portable_evidence_file(
+                evidence_path, row.get("seed_result_artifact_path")
+            )
+            if resolved is None or not resolved.is_file():
+                raise ContractError(
+                    f"{what}: {candidate_id} has no portable packaged seed-result artifact"
+                )
+            if ccs.sha256_file(resolved) != str(
+                row.get("seed_result_artifact_sha256", "")
+            ):
+                raise ContractError(
+                    f"{what}: {candidate_id} seed-result artifact hash does not match"
+                )
+            seed_result_paths.append(str(resolved.relative_to(Path(stage_dir).resolve())))
+        try:
+            ne.validate_artifact_index(
+                stage_dir,
+                required_paths=seed_result_paths,
+                require_exact=False,
+            )
+        except ContractError as exc:
+            raise ContractError(
+                f"{what}: packaged M1 seed-result validation failed: {exc}"
+            ) from exc
+
 
 # ==========================================================================
 # prepare
@@ -990,8 +1042,20 @@ def _validate_m1_anchor_evidence(
                 f"{candidate_id}: per_seed_joint_vector_hashes do not preserve the "
                 "complete anchor vector on every seed"
             )
-        if not _is_sha256(row.get("seed_result_artifact_sha256")):
-            problems.append(f"{candidate_id}: seed_result_artifact_sha256 is not a SHA-256")
+        seed_result_path = _portable_evidence_file(
+            path, row.get("seed_result_artifact_path")
+        )
+        if seed_result_path is None:
+            problems.append(
+                f"{candidate_id}: seed_result_artifact_path must be a portable path "
+                "inside the evidence package"
+            )
+        elif not seed_result_path.is_file():
+            problems.append(f"{candidate_id}: seed-result artifact does not exist")
+        elif str(row.get("seed_result_artifact_sha256", "")) != ccs.sha256_file(
+            seed_result_path
+        ):
+            problems.append(f"{candidate_id}: seed-result artifact SHA-256 does not match")
 
     if problems:
         raise ContractError(
@@ -999,6 +1063,39 @@ def _validate_m1_anchor_evidence(
             + "\n".join(f"  - {problem}" for problem in problems)
         )
     return dict(payload)
+
+
+def _package_m1_anchor_evidence(
+    payload: Mapping,
+    *,
+    source_path: Path,
+    stage_dir: Path,
+) -> dict:
+    """Copy validated seed-level evidence into the prepared stage package."""
+    packaged = dict(payload)
+    packaged_rows: list[dict] = []
+    destination_dir = stage_dir / "m1_anchor_seed_results"
+    destination_dir.mkdir(parents=True, exist_ok=False)
+    for index, original in enumerate(payload.get("candidates", ())):
+        row = dict(original)
+        source = _portable_evidence_file(
+            source_path, row.get("seed_result_artifact_path")
+        )
+        if source is None or not source.is_file():
+            raise ContractError(
+                f"{row.get('candidate_id', '<unknown>')}: validated seed-result "
+                "artifact disappeared before packaging"
+            )
+        suffix = source.suffix if source.suffix else ".bin"
+        relative = Path("m1_anchor_seed_results") / (
+            f"{index:04d}_{ccs.sha256_file(source)[:16]}{suffix}"
+        )
+        destination = stage_dir / relative
+        shutil.copyfile(source, destination)
+        row["seed_result_artifact_path"] = relative.as_posix()
+        packaged_rows.append(row)
+    packaged["candidates"] = packaged_rows
+    return packaged
 
 
 def _selected_parent_design(
@@ -1558,11 +1655,11 @@ def command_prepare(args: argparse.Namespace) -> int:
                         f"exact-p=0 controls come only from the sealed M0 embedding: "
                         f"{non_positive}"
                     )
+                evidence_source = Path(args.m1_anchor_evidence)
                 evidence = _validate_m1_anchor_evidence(
-                    Path(args.m1_anchor_evidence), anchors_path=independent_path,
+                    evidence_source, anchors_path=independent_path,
                     anchors=independent_m1, plan=plan, model=model,
                 )
-                ne.atomic_write_json(out / M1_ANCHOR_EVIDENCE_FILENAME, evidence)
                 by_id = {anchor.anchor_id: anchor for anchor in independent_m1}
                 for anchor in embedded_m0_anchors:
                     prior = by_id.get(anchor.anchor_id)
@@ -1588,6 +1685,12 @@ def command_prepare(args: argparse.Namespace) -> int:
                         "evidence explicitly rather than inflating anchor quotas."
                     )
                 anchors = [by_id[candidate_id] for candidate_id in sorted(by_id)]
+                evidence = _package_m1_anchor_evidence(
+                    evidence,
+                    source_path=evidence_source,
+                    stage_dir=out,
+                )
+                ne.atomic_write_json(out / M1_ANCHOR_EVIDENCE_FILENAME, evidence)
                 extra["m0_embedding_source"] = str(_stage_directory(args.m0_confirmed_dir))
                 extra["m0_embedding_exact_p"] = 0.0
                 extra["m0_embedding_source_manifest_sha256"] = parent_manifest_sha256

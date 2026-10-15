@@ -1994,6 +1994,22 @@ def test_m1_discovery_unions_independent_positive_p_and_embedded_m0_anchors(tmp_
     assert int(extra["n_anchors"]) == len(frozen)
 
     sealed_evidence = stage / runner.M1_ANCHOR_EVIDENCE_FILENAME
+    packaged = json.loads(sealed_evidence.read_text())
+    packaged_files = []
+    for row in packaged["candidates"]:
+        relative = Path(row["seed_result_artifact_path"])
+        assert not relative.is_absolute()
+        packaged_result = stage / relative
+        assert packaged_result.is_file()
+        assert ccs.sha256_file(packaged_result) == row["seed_result_artifact_sha256"]
+        packaged_files.append(packaged_result)
+    original_seed_result = packaged_files[0].read_bytes()
+    packaged_files[0].write_bytes(original_seed_result + b"\nmutated\n")
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path), "--stage-dir", str(stage),
+        "--shard", "0", "--of", "1", "--evaluator", "surrogate",
+    ]) == 1, "mutating packaged seed-level evidence must stop dispatch"
+    packaged_files[0].write_bytes(original_seed_result)
     changed = json.loads(sealed_evidence.read_text())
     changed["passed"] = False
     sealed_evidence.write_text(json.dumps(changed))
@@ -2065,6 +2081,38 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
                 for index, row in enumerate(original["candidates"])
             ],
         },
+        "missing_seed_result_artifact_path": {
+            **original,
+            "candidates": [
+                {**row, "seed_result_artifact_path": None}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "absolute_seed_result_artifact_path": {
+            **original,
+            "candidates": [
+                {**row, "seed_result_artifact_path": str(tmp_path / "absolute.json")}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "escaping_seed_result_artifact_path": {
+            **original,
+            "candidates": [
+                {**row, "seed_result_artifact_path": "../outside.json"}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "wrong_seed_result_artifact_hash": {
+            **original,
+            "candidates": [
+                {**row, "seed_result_artifact_sha256": "0" * 64}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
         "failed_primary_rule": {
             **original,
             "candidates": [
@@ -2082,6 +2130,16 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
                 path, anchors_path=anchors_path, anchors=anchors,
                 plan=plan, model=model,
             )
+
+    first_result = evidence_path.parent / original["candidates"][0][
+        "seed_result_artifact_path"
+    ]
+    first_result.write_text(first_result.read_text() + "\nmutated\n")
+    with pytest.raises(ContractError, match="seed-result artifact SHA-256 does not match"):
+        runner._validate_m1_anchor_evidence(
+            evidence_path, anchors_path=anchors_path, anchors=anchors,
+            plan=plan, model=model,
+        )
 
 
 def test_the_whole_chain_is_reachable_and_leaves_every_required_table(tmp_path):
