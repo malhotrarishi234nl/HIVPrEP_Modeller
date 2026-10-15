@@ -140,7 +140,7 @@ def test_S01_direction_correctness():
     passed = closer_to_mtf and 0.5 * expected_mtf < mean_inf < 1.5 * expected_mtf
     print(f"  S01: F←M mean={mean_inf:.2f}, expected_mtf={expected_mtf:.2f}, "
           f"expected_ftm={expected_ftm:.2f} {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S02_direction_correctness_reverse():
@@ -164,7 +164,7 @@ def test_S02_direction_correctness_reverse():
     passed = closer_to_ftm and 0.5 * expected_ftm < mean_inf < 1.5 * expected_ftm
     print(f"  S02: M←F mean={mean_inf:.2f}, expected_ftm={expected_ftm:.2f}, "
           f"expected_mtf={expected_mtf:.2f} {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S03_no_same_sex_het_transmission():
@@ -189,7 +189,7 @@ def test_S03_no_same_sex_het_transmission():
     passed = (t_ff == 0 and t_mm == 0)
     print(f"  S03: F←F={t_ff}, M←M={t_mm} (both must be 0) "
           f"{'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S04_art_modifier_applied_in_route_path():
@@ -216,12 +216,12 @@ def test_S04_art_modifier_applied_in_route_path():
     # Expected: t_on ≈ t_off * 0.04 (only 4% of off-ART infections)
     if t_off == 0:
         print(f"  S04: t_off=0, cannot compute ratio — SKIP")
-        return True
+        return
     ratio = t_on / t_off
     passed = ratio < 0.1  # Should be ~0.04, definitely < 0.10
     print(f"  S04: t_off={t_off}, t_on={t_on}, ratio={ratio:.3f} "
           f"(expect ~0.04) {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S05_art_modifier_applied_msm_path():
@@ -243,12 +243,12 @@ def test_S05_art_modifier_applied_msm_path():
 
     if t_off == 0:
         print(f"  S05: t_off=0 — SKIP")
-        return True
+        return
     ratio = t_on / t_off
     passed = ratio < 0.1
     print(f"  S05: MSM ART: t_off={t_off}, t_on={t_on}, ratio={ratio:.3f} "
           f"(expect ~0.04) {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S06_prep_efficacy_applied_in_route_path():
@@ -290,12 +290,12 @@ def test_S06_prep_efficacy_applied_in_route_path():
 
     if inf_noprep == 0:
         print(f"  S06: no infections at all — SKIP")
-        return True
+        return
     ratio = inf_prep / inf_noprep
     passed = ratio < 0.5  # PrEP should cut infections significantly
     print(f"  S06: PrEP path: no_prep={inf_noprep}, on_prep={inf_prep}, "
           f"ratio={ratio:.3f} (expect ~0.14) {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S07_stage_multiplier_exact():
@@ -316,7 +316,7 @@ def test_S07_stage_multiplier_exact():
 
     if results["Chronic"] == 0:
         print("  S07: Chronic=0, cannot check ratios — SKIP")
-        return True
+        return
 
     ratio_acute = results["Acute"] / results["Chronic"]
     ratio_aids  = results["AIDS"]  / results["Chronic"]
@@ -329,7 +329,7 @@ def test_S07_stage_multiplier_exact():
     print(f"  S07: Acute/Chronic={ratio_acute:.3f} (expect 9.17), "
           f"AIDS/Chronic={ratio_aids:.3f} (expect 7.27) "
           f"{'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_S08_high_prevalence_cap():
@@ -354,7 +354,7 @@ def test_S08_high_prevalence_cap():
             break
     if passed:
         print(f"  S08: Infections never exceeded {susc_count} susceptibles PASS")
-    return passed
+    assert passed
 
 
 def test_S09_zero_contacts_zero_infections():
@@ -376,7 +376,7 @@ def test_S09_zero_contacts_zero_infections():
     passed = (total == 0)
     print(f"  S09: Zero contacts → {total} infections "
           f"{'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 # ── V-series: MSM versatility split mechanism ───────────────────────────────
@@ -410,7 +410,7 @@ def test_V01_split_conserves_contacts():
     print(f"  V01: p=0→{results[0.0]:.2f}, p=1→{results[1.0]:.2f}, "
           f"p=0.5 expected_mid={expected_mid:.2f} actual={actual_mid:.2f} "
           f"({'PASS' if passed else 'FAIL'})")
-    return passed
+    assert passed
 
 
 def test_V02_deterministic_uses_expected_value():
@@ -434,7 +434,7 @@ def test_V02_deterministic_uses_expected_value():
     passed = all_same
     print(f"  V02: Deterministic results: {set(det_results)} "
           f"(all same={all_same}) {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_V03_stochastic_variance_correct():
@@ -464,7 +464,7 @@ def test_V03_stochastic_variance_correct():
     passed = var_stoch > 1.0 and var_stoch > var_det
     print(f"  V03: Stochastic var={var_stoch:.2f}, det var={var_det:.2f} "
           f"(stochastic must be > 1 and > det) {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_V04_versatility_beta_weighting():
@@ -502,7 +502,7 @@ def test_V04_versatility_beta_weighting():
               f"rel_err={rel_err*100:.1f}% {'ok' if ok else 'FAIL'}")
 
     print(f"  V04: Beta weighting linearity {'PASS' if all_passed else 'FAIL'}")
-    return all_passed
+    assert all_passed
 
 
 def test_V05_art_applied_to_both_subpasses():
@@ -538,7 +538,7 @@ def test_V05_art_applied_to_both_subpasses():
               f"(expect ~0.04) {'ok' if ok else 'FAIL'}")
 
     print(f"  V05: ART applied to both sub-passes {'PASS' if all_passed else 'FAIL'}")
-    return all_passed
+    assert all_passed
 
 
 def test_V06_versatility_at_extremes_no_exception():
@@ -563,7 +563,7 @@ def test_V06_versatility_at_extremes_no_exception():
             print(f"    V06 (p={p_val}): EXCEPTION — {e} FAIL")
             all_passed = False
     print(f"  V06: Extremes no exception {'PASS' if all_passed else 'FAIL'}")
-    return all_passed
+    assert all_passed
 
 
 def test_V07_versatility_isolated_from_het_path():
@@ -589,7 +589,7 @@ def test_V07_versatility_isolated_from_het_path():
     print(f"  V07: Het infections at p=0/0.5/1: "
           f"{results[0.0]:.2f}/{results[0.5]:.2f}/{results[1.0]:.2f} "
           f"(must be identical) {'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_V08_msm_infections_exceed_het_infections():
@@ -624,7 +624,7 @@ def test_V08_msm_infections_exceed_het_infections():
     print(f"  V08: MSM/Het inf ratio={ratio:.2f} "
           f"(adjusted expect ~4.7, must be >3.5) "
           f"{'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 def test_V09_no_infections_when_no_msm_susceptibles():
@@ -643,7 +643,7 @@ def test_V09_no_infections_when_no_msm_susceptibles():
     passed = (total == 0)
     print(f"  V09: 0 MSM susceptibles → {total} infections "
           f"{'PASS' if passed else 'FAIL'}")
-    return passed
+    assert passed
 
 
 # ── Runner ───────────────────────────────────────────────────────────────────
@@ -684,7 +684,8 @@ def main():
         print(f"\n[{tid}] {name}")
         print("-" * 60)
         try:
-            results[tid] = fn()
+            fn()
+            results[tid] = True
         except Exception as e:
             print(f"  {tid}: EXCEPTION — {e}")
             results[tid] = False
@@ -694,7 +695,8 @@ def main():
         print(f"\n[{tid}] {name}")
         print("-" * 60)
         try:
-            results[tid] = fn()
+            fn()
+            results[tid] = True
         except Exception as e:
             print(f"  {tid}: EXCEPTION — {e}")
             results[tid] = False

@@ -61,13 +61,10 @@ def test_direct_fractional_aging():
     print(f"  Actual moved: {moved:,} {'✓' if moved == expected_moved else '✗'}")
     print(f"  Population conserved: {total_after == initial_pop} {'✓' if total_after == initial_pop else '✗'}")
 
-    # Check
-    if stayed == expected_stayed and moved == expected_moved and total_after == initial_pop:
-        print("\n✅ PASS: Fractional aging works correctly\n")
-        return True
-    else:
-        print("\n❌ FAIL: Fractional aging incorrect\n")
-        return False
+    assert stayed == expected_stayed
+    assert moved == expected_moved
+    assert total_after == initial_pop
+    print("\n✅ PASS: Fractional aging works correctly\n")
 
 
 def test_terminal_bin_direct():
@@ -116,12 +113,8 @@ def test_terminal_bin_direct():
     print(f"  Actual terminal: {new_pop[terminal_idx, 0, 0, 0, 0, 0, 0]:,}")
     print(f"  Match: {new_pop[terminal_idx, 0, 0, 0, 0, 0, 0] == expected_terminal} {'✓' if new_pop[terminal_idx, 0, 0, 0, 0, 0, 0] == expected_terminal else '✗'}")
 
-    if new_pop[terminal_idx, 0, 0, 0, 0, 0, 0] == expected_terminal:
-        print("\n✅ PASS: Terminal bin accumulates correctly\n")
-        return True
-    else:
-        print("\n❌ FAIL: Terminal bin incorrect\n")
-        return False
+    assert new_pop[terminal_idx, 0, 0, 0, 0, 0, 0] == expected_terminal
+    print("\n✅ PASS: Terminal bin accumulates correctly\n")
 
 
 def test_multiple_bins():
@@ -169,12 +162,8 @@ def test_multiple_bins():
     print(f"  Population after: {total_after:,}")
     print(f"  Conserved: {total_before == total_after} {'✓' if total_before == total_after else '✗'}")
 
-    if total_before == total_after:
-        print("\n✅ PASS: Multiple bin aging conserves population\n")
-        return True
-    else:
-        print(f"\n❌ FAIL: Population not conserved (diff: {total_after - total_before})\n")
-        return False
+    assert total_before == total_after
+    print("\n✅ PASS: Multiple bin aging conserves population\n")
 
 
 def main():
@@ -183,10 +172,19 @@ def main():
     print("SIMPLE DIRECT TESTS FOR FRACTIONAL AGING")
     print("=" * 70)
 
+    checks = [
+        ("Direct Fractional Aging", test_direct_fractional_aging),
+        ("Terminal Bin Accumulation", test_terminal_bin_direct),
+        ("Multiple Bin Aging", test_multiple_bins),
+    ]
     results = []
-    results.append(("Direct Fractional Aging", test_direct_fractional_aging()))
-    results.append(("Terminal Bin Accumulation", test_terminal_bin_direct()))
-    results.append(("Multiple Bin Aging", test_multiple_bins()))
+    for test_name, check in checks:
+        try:
+            check()
+            results.append((test_name, True))
+        except AssertionError as exc:
+            print(f"\n❌ FAIL: {test_name}: {exc}\n")
+            results.append((test_name, False))
 
     print("=" * 70)
     print("SUMMARY")

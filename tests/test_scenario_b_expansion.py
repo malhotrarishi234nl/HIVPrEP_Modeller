@@ -83,7 +83,8 @@ class TestT1ArmBuilder:
     """
 
     @pytest.fixture(scope="class")
-    def runner(self):
+    @classmethod
+    def runner(cls):
         """Construct a MultiScenarioRunner (no sim run)."""
         from run_scenarios import MultiScenarioRunner
         return MultiScenarioRunner(
@@ -93,7 +94,8 @@ class TestT1ArmBuilder:
         )
 
     @pytest.fixture(scope="class")
-    def expansion_scenario(self):
+    @classmethod
+    def expansion_scenario(cls):
         return _expansion_scenario()
 
     # T1a: oral_prep arm
@@ -220,7 +222,8 @@ class TestT2EnginePrEPTargeting:
     """
 
     @pytest.fixture(scope="class")
-    def runner(self):
+    @classmethod
+    def runner(cls):
         from run_scenarios import MultiScenarioRunner
         return MultiScenarioRunner(
             config_path=CONFIG_PATH,

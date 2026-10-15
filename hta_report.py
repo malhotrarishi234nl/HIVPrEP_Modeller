@@ -4123,6 +4123,9 @@ class HTAReportWriter:
         if baseline_df is None:
             ws.cell(row=1, column=1).value = "Baseline CSV not found."
             return
+        # Baseline CSVs are wide and may arrive with a fragmented pandas block
+        # layout.  Consolidate once before adding the derived year column.
+        baseline_df = baseline_df.copy()
 
         # V12.5.2: fixed two aggregation bugs —
         #   (1) round() misassigned Q4 (t=YYYY.75) to next year; use floor() instead.

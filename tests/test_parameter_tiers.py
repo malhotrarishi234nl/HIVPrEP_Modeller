@@ -62,10 +62,9 @@ def test_schema_compliance():
         print(f"\nFAIL: {len(violations)} schema violation(s) found:")
         for v in violations:
             print(f"  {v}")
-        return False
+    assert not violations, "\n".join(violations)
 
     print("PASS: validate_tier_schema() — no violations")
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +108,8 @@ def test_tier_counts():
     else:
         print(f"  PASS: uncertain count={len(uncertain)} (>= {MIN_UNCERTAIN})")
 
-    if ok:
-        print("PASS: Tier counts meet minimums")
-    return ok
+    assert ok, "Tier counts did not meet minimums"
+    print("PASS: Tier counts meet minimums")
 
 
 # ---------------------------------------------------------------------------
@@ -183,10 +181,9 @@ def test_known_paths():
         print(f"  estimated paths: {sorted(estimated_paths)}")
         print(f"  uncertain paths: {sorted(uncertain_paths)}")
         print(f"  fixed paths:     {sorted(fixed_paths)}")
-        return False
+    assert not failures, "\n".join(failures)
 
     print("PASS: get_params_by_tier known-path assertions")
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -231,10 +228,9 @@ def test_distribution_mean_matches_value():
         print(f"\nFAIL: {len(failures)} distribution mean mismatch(es):")
         for f in failures:
             print(f"  {f}")
-        return False
+    assert not failures, "\n".join(failures)
 
     print(f"PASS: distribution.mean matches value for all {checked} Tier 3 params")
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -286,10 +282,9 @@ def test_bounds_valid():
         print(f"\nFAIL: {len(failures)} bounds violation(s):")
         for f in failures:
             print(f"  {f}")
-        return False
+    assert not failures, "\n".join(failures)
 
     print(f"PASS: Bounds valid for all {checked} annotated parameters with bounds")
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -349,10 +344,9 @@ def test_no_tier_on_structural_params():
         print(f"\nFAIL: {len(failures)} structural param(s) incorrectly annotated with 'tier':")
         for f in failures:
             print(f"  {f}")
-        return False
+    assert not failures, "\n".join(failures)
 
     print(f"PASS: No tier annotation on structural/control parameters")
-    return True
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +386,7 @@ def test_shape_param_presence_beta():
     else:
         print(f"FAIL: test_shape_param_presence_beta — expected violation containing:\n"
               f"  '{target}'\n  Got: {violations}")
-    return ok
+    assert ok, f"Expected {target!r}; got {violations}"
 
 
 def test_shape_param_presence_lognormal():
@@ -409,7 +403,7 @@ def test_shape_param_presence_lognormal():
     else:
         print(f"FAIL: test_shape_param_presence_lognormal — expected violation containing:\n"
               f"  '{target}'\n  Got: {violations}")
-    return ok
+    assert ok, f"Expected {target!r}; got {violations}"
 
 
 def test_shape_param_presence_gamma():
@@ -427,7 +421,7 @@ def test_shape_param_presence_gamma():
     else:
         print(f"FAIL: test_shape_param_presence_gamma — expected 2 shape-param violations, "
               f"got {len(shape_violations)}: {shape_violations}")
-    return ok
+    assert ok, f"Expected 2 shape-param violations; got {shape_violations}"
 
 
 def test_shape_param_presence_normal():
@@ -444,7 +438,7 @@ def test_shape_param_presence_normal():
     else:
         print(f"FAIL: test_shape_param_presence_normal — expected violation containing:\n"
               f"  '{target}'\n  Got: {violations}")
-    return ok
+    assert ok, f"Expected {target!r}; got {violations}"
 
 
 def test_shape_param_uniform_no_required():
@@ -461,7 +455,7 @@ def test_shape_param_uniform_no_required():
         print("PASS: test_shape_param_uniform_no_required")
     else:
         print(f"FAIL: test_shape_param_uniform_no_required — unexpected shape violations: {shape_violations}")
-    return ok
+    assert ok, f"Unexpected shape violations: {shape_violations}"
 
 
 def test_shape_param_invalid_range_alpha():
@@ -482,7 +476,7 @@ def test_shape_param_invalid_range_alpha():
     else:
         print(f"FAIL: test_shape_param_invalid_range_alpha — expected range violation for alpha.\n"
               f"  Got: {violations}")
-    return ok
+    assert ok, f"Expected alpha range violation; got {violations}"
 
 
 def test_shape_param_invalid_range_sigma():
@@ -503,7 +497,7 @@ def test_shape_param_invalid_range_sigma():
     else:
         print(f"FAIL: test_shape_param_invalid_range_sigma — expected range violation for sigma.\n"
               f"  Got: {violations}")
-    return ok
+    assert ok, f"Expected sigma range violation; got {violations}"
 
 
 def test_live_config_shape_params_valid():
@@ -527,7 +521,7 @@ def test_live_config_shape_params_valid():
         print(f"FAIL: test_live_config_shape_params_valid — {len(shape_violations)} violation(s):")
         for v in shape_violations:
             print(f"  {v}")
-    return ok
+    assert ok, "\n".join(shape_violations)
 
 
 # ---------------------------------------------------------------------------
@@ -535,22 +529,31 @@ def test_live_config_shape_params_valid():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    checks = [
+        ("schema_compliance", test_schema_compliance),
+        ("tier_counts", test_tier_counts),
+        ("known_paths", test_known_paths),
+        ("distribution_mean_matches", test_distribution_mean_matches_value),
+        ("bounds_valid", test_bounds_valid),
+        ("no_tier_on_structural_params", test_no_tier_on_structural_params),
+        # BACKLOG-19: shape parameter validation
+        ("shape_param_presence_beta", test_shape_param_presence_beta),
+        ("shape_param_presence_lognormal", test_shape_param_presence_lognormal),
+        ("shape_param_presence_gamma", test_shape_param_presence_gamma),
+        ("shape_param_presence_normal", test_shape_param_presence_normal),
+        ("shape_param_uniform_no_required", test_shape_param_uniform_no_required),
+        ("shape_param_invalid_range_alpha", test_shape_param_invalid_range_alpha),
+        ("shape_param_invalid_range_sigma", test_shape_param_invalid_range_sigma),
+        ("live_config_shape_params_valid", test_live_config_shape_params_valid),
+    ]
     results = []
-    results.append(("schema_compliance",              test_schema_compliance()))
-    results.append(("tier_counts",                    test_tier_counts()))
-    results.append(("known_paths",                    test_known_paths()))
-    results.append(("distribution_mean_matches",      test_distribution_mean_matches_value()))
-    results.append(("bounds_valid",                   test_bounds_valid()))
-    results.append(("no_tier_on_structural_params",   test_no_tier_on_structural_params()))
-    # BACKLOG-19: shape parameter validation
-    results.append(("shape_param_presence_beta",      test_shape_param_presence_beta()))
-    results.append(("shape_param_presence_lognormal", test_shape_param_presence_lognormal()))
-    results.append(("shape_param_presence_gamma",     test_shape_param_presence_gamma()))
-    results.append(("shape_param_presence_normal",    test_shape_param_presence_normal()))
-    results.append(("shape_param_uniform_no_required",test_shape_param_uniform_no_required()))
-    results.append(("shape_param_invalid_range_alpha",test_shape_param_invalid_range_alpha()))
-    results.append(("shape_param_invalid_range_sigma",test_shape_param_invalid_range_sigma()))
-    results.append(("live_config_shape_params_valid", test_live_config_shape_params_valid()))
+    for name, check in checks:
+        try:
+            check()
+            results.append((name, True))
+        except AssertionError as exc:
+            print(f"FAIL: {name}: {exc}")
+            results.append((name, False))
 
     print("\n" + "=" * 60)
     passed = sum(1 for _, r in results if r)

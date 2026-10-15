@@ -133,7 +133,6 @@ def test_disabled_no_change():
     assert int(np.sum(eng.state.population)) == pop_before
     assert eng.demography.childhood.get_total() == child_before
     print("  ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,7 +163,6 @@ def test_year_specific_lookup():
     assert net_neg == -9230.0
 
     print("  ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,7 +181,6 @@ def test_rate_mode():
     assert abs(got - expected_annual) < 1.0, f"Expected ~{expected_annual:.0f}, got {got}"
     print(f"  Rate 0.3%/yr on {total_pop:,} → {got:,.0f}/yr")
     print("  ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -199,7 +196,6 @@ def test_flat_mode():
         got = m._get_annual_net(eng.state.population, eng.demography.childhood, yr)
         assert got == 44000.0, f"Flat 44000 expected at {yr}, got {got}"
     print("  ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +227,6 @@ def test_negative_migration_no_negatives():
     assert np.all(eng.demography.childhood.population >= 0), "Childhood pool has negative cells!"
 
     print(f"  Removed {abs(net):,} people. No negative cells. ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -255,7 +250,6 @@ def test_mirror_profile_proportional():
     assert "5-9"   in all_labels, "Childhood bins should be in mirror weights"
 
     print(f"  {len(weights)} bins in mirror weights, sum = {total_w:.6f} ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -287,7 +281,6 @@ def test_working_age_profile_bounds():
     total_w = sum(v["female"] + v["male"] for v in weights.values())
     assert abs(total_w - 1.0) < 1e-9
     print(f"  Included bins: {sorted(weights.keys())} ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -318,7 +311,6 @@ def test_custom_profile_normalised():
     step_expected = int(round(10000 * eng.time.years_per_step))
     assert abs(net - step_expected) <= 5, f"Net change {net} far from expected {step_expected}"
     print(f"  Custom weights sum=1.0, +{net} people added ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -353,7 +345,6 @@ def test_custom_invalid_bin_raises():
         raised = True
     assert raised, "Expected MigrationConfigError for invalid bin"
     print("  ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -390,7 +381,6 @@ def test_entrants_epidemiological_state():
         f"Non-susceptible/baseline count mismatch: {other} vs HIV before {hiv_before}"
     )
     print("  ✓ PASS: No HIV imported via migration")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -433,7 +423,6 @@ def test_migrant_hiv_configurable_fallback_window():
     assert eng.migration._get_step_migrant_hiv_requested(250, 2017.0, 0.25) == 81
     assert eng.migration._get_step_migrant_hiv_requested(250, 2018.0, 0.25) == 0
     print("  ✓ PASS: fallback applies only to configured inclusive year range")
-    return True
 
 
 def test_migrant_hiv_positive_migration_mass_balance():
@@ -468,7 +457,6 @@ def test_migrant_hiv_positive_migration_mass_balance():
         == stats["migrant_hiv_entries"]
     )
     print("  ✓ PASS: HIV+ migrant entries do not double-count population")
-    return True
 
 
 def test_migrant_hiv_negative_migration_no_imports():
@@ -488,7 +476,6 @@ def test_migrant_hiv_negative_migration_no_imports():
     assert stats["migrant_hiv_requested_entries"] == 0
     assert stats["migrant_hiv_entries"] == 0
     print("  ✓ PASS: no migrant HIV entries on net-negative timestep")
-    return True
 
 
 def test_migrant_hiv_cap_and_backcast_window():
@@ -520,7 +507,6 @@ def test_migrant_hiv_cap_and_backcast_window():
     assert stats["migrant_hiv_cap_shortfall"] == 248
     assert hiv_after - hiv_before == 2
     print("  ✓ PASS: cap preserves net migration mass balance")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -560,7 +546,6 @@ def test_childhood_routing():
         f"Conservation: child_gain({child_gain}) + adult_gain({adult_gain}) != net({net})"
     )
     print(f"  +{child_gain:,} children, +{adult_gain:,} adults, net={net:,} ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -601,7 +586,6 @@ def test_msm_proportion():
         print(f"  p_msm={expected_p_msm:.3f}, actual={actual_p_msm:.3f} ✓ PASS")
     else:
         print("  (no male entrants in working-age bands — skipping proportion check)")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -633,7 +617,6 @@ def test_negative_cap_warning():
     assert np.all(eng.state.population >= 0)
     assert np.all(eng.demography.childhood.population >= 0)
     print(f"  Cap warning fired, net={net:,}, no negative cells ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -660,7 +643,6 @@ def test_conservation():
             f"flat={flat_val}: returned net={net}, actual delta={actual_delta}"
         )
     print("  ✓ PASS: returned value matches actual population Δ for +/- migration")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -691,7 +673,6 @@ def test_full_simulation_mass_balance():
     print(f"  Cumulative net migration: {total_migration:,}")
     assert total_migration is not None and total_migration > 0
     print("  ✓ PASS: simulation completed, mass-balance maintained")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -740,7 +721,6 @@ def test_hiv_prevalence_dilution_only():
         f"Prevalence should drop after adding susceptibles: {prev_before:.4f} → {prev_after:.4f}"
     )
     print(f"  Prevalence: {prev_before:.4f} → {prev_after:.4f} (diluted, no import) ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -760,7 +740,6 @@ def test_distribute_int_exact_sum():
         assert np.all(det >= 0) and np.all(stoch >= 0)
 
     print("  ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -794,7 +773,6 @@ def test_negative_lrm_exact_small():
     assert np.all(eng.state.population >= 0), "Negative tensor cells after add-back"
     assert np.all(eng.demography.childhood.population >= 0), "Negative childhood cells"
     print(f"  step_target={step_target}, actual_removed={actual_removed}, overshoot=0 ✓ PASS")
-    return True
 
 
 def test_negative_lrm_exact_normal():
@@ -823,7 +801,6 @@ def test_negative_lrm_exact_normal():
     )
     assert np.all(eng.state.population >= 0), "Negative tensor cells after add-back"
     print(f"  step_target={step_target}, actual_removed={actual_removed}, overshoot=0 ✓ PASS")
-    return True
 
 
 def test_negative_lrm_positive_unaffected():
@@ -850,7 +827,6 @@ def test_negative_lrm_positive_unaffected():
         f"Positive migration: expected {step_target}, got {actual_added}"
     )
     print(f"  step_target={step_target}, actual_added={actual_added}, discrepancy=0 ✓ PASS")
-    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

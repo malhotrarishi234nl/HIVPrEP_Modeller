@@ -598,7 +598,7 @@ def test_baseline_summary_row_count(report_path, hta_config, baseline_csv):
 
     import math
 
-    df = pd.read_csv(baseline_csv)
+    df = pd.read_csv(baseline_csv).copy()
     df["year_int"] = df["year"].apply(lambda y: int(math.floor(y)))
     expected = len(df[df["year_int"].isin(summary_years)]["year_int"].unique())
 
