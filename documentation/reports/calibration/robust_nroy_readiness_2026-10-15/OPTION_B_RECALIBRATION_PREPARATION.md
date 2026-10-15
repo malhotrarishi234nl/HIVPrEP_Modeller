@@ -87,17 +87,31 @@ Preparation has no upstream stage artifact. Smoke binds both the preparation man
 verified `artifacts.json`. Search binds the preparation and smoke manifests and both verified
 artifact indexes (plus the smoke result), and requires `--measured-benchmark` and
 `--pricing-approval`. The benchmark uses
-`coupled_calibration_measured_benchmark/1.0.0`, is `FINAL`, names the exact plan, preparation and
-smoke hashes, machine profile, sample size and measured seconds per trajectory. Pricing uses
-`coupled_calibration_pricing_approval/1.1.0`, is `APPROVED`, and binds the exact plan, benchmark,
+`coupled_calibration_measured_benchmark/1.1.0`, is `FINAL`, names the exact plan, preparation and
+smoke hashes, machine profile, sample size, expected seconds per trajectory and a measured
+upper-bound seconds per trajectory. Pricing uses
+`coupled_calibration_pricing_approval/1.2.0`, is `APPROVED`, and binds the exact plan, benchmark,
 machine profile, CLI worker count, total authorized discovery trajectories, wall-time cap, and a
 hash-verified `robust_nroy_pricing_source/1.0.0`. The source supplies the currency or credit unit,
 worker resource unit, resource-hour conversion, rate and provenance. The runner recomputes expected
-runtime, resource-seconds, expected cost and cap-derived cost from the measured timing and exact
-execution scale; every authored value must match, arithmetic must remain finite, expected runtime
-must fit the plan wall cap, and expected cost must not exceed the owner-approved ceiling. The
-pricing-approval file hash is itself an upstream prerequisite of the search or resume grant, so a
-worker, scale, timing, rate or ceiling change requires a new execution specification and grant.
+runtime, expected resource-seconds and expected cost separately from the conservative authorized
+maximum. That maximum prices the full wall-cap resource time plus one upper-bound in-flight
+candidate bundle per worker, with all five discovery trajectories in each bundle priced at the
+benchmark upper bound. Every authored value must match, arithmetic must remain finite, expected
+runtime must fit the plan wall cap, and the conservative authorized maximum cost—not merely the
+expected cost—must not exceed the owner-approved ceiling.
+
+Pricing also binds the path and hash of a strict
+`coupled_calibration_execution_profile/1.0.0`. A local profile must exactly match the live hostname,
+operating system, architecture, CPU worker capacity and requested workers, and cannot be reused
+inside Slurm. A Slurm profile requires a live job and exact cluster, partition, CPUs per task and
+requested workers. The pricing-approval and execution-profile hashes are both upstream
+prerequisites of the search or resume grant, so a machine, worker, scale, timing, rate or ceiling
+change requires a new execution specification and grant.
+
+The runner wall cap stops new dispatch; already in-flight trajectories may finish. The conservative
+ceiling explicitly includes that bounded tail. A scheduler hard time or spend limit remains an
+external launch precondition where applicable and is not created by this Python runner.
 
 Resume additionally binds the verified partial-search manifest and `artifacts.json`, plus the
 exact search-context hash and a canonical bundle hash over dispatch, result and proposal journals.

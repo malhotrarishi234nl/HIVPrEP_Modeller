@@ -26,6 +26,7 @@ import io
 import json
 import math
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -56,9 +57,10 @@ if str(ROOT) not in sys.path:
 DEFAULT_PLAN = ROOT / "configs/coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json"
 STAGE_AUTHORIZATION_SCHEMA = "coupled_calibration_stage_authorization/1.2.0"
 STAGE_AUTHORIZED = "AUTHORIZED"
-MEASURED_BENCHMARK_SCHEMA = "coupled_calibration_measured_benchmark/1.0.0"
-PRICING_APPROVAL_SCHEMA = "coupled_calibration_pricing_approval/1.1.0"
+MEASURED_BENCHMARK_SCHEMA = "coupled_calibration_measured_benchmark/1.1.0"
+PRICING_APPROVAL_SCHEMA = "coupled_calibration_pricing_approval/1.2.0"
 PRICING_SOURCE_SCHEMA = "robust_nroy_pricing_source/1.0.0"
+EXECUTION_PROFILE_SCHEMA = "coupled_calibration_execution_profile/1.0.0"
 SEARCH_COST_FORMULA = "trajectory_seconds_to_resource_hour/v1"
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -250,8 +252,6 @@ def module_hashes() -> dict[str, str]:
 
 
 def environment() -> dict:
-    import platform  # noqa: PLC0415
-
     git: dict = {}
     try:
         git["commit"] = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
@@ -1506,6 +1506,92 @@ def resume_integrity_binding(search_dir: Path) -> dict:
     }
 
 
+def validate_execution_profile(
+    path: Path,
+    *,
+    expected_sha256: str,
+    machine_profile: str,
+    workers: int,
+) -> str:
+    """Match the priced execution profile to the live local or Slurm runtime."""
+    path = Path(path)
+    expected_sha256 = _require_sha256(
+        expected_sha256, what="execution profile sha256"
+    )
+    actual_sha256 = ccs.sha256_file(path)
+    if actual_sha256 != expected_sha256:
+        raise ContractError("execution profile hash is stale")
+    profile = strict_json_object(path, what="execution profile")
+    common = {
+        "schema", "status", "profile_kind", "machine_profile", "workers",
+        "generated_utc",
+    }
+    if profile.get("schema") != EXECUTION_PROFILE_SCHEMA \
+            or profile.get("status") != "FINAL":
+        raise ContractError("execution profile is not FINAL on the current schema")
+    if profile.get("machine_profile") != machine_profile:
+        raise ContractError("execution profile machine profile differs from the benchmark")
+    if type(profile.get("workers")) is not int or profile["workers"] != workers:
+        raise ContractError("execution profile workers differ from this execution")
+    _require_utc(profile.get("generated_utc"), what="execution profile generated_utc")
+
+    kind = profile.get("profile_kind")
+    if kind == "local":
+        required = common | {
+            "hostname", "operating_system", "architecture", "worker_capacity",
+        }
+        if set(profile) != required:
+            raise ContractError("local execution profile fields differ from the exact schema")
+        if os.environ.get("SLURM_JOB_ID"):
+            raise ContractError("local execution profile cannot be used inside a Slurm job")
+        for field in ("hostname", "operating_system", "architecture"):
+            if not isinstance(profile[field], str) or not profile[field].strip():
+                raise ContractError(f"local execution profile {field} must be non-empty")
+        if type(profile["worker_capacity"]) is not int \
+                or profile["worker_capacity"] < 1:
+            raise ContractError("local execution profile worker_capacity must be positive")
+        capacity = os.cpu_count()
+        live = {
+            "hostname": platform.node(),
+            "operating_system": platform.system(),
+            "architecture": platform.machine(),
+            "worker_capacity": capacity,
+        }
+        if capacity is None or workers > capacity:
+            raise ContractError("live local worker capacity is unavailable or insufficient")
+        if any(profile.get(key) != value for key, value in live.items()):
+            raise ContractError("local execution profile does not match the live machine")
+    elif kind == "slurm":
+        required = common | {"cluster", "partition", "cpus_per_task"}
+        if set(profile) != required:
+            raise ContractError("Slurm execution profile fields differ from the exact schema")
+        if not os.environ.get("SLURM_JOB_ID"):
+            raise ContractError("Slurm execution profile requires a live SLURM job")
+        cpus_text = os.environ.get("SLURM_CPUS_PER_TASK", "")
+        try:
+            live_cpus = int(cpus_text)
+        except ValueError as exc:
+            raise ContractError("live SLURM_CPUS_PER_TASK is missing or invalid") from exc
+        if type(profile.get("cpus_per_task")) is not int \
+                or profile["cpus_per_task"] < 1:
+            raise ContractError("Slurm execution profile cpus_per_task must be positive")
+        for field in ("cluster", "partition"):
+            if not isinstance(profile.get(field), str) or not profile[field].strip():
+                raise ContractError(f"Slurm execution profile {field} must be non-empty")
+        live = {
+            "cluster": os.environ.get("SLURM_CLUSTER_NAME"),
+            "partition": os.environ.get("SLURM_JOB_PARTITION"),
+            "cpus_per_task": live_cpus,
+        }
+        if any(profile.get(key) != value for key, value in live.items()):
+            raise ContractError("Slurm execution profile does not match the live job")
+        if workers > live_cpus:
+            raise ContractError("Slurm execution workers exceed live cpus-per-task")
+    else:
+        raise ContractError("execution profile kind must be local or slurm")
+    return actual_sha256
+
+
 def validate_search_evidence(
     measured_benchmark_path: Path | None,
     pricing_approval_path: Path | None,
@@ -1515,6 +1601,7 @@ def validate_search_evidence(
     smoke_binding: dict[str, str],
     workers: int,
     total_authorized_trajectories: int,
+    trajectories_per_in_flight_worker: int,
     wall_time_cap_seconds: float,
 ) -> dict[str, str]:
     """Require exact measured timing and owner-approved pricing before search spend."""
@@ -1539,7 +1626,7 @@ def validate_search_evidence(
         "schema", "status", "plan_sha256", "prepared_manifest_sha256",
         "prepared_artifacts_sha256", "smoke_manifest_sha256", "smoke_artifacts_sha256",
         "machine_profile", "measured_utc", "sample_trajectories",
-        "seconds_per_trajectory",
+        "seconds_per_trajectory", "upper_bound_seconds_per_trajectory",
     }
     if set(benchmark) != required_benchmark:
         raise ContractError("measured benchmark fields differ from the exact schema")
@@ -1564,6 +1651,12 @@ def validate_search_evidence(
         benchmark["seconds_per_trajectory"],
         "measured benchmark seconds_per_trajectory",
     )
+    upper_bound_seconds = positive_finite(
+        benchmark["upper_bound_seconds_per_trajectory"],
+        "measured benchmark upper_bound_seconds_per_trajectory",
+    )
+    if upper_bound_seconds < seconds:
+        raise ContractError("benchmark upper-bound timing is below its expected timing")
     benchmark_sha256 = ccs.sha256_file(benchmark_path)
 
     if type(workers) is not int or not 1 <= workers <= ABSOLUTE_HPC_WORKER_CAP:
@@ -1571,6 +1664,9 @@ def validate_search_evidence(
     if type(total_authorized_trajectories) is not int \
             or total_authorized_trajectories < 1:
         raise ContractError("total authorized trajectory count must be a positive integer")
+    if type(trajectories_per_in_flight_worker) is not int \
+            or trajectories_per_in_flight_worker < 1:
+        raise ContractError("in-flight trajectories per worker must be a positive integer")
     wall_time_cap_value = positive_finite(
         wall_time_cap_seconds, "execution wall-time cap"
     )
@@ -1582,9 +1678,14 @@ def validate_search_evidence(
         "schema", "status", "plan_sha256", "measured_benchmark_sha256",
         "machine_profile", "worker_count", "total_authorized_trajectories",
         "wall_time_cap_seconds", "pricing_source_path", "pricing_source_sha256",
+        "execution_profile_path", "execution_profile_sha256",
         "cost_formula", "cost_inputs", "expected_runtime_seconds",
         "expected_resource_seconds", "expected_cost", "wall_cap_resource_seconds",
-        "wall_cap_cost", "approved_cost_ceiling", "approved_by", "approved_utc",
+        "wall_cap_cost", "max_in_flight_workers", "in_flight_tail_resource_seconds",
+        "trajectories_per_in_flight_worker",
+        "conservative_authorized_max_resource_seconds",
+        "conservative_authorized_max_cost", "approved_cost_ceiling", "approved_by",
+        "approved_utc",
     }
     if set(pricing) != required_pricing:
         raise ContractError("pricing approval fields differ from the exact schema")
@@ -1610,6 +1711,16 @@ def validate_search_evidence(
     if not isinstance(pricing["approved_by"], str) or not pricing["approved_by"].strip():
         raise ContractError("pricing approval approved_by must be non-empty")
     _require_utc(pricing["approved_utc"], what="pricing approval approved_utc")
+
+    execution_profile_path = _referenced_evidence_path(
+        pricing_path, pricing["execution_profile_path"], what="execution profile"
+    )
+    execution_profile_sha256 = validate_execution_profile(
+        execution_profile_path,
+        expected_sha256=pricing["execution_profile_sha256"],
+        machine_profile=benchmark["machine_profile"],
+        workers=workers,
+    )
 
     source_sha256 = _require_sha256(
         pricing["pricing_source_sha256"], what="pricing source sha256"
@@ -1662,17 +1773,39 @@ def validate_search_evidence(
     expected_cost = expected_resource_seconds / seconds_per_unit * unit_price
     wall_cap_resource_seconds = wall_time_cap_value * workers
     wall_cap_cost = wall_cap_resource_seconds / seconds_per_unit * unit_price
+    max_in_flight_workers = workers
+    in_flight_tail_resource_seconds = (
+        upper_bound_seconds * max_in_flight_workers * trajectories_per_in_flight_worker
+    )
+    conservative_max_resource_seconds = (
+        wall_cap_resource_seconds + in_flight_tail_resource_seconds
+    )
+    conservative_max_cost = (
+        conservative_max_resource_seconds / seconds_per_unit * unit_price
+    )
     derived = {
         "expected_runtime_seconds": expected_runtime,
         "expected_resource_seconds": expected_resource_seconds,
         "expected_cost": expected_cost,
         "wall_cap_resource_seconds": wall_cap_resource_seconds,
         "wall_cap_cost": wall_cap_cost,
+        "in_flight_tail_resource_seconds": in_flight_tail_resource_seconds,
+        "conservative_authorized_max_resource_seconds": conservative_max_resource_seconds,
+        "conservative_authorized_max_cost": conservative_max_cost,
     }
     if not all(math.isfinite(value) and value > 0 for value in derived.values()):
         raise ContractError("derived execution runtime/cost is not positive finite")
     if expected_runtime > wall_time_cap_value:
         raise ContractError("expected runtime exceeds the authorized wall-time cap")
+    if type(pricing["max_in_flight_workers"]) is not int \
+            or pricing["max_in_flight_workers"] != max_in_flight_workers:
+        raise ContractError("pricing approval max in-flight workers differs from execution")
+    if type(pricing["trajectories_per_in_flight_worker"]) is not int \
+            or pricing["trajectories_per_in_flight_worker"] \
+            != trajectories_per_in_flight_worker:
+        raise ContractError(
+            "pricing approval in-flight trajectories per worker differs from execution"
+        )
     for field, expected in derived.items():
         actual = positive_finite(pricing[field], f"pricing approval {field}")
         if not math.isclose(actual, expected, rel_tol=1e-12, abs_tol=0.0):
@@ -1680,11 +1813,14 @@ def validate_search_evidence(
     ceiling = positive_finite(
         pricing["approved_cost_ceiling"], "pricing approval approved_cost_ceiling"
     )
-    if expected_cost > ceiling:
-        raise ContractError("derived expected cost exceeds the approved cost ceiling")
+    if conservative_max_cost > ceiling:
+        raise ContractError(
+            "conservative authorized maximum cost exceeds the approved cost ceiling"
+        )
     return {
         "measured_benchmark": benchmark_sha256,
         "pricing_approval": ccs.sha256_file(pricing_path),
+        "execution_profile": execution_profile_sha256,
     }
 
 
@@ -2124,6 +2260,7 @@ def run_search(
         smoke_binding=smoke_binding,
         workers=workers,
         total_authorized_trajectories=total_authorized_trajectories,
+        trajectories_per_in_flight_worker=len(prepared["contract"].discovery_seeds),
         wall_time_cap_seconds=wall_time_cap_value,
     )
     upstream_sha256 = {**prepared_binding, **smoke_binding, **search_evidence}

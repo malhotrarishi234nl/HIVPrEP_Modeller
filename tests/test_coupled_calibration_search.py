@@ -235,10 +235,15 @@ def _search_evidence(root: Path, plan_path: Path, prepared: Path,
                      smoke_dir: Path, *, workers: int = 1, n_batches: int = 1,
                      wall_time_cap: float = ccs.WALL_TIME_CAP_SECONDS,
                      seconds_per_trajectory: float = 1.0,
+                     upper_bound_seconds_per_trajectory: float | None = None,
                      approved_cost_ceiling: float | None = None) -> tuple[Path, Path]:
     prepared_binding = rcc.artifact_binding(prepared, "prepared")
     smoke_binding = rcc.artifact_binding(
         smoke_dir, "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    upper_bound_seconds = (
+        seconds_per_trajectory if upper_bound_seconds_per_trajectory is None
+        else upper_bound_seconds_per_trajectory
     )
     benchmark = _write_json(root / "measured_benchmark.json", {
         "schema": rcc.MEASURED_BENCHMARK_SCHEMA,
@@ -252,6 +257,7 @@ def _search_evidence(root: Path, plan_path: Path, prepared: Path,
         "measured_utc": "2026-10-15T00:00:00Z",
         "sample_trajectories": 6,
         "seconds_per_trajectory": seconds_per_trajectory,
+        "upper_bound_seconds_per_trajectory": upper_bound_seconds,
     })
     pricing_source = _write_json(root / "pricing_source.json", {
         "schema": rcc.PRICING_SOURCE_SCHEMA,
@@ -265,17 +271,33 @@ def _search_evidence(root: Path, plan_path: Path, prepared: Path,
         "source_reference": "pytest exact rate fixture",
         "effective_utc": "2026-10-15T00:00:00Z",
     })
+    execution_profile = _write_json(root / "execution_profile.json", {
+        "schema": rcc.EXECUTION_PROFILE_SCHEMA,
+        "status": "FINAL",
+        "profile_kind": "local",
+        "machine_profile": "pytest-serial",
+        "workers": workers,
+        "generated_utc": "2026-10-15T00:00:00Z",
+        "hostname": rcc.platform.node(),
+        "operating_system": rcc.platform.system(),
+        "architecture": rcc.platform.machine(),
+        "worker_capacity": rcc.os.cpu_count(),
+    })
     plan = rcc.RunnerPlan(rcc.strict_json_object(plan_path, what="runnable plan"))
     initial = rcc.strict_json_object(
         prepared / "initial_archive.json", what="initial archive"
     )["vectors"]
     trajectories = (len(initial) + n_batches * ccs.BATCH_SIZE) * len(plan.discovery_seeds)
+    trajectories_per_worker = len(plan.discovery_seeds)
     expected_runtime = trajectories * seconds_per_trajectory / workers
     expected_resource_seconds = expected_runtime * workers
     expected_cost = expected_resource_seconds / 3600.0
     wall_cap_resource_seconds = wall_time_cap * workers
     wall_cap_cost = wall_cap_resource_seconds / 3600.0
-    ceiling = (max(1.0, expected_cost * 2.0) if approved_cost_ceiling is None
+    tail_resource_seconds = upper_bound_seconds * workers * trajectories_per_worker
+    conservative_resource_seconds = wall_cap_resource_seconds + tail_resource_seconds
+    conservative_cost = conservative_resource_seconds / 3600.0
+    ceiling = (max(1.0, conservative_cost * 2.0) if approved_cost_ceiling is None
                else approved_cost_ceiling)
     pricing = _write_json(root / "pricing_approval.json", {
         "schema": rcc.PRICING_APPROVAL_SCHEMA,
@@ -288,6 +310,8 @@ def _search_evidence(root: Path, plan_path: Path, prepared: Path,
         "wall_time_cap_seconds": wall_time_cap,
         "pricing_source_path": str(pricing_source),
         "pricing_source_sha256": ccs.sha256_file(pricing_source),
+        "execution_profile_path": str(execution_profile),
+        "execution_profile_sha256": ccs.sha256_file(execution_profile),
         "cost_formula": rcc.SEARCH_COST_FORMULA,
         "cost_inputs": {
             "currency_or_credit_unit": "test-credit",
@@ -301,6 +325,11 @@ def _search_evidence(root: Path, plan_path: Path, prepared: Path,
         "expected_cost": expected_cost,
         "wall_cap_resource_seconds": wall_cap_resource_seconds,
         "wall_cap_cost": wall_cap_cost,
+        "max_in_flight_workers": workers,
+        "trajectories_per_in_flight_worker": trajectories_per_worker,
+        "in_flight_tail_resource_seconds": tail_resource_seconds,
+        "conservative_authorized_max_resource_seconds": conservative_resource_seconds,
+        "conservative_authorized_max_cost": conservative_cost,
         "approved_cost_ceiling": ceiling,
         "approved_by": "pytest-owner",
         "approved_utc": "2026-10-15T00:00:00Z",
@@ -369,6 +398,7 @@ def small_search(tmp_path_factory):
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
             workers=1,
             total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
             wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
         search_auth = _stage_authorization(
@@ -750,6 +780,7 @@ def test_search_evidence_is_required_and_exactly_bound(small_search, tmp_path):
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
             workers=1,
             total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
             wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
     pricing = rcc.strict_json_object(small_search["pricing"], what="pricing")
@@ -762,6 +793,7 @@ def test_search_evidence_is_required_and_exactly_bound(small_search, tmp_path):
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
             workers=1,
             total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
             wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
 
@@ -778,6 +810,7 @@ def test_search_execution_spec_binds_cli_workers_and_exact_derived_cost(small_se
             plan_sha256=ccs.sha256_file(small_search["plan"]),
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
             workers=2, total_authorized_trajectories=trajectories,
+            trajectories_per_in_flight_worker=5,
             wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
 
@@ -795,12 +828,15 @@ def test_search_execution_spec_refuses_extreme_runtime_and_tiny_ceiling(
     smoke_binding = rcc.artifact_binding(
         small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
     )
-    with pytest.raises(ContractError, match="expected runtime exceeds|expected cost exceeds"):
+    with pytest.raises(
+        ContractError, match="expected runtime exceeds|conservative authorized maximum cost exceeds"
+    ):
         rcc.validate_search_evidence(
             benchmark, pricing, plan_sha256=ccs.sha256_file(small_search["plan"]),
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
             workers=1,
             total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
             wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
 
@@ -816,12 +852,106 @@ def test_search_execution_spec_refuses_cost_above_ceiling(small_search, tmp_path
     smoke_binding = rcc.artifact_binding(
         small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
     )
-    with pytest.raises(ContractError, match="expected cost exceeds"):
+    with pytest.raises(ContractError, match="conservative authorized maximum cost exceeds"):
         rcc.validate_search_evidence(
             benchmark, pricing, plan_sha256=ccs.sha256_file(small_search["plan"]),
             prepared_binding=prepared_binding, smoke_binding=smoke_binding,
             workers=1,
             total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
+        )
+
+
+def test_search_ceiling_covers_wall_cap_plus_1000x_in_flight_tail(
+        small_search, tmp_path):
+    evidence_root = tmp_path / "bounded_tail_execution_spec"
+    evidence_root.mkdir()
+    benchmark, pricing = _search_evidence(
+        evidence_root, small_search["plan"], small_search["prepared"],
+        small_search["smoke"], wall_time_cap=1.0,
+        seconds_per_trajectory=0.001,
+        upper_bound_seconds_per_trajectory=1.0,
+        approved_cost_ceiling=1.0 / 3600.0,
+    )
+    prepared_binding = rcc.artifact_binding(small_search["prepared"], "prepared")
+    smoke_binding = rcc.artifact_binding(
+        small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    with pytest.raises(ContractError, match="conservative authorized maximum cost exceeds"):
+        rcc.validate_search_evidence(
+            benchmark, pricing, plan_sha256=ccs.sha256_file(small_search["plan"]),
+            prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
+            wall_time_cap_seconds=1.0,
+        )
+
+
+def test_local_execution_profile_must_match_live_machine(small_search, tmp_path, monkeypatch):
+    monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+    pricing = rcc.strict_json_object(small_search["pricing"], what="pricing")
+    profile = rcc.strict_json_object(
+        Path(pricing["execution_profile_path"]), what="execution profile"
+    )
+    profile["hostname"] = profile["hostname"] + "-different"
+    profile_path = _write_json(tmp_path / "wrong_local_profile.json", profile)
+    pricing["execution_profile_path"] = str(profile_path)
+    pricing["execution_profile_sha256"] = ccs.sha256_file(profile_path)
+    pricing_path = _write_json(tmp_path / "wrong_local_pricing.json", pricing)
+    prepared_binding = rcc.artifact_binding(small_search["prepared"], "prepared")
+    smoke_binding = rcc.artifact_binding(
+        small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    with pytest.raises(ContractError, match="does not match the live machine"):
+        rcc.validate_search_evidence(
+            small_search["benchmark"], pricing_path,
+            plan_sha256=ccs.sha256_file(small_search["plan"]),
+            prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
+            wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
+        )
+
+
+def test_slurm_execution_profile_must_match_live_job(small_search, tmp_path, monkeypatch):
+    pricing = rcc.strict_json_object(small_search["pricing"], what="pricing")
+    local = rcc.strict_json_object(
+        Path(pricing["execution_profile_path"]), what="execution profile"
+    )
+    profile = {
+        "schema": rcc.EXECUTION_PROFILE_SCHEMA,
+        "status": "FINAL",
+        "profile_kind": "slurm",
+        "machine_profile": local["machine_profile"],
+        "workers": 1,
+        "generated_utc": "2026-10-15T00:00:00Z",
+        "cluster": "pytest-cluster",
+        "partition": "cpu",
+        "cpus_per_task": 1,
+    }
+    profile_path = _write_json(tmp_path / "slurm_profile.json", profile)
+    pricing["execution_profile_path"] = str(profile_path)
+    pricing["execution_profile_sha256"] = ccs.sha256_file(profile_path)
+    pricing_path = _write_json(tmp_path / "slurm_pricing.json", pricing)
+    monkeypatch.setenv("SLURM_JOB_ID", "123")
+    monkeypatch.setenv("SLURM_CLUSTER_NAME", "pytest-cluster")
+    monkeypatch.setenv("SLURM_JOB_PARTITION", "different-partition")
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "1")
+    prepared_binding = rcc.artifact_binding(small_search["prepared"], "prepared")
+    smoke_binding = rcc.artifact_binding(
+        small_search["smoke"], "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    with pytest.raises(ContractError, match="does not match the live job"):
+        rcc.validate_search_evidence(
+            small_search["benchmark"], pricing_path,
+            plan_sha256=ccs.sha256_file(small_search["plan"]),
+            prepared_binding=prepared_binding, smoke_binding=smoke_binding,
+            workers=1,
+            total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+            trajectories_per_in_flight_worker=5,
             wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
         )
 
@@ -1641,6 +1771,7 @@ def test_crash_and_resume_matches_an_uninterrupted_run(small_search, tmp_path, t
         smoke_binding=smoke_binding,
         workers=1,
         total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+        trajectories_per_in_flight_worker=5,
         wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
     )
     search_auth = _stage_authorization(
@@ -1749,6 +1880,7 @@ def test_wall_time_cap_marks_partial_and_writes_no_shortlist(small_search, tmp_p
         prepared_binding=prepared_binding, smoke_binding=smoke_binding,
         workers=1,
         total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+        trajectories_per_in_flight_worker=5,
         wall_time_cap_seconds=1.0,
     )
     search_auth = _stage_authorization(
@@ -2038,6 +2170,7 @@ def test_a_simulator_failure_marks_the_search_failed(small_search, tmp_path):
         prepared_binding=prepared_binding, smoke_binding=smoke_binding,
         workers=1,
         total_authorized_trajectories=(SMALL_ARCHIVE + ccs.BATCH_SIZE) * 5,
+        trajectories_per_in_flight_worker=5,
         wall_time_cap_seconds=ccs.WALL_TIME_CAP_SECONDS,
     )
     search_auth = _stage_authorization(
