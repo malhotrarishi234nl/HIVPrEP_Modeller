@@ -8,6 +8,8 @@
   `reports/calibration/robust_nroy_readiness_2026-10-15/GATED_EXECUTION_CHECKLIST.md`
 - Owner decisions, assumptions, and methods reading:
   `reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md`
+- Collaborator-facing M0/M1 commands and protected parameter boundary:
+  `reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md`
 - Repository/artifact handoff cleanup:
   `reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md`
 - Detailed remediation evidence:

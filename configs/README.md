@@ -7,9 +7,11 @@ Do not choose a configuration because its filename contains `final`,
 current operator guide/registry and run its preflight validator before any
 simulation.
 
-Collaborators should not edit Python. The supported handoff route will expose
-model choice and approved parameter changes through an ordinary CLI and
-reviewed JSON files.
+Collaborators should not edit Python. The prepared handoff route exposes model
+choice through `run_model.py` and parameter changes through reviewed JSON
+copies. Follow the
+[model operator guide](../documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md).
+The route is code-tested but is not a production approval.
 
 ## Current robust-NROY inputs
 
@@ -20,9 +22,11 @@ reviewed JSON files.
   source-workbook provenance.
 - `calib_space_v13_25_unordered_orientation_20260921.json`: proposed M0
   calibration space. M1 is generated as M0 plus one final coordinate.
-- A new shared stochastic M0/M1 base config is being prepared and tested. Until
-  it is registered here, no existing base config is the approved production
-  base merely by convention.
+- `V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json`:
+  prepared shared stochastic M0/M1 candidate. It defaults safely to standalone
+  M0 and is the proposal recorded in the unsigned robust-NROY plan. It is
+  **not production-ready** until it is selected, signed, hash-bound, and the
+  identity, pilot, scientific-review, and dispatch gates pass.
 
 ## Broad file classes
 
@@ -39,7 +43,7 @@ reviewed JSON files.
 
 ## Parameter editing boundary
 
-The collaborator package will distinguish:
+The collaborator route distinguishes:
 
 - **operator-editable:** approved scenario values, run seed, run count, and
   exposed M0/M1 parameter/profile selections;
@@ -50,6 +54,13 @@ The collaborator package will distinguish:
 
 Preflight must reject edits outside the supported surface instead of silently
 accepting or discarding them.
+
+`run_model.py` structurally validates the M1 symptom probability as a
+mathematical probability in `[0,1]`. That does not approve the entire interval
+for robust-NROY or any other scientific analysis. The current robust-NROY plan
+contains an **unsigned proposal** of `[0,0.5]`; it remains a decision until the
+owner reviews and signs it. Do not hard-code or infer a scientific range from
+the CLI's structural validation.
 
 ## Adding or promoting a config
 

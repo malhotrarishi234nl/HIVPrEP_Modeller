@@ -21,19 +21,21 @@ Start with:
 1. [documentation/INDEX.md](documentation/INDEX.md)
 2. [robust-NROY readiness package](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md)
 3. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
-4. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
-5. [configuration guide](configs/README.md)
+4. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
+5. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
+6. [configuration guide](configs/README.md)
 
 Older root-level task briefs and runbooks are retained for provenance. A dated
 document is not current authority unless the documentation index says so.
 
 ## Intended collaborator use
 
-Collaborators are research operators, not code maintainers. The supported
-handoff must let them select a reviewed configuration or parameter profile,
-validate it, run an approved workflow, and inspect results without editing
-Python. Until that operator workflow is completed and validated, this
-repository should not be handed over as a self-service production model.
+Collaborators are research operators, not code maintainers. `run_model.py`
+now provides the prepared parameter-focused M0/M1 route without Python edits;
+the [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
+gives the ordinary commands and protected-field boundary. This is a tested
+code interface, not production authorization: the shared config is unsigned
+and the identity, pilot, scientific-review, and dispatch gates remain open.
 
 ## Safety boundary
 
@@ -124,15 +126,21 @@ interpreting skipped tests or running artifact/engine lanes.
 ## Ordinary model use
 
 The simulator accepts an ordinary configuration and does not require
-calibration machinery. The canonical production candidate is being replaced by
-one stochastic config with an optional stage-structured diagnosis block:
+calibration machinery. The prepared, **unsigned and not production-ready**
+shared candidate is
+`configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json`.
+It is one stochastic config with an optional stage-structured diagnosis block:
 
 - M0: optional M1 mechanism disabled;
 - M1: mechanism explicitly enabled and the additional probability injected;
 - exact M1 `p=0` with routine hazard scale `1.0`: legacy-path identity boundary.
 
-Until the new config and operator commands are reviewed and registered, do not
-infer a canonical production config from filenames such as `model_final.json`.
+Use `run_model.py --validate-only` and the operator guide for code-level
+preflight. Do not infer scientific acceptance from that result or infer a
+canonical production config from filenames such as `model_final.json`. For M1,
+the CLI's structural probability check `[0,1]` is not the unsigned robust-NROY
+search-range proposal `[0,0.5]`; only a reviewed analysis contract may choose a
+scientific range.
 
 ## Results and artifacts
 

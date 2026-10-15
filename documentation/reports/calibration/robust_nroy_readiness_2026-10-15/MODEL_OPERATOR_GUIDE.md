@@ -49,6 +49,12 @@ probability:
 
 These commands do not construct the simulation engine.
 
+The CLI checks that `p` is a mathematical probability in `[0,1]`. That is a
+structural check, not approval of a scientific range. The robust-NROY plan
+currently carries an **unsigned** search-range proposal of `[0,0.5]`; use only
+the range approved for the analysis being run and do not treat CLI acceptance
+as scientific acceptance.
+
 ## Run after the analysis is authorized
 
 Choose a new, analysis-specific output directory:
