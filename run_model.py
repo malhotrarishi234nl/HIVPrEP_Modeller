@@ -100,7 +100,7 @@ class _NonstandardJSONConstant(ValueError):
 
 
 def _strict_json_loads(raw: str | bytes, *, label: str) -> Any:
-    """Parse RFC-style JSON, rejecting duplicate keys and NaN/Infinity.
+    """Parse authority JSON, rejecting duplicates and every non-finite value.
 
     Python's default decoder silently keeps the last duplicate object key and
     accepts non-standard numeric constants. Neither behaviour is safe for a
@@ -118,11 +118,18 @@ def _strict_json_loads(raw: str | bytes, *, label: str) -> Any:
     def strict_constant(value: str) -> Any:
         raise _NonstandardJSONConstant(value)
 
+    def finite_float(value: str) -> float:
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise _NonstandardJSONConstant(value)
+        return parsed
+
     try:
         return json.loads(
             raw,
             object_pairs_hook=unique_object,
             parse_constant=strict_constant,
+            parse_float=finite_float,
         )
     except _DuplicateJSONKey as exc:
         raise OperatorConfigError(

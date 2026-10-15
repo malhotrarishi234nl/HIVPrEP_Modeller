@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import fnmatch
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -90,6 +91,15 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON numeric literal is forbidden: {value}")
 
 
+def _parse_finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(
+            f"non-finite JSON numeric literal is forbidden: {value}"
+        )
+    return parsed
+
+
 def _unique_json_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -104,6 +114,7 @@ def strict_json_loads(text: str) -> Any:
         text,
         object_pairs_hook=_unique_json_object,
         parse_constant=_reject_json_constant,
+        parse_float=_parse_finite_json_float,
     )
 
 

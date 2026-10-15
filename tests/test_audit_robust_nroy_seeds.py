@@ -366,6 +366,7 @@ def test_unresolved_findings_remain_blockers_with_partial_review(tmp_path, monke
     '{"seed": NaN}',
     '{"seed": Infinity}',
     '{"seed": -Infinity}',
+    '{"seed": 1e999}',
 ])
 def test_strict_json_rejects_duplicate_keys_and_nonfinite_numbers(text):
     with pytest.raises(ValueError):

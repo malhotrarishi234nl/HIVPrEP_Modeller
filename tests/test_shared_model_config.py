@@ -139,7 +139,7 @@ def test_operator_config_rejects_top_level_and_nested_duplicate_keys(
         run_model.load_shared_config(path)
 
 
-@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity", "1e999"])
 def test_operator_config_rejects_nonstandard_json_constants(tmp_path, constant):
     path = tmp_path / "nonstandard.json"
     path.write_text('{"value": ' + constant + "}")
@@ -609,6 +609,7 @@ def test_analysis_run_sheet_fails_closed_on_every_bound_field(
         '{"schema": "one", "schema": "two"}',
         '{"nested": {"value": 1, "value": 2}}',
         '{"value": Infinity}',
+        '{"value": 1e999}',
     ],
 )
 def test_analysis_run_sheet_uses_strict_json_loading(tmp_path, raw):
