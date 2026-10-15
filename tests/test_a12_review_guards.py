@@ -296,7 +296,7 @@ def test_call_fingerprint_baseline_matches_the_audited_candidate_count():
     global block with independently conserved orientation blocks; TX-01 is
     reclassified in INVENTORY and the baseline contained 266 calls.
 
-    **269 from 2026-10-14.** The M1 mechanism
+    **271 from 2026-10-14.** The M1 mechanism
     ``SimulationEngineV3._step_stage_structured_diagnosis`` had been adding
     three call sites that this guard had been reporting as untriaged ever since
     it was written: ``int(np.sum(diagnosed))`` twice and
@@ -310,7 +310,10 @@ def test_call_fingerprint_baseline_matches_the_audited_candidate_count():
     ``stage_structured_diagnosis`` block, and bounded at one person per
     population per step with no effect on total diagnoses. That is the
     documented precondition for regenerating the baseline, so the baseline was
-    regenerated. See ``tests/test_a12_stage_structured_diagnosis_allocation.py``
+    regenerated. Two additional scalar conversions count the MSM and total
+    diagnoses after the neutral-multiplier identity route was corrected to use
+    the legacy all-orientations allocation. They do not allocate population.
+    See ``tests/test_a12_stage_structured_diagnosis_allocation.py``
     and ``documentation/guides/REPOSITORY_INVENTORY_2026-10-14.md`` section 8.
     """
     from tools.run_a12_deterministic_allocation_audit import (  # noqa: PLC0415
@@ -319,8 +322,8 @@ def test_call_fingerprint_baseline_matches_the_audited_candidate_count():
         syntax_candidates,
     )
 
-    assert sum(call_site_fingerprints().values()) == len(syntax_candidates()) == 269
-    assert sum(load_call_fingerprint_baseline().values()) == 269
+    assert sum(call_site_fingerprints().values()) == len(syntax_candidates()) == 271
+    assert sum(load_call_fingerprint_baseline().values()) == 271
 
 
 def test_fingerprints_ignore_formatting_but_not_new_calls():

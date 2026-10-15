@@ -74,6 +74,11 @@ def test_plan_may_not_change_the_acceptance_cutoff(tmp_path):
         fx.signed_plan(tmp_path, **{"acceptance.cutoff": 4.0})
 
 
+def test_plan_may_not_change_the_primary_discrepancy_rule(tmp_path):
+    with pytest.raises(ContractError, match="may not change the primary model-discrepancy"):
+        fx.signed_plan(tmp_path, **{"acceptance.discrepancy": 0.2})
+
+
 def test_missing_signature_block_is_refused(tmp_path):
     plan = fx.signed_plan_dict()
     plan["sign_off"]["signed_by"] = "UNSIGNED"
@@ -95,6 +100,11 @@ def test_missing_signature_block_is_refused(tmp_path):
         ({"promotion.variance_alpha": 1.5}, "must be in"),
         ({"p_parameter.routine_hazard_scale_identity_value": 0.8}, "routine_hazard_scale == 1.0"),
         ({"separation.min_anchor_neighbour": 0.5}, "not smaller than the smallest ambient scale"),
+        ({"separation.min_neighbour_neighbour": float("nan")}, "must be positive"),
+        ({"budget.wall_time_cap_seconds": float("inf")}, "finite and positive"),
+        ({"ambient.max_attempts_per_anchor": 0}, "must be positive"),
+        ({"graph.neighbour_count": 0}, "must be positive"),
+        ({"archive_following.scales": [0.025, float("nan")]}, "finite positive"),
     ],
 )
 def test_cross_field_validation_fails_closed(tmp_path, override, message):
@@ -105,6 +115,17 @@ def test_cross_field_validation_fails_closed(tmp_path, override, message):
 def test_seed_blocks_must_be_disjoint(tmp_path):
     with pytest.raises(ContractError, match="overlap"):
         fx.signed_plan(tmp_path, **{"seeds.confirmation": [910000] + list(range(910100, 910119))})
+
+
+@pytest.mark.parametrize("path,value,message", [
+    ("seeds.discovery", [1, 2, 3, 4], "exactly 5"),
+    ("seeds.discovery", [1, 2, 3, 4, 5, 6], "exactly 5"),
+    ("seeds.confirmation", list(range(19)), "exactly 20"),
+    ("seeds.confirmation", list(range(21)), "exactly 20"),
+])
+def test_seed_block_sizes_are_exactly_five_and_twenty(tmp_path, path, value, message):
+    with pytest.raises(ContractError, match=message):
+        fx.signed_plan(tmp_path, **{path: value})
 
 
 def test_seeds_colliding_with_earlier_experiments_are_refused(tmp_path):

@@ -38,9 +38,9 @@ from run_v3 import SimulationEngineV3
 from config_utils import extract_value
 
 
-DEFAULT_CONFIG = ROOT / "1980_test.json"
+DEFAULT_CONFIG = ROOT / "configs" / "1980_test.json"
 DEFAULT_OUT_DIR = ROOT / "outputs" / "diagnostics" / "demographic_backtest"
-HMD_POP_PATH = ROOT / "Validation " / "HMD_NL_Pop.txt"
+HMD_POP_PATH = ROOT.parent / "data" / "raw" / "validation" / "HMD_NL_Pop.txt"
 HMD_DEATH_PATH = ROOT / "Validation " / "HMD_NL_Death.txt"
 HMD_VITAL_PATH = ROOT / "Validation " / "HMD_NL_VitalStats_1970_2023.csv"
 

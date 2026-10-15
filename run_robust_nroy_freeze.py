@@ -61,7 +61,9 @@ the prepared stage directory and is loaded read-only.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -88,10 +90,187 @@ QUESTION = (
     "detected under the declared finite design?"
 )
 
+M1_ANCHOR_EVIDENCE_SCHEMA = "robust_nroy_m1_anchor_confirmation/1.0.0"
+M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
+
 
 # ==========================================================================
 # validate
 # ==========================================================================
+
+def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
+    """Validate every non-decision prerequisite without running the engine."""
+    problems: list[str] = []
+    base = Path(str(plan.require("models.base_config")))
+    if not base.is_absolute():
+        base = ROOT / base
+    if not base.exists():
+        problems.append(f"base config is missing: {base}")
+        base_sha = ""
+    else:
+        base_sha = ccs.sha256_file(base)
+        payload = json.loads(base.read_text())
+        deterministic = payload.get("run_control", {}).get("deterministic_mode", False)
+        if isinstance(deterministic, Mapping):
+            deterministic = deterministic.get("value", False)
+        if bool(deterministic):
+            problems.append("base config has deterministic_mode=true")
+
+    m0_space = Path(str(plan.require("models.m0.calib_space")))
+    if not m0_space.is_absolute():
+        m0_space = ROOT / m0_space
+    if not m0_space.exists():
+        problems.append(f"M0 calibration space is missing: {m0_space}")
+        m0_sha = ""
+    else:
+        m0_sha = ccs.sha256_file(m0_space)
+
+    prerequisites = plan.get("production_prerequisites")
+    if not isinstance(prerequisites, Mapping):
+        return problems + [
+            "production_prerequisites is missing from the signed plan"
+        ]
+    paths: dict[str, Path] = {}
+    for key in ("config_registry", "measured_pilot", "priced_budget", "seed_disjointness_audit"):
+        declared = prerequisites.get(key)
+        candidate = Path(str(declared)) if declared else None
+        if candidate is not None and not candidate.is_absolute():
+            candidate = ROOT / candidate
+        if candidate is None or not candidate.exists():
+            problems.append(f"production prerequisite {key!r} is missing")
+        else:
+            paths[key] = candidate
+
+    registry = paths.get("config_registry")
+    if registry is not None:
+        if registry.name != "CONFIG_REGISTRY.md":
+            problems.append("config_registry must be named CONFIG_REGISTRY.md")
+        else:
+            text = registry.read_text()
+            lowered = text.lower()
+            if "placeholder" in lowered or "fixture only" in lowered:
+                problems.append("CONFIG_REGISTRY.md declares placeholder/fixture evidence")
+            required_tokens = {
+                "plan SHA-256": plan.plan_sha256,
+                "base-config SHA-256": base_sha,
+                "M0 calibration-space SHA-256": m0_sha,
+            }
+            for label, token in required_tokens.items():
+                if token and token not in text:
+                    problems.append(f"CONFIG_REGISTRY.md does not bind the {label}")
+
+    loaded: dict[str, Mapping] = {}
+    for key in ("measured_pilot", "priced_budget", "seed_disjointness_audit"):
+        path = paths.get(key)
+        if path is None:
+            continue
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            problems.append(f"production prerequisite {key!r} is not valid JSON: {exc}")
+            continue
+        if not isinstance(payload, Mapping):
+            problems.append(f"production prerequisite {key!r} is not a JSON object")
+            continue
+        required_schema = {
+            "measured_pilot": "robust_nroy_measured_pilot/1.0.0",
+            "priced_budget": "robust_nroy_priced_budget/1.0.0",
+            "seed_disjointness_audit": "robust_nroy_seed_audit/1.0.0",
+        }[key]
+        if str(payload.get("schema", "")) != required_schema:
+            problems.append(
+                f"production prerequisite {key!r} has no current evidence schema "
+                f"({required_schema})"
+            )
+        if not str(payload.get("generated_utc", "")).strip():
+            problems.append(f"production prerequisite {key!r} has no generation timestamp")
+        if not str(payload.get("command", "")).strip():
+            problems.append(f"production prerequisite {key!r} records no producing command")
+        verdict = payload.get("approved") if key == "priced_budget" else payload.get("passed")
+        if verdict is not True:
+            problems.append(f"production prerequisite {key!r} did not pass")
+        if str(payload.get("plan_sha256", "")) != plan.plan_sha256:
+            problems.append(f"production prerequisite {key!r} is not bound to this plan")
+        loaded[key] = payload
+
+    audit = loaded.get("seed_disjointness_audit", {})
+    if audit and (
+        tuple(int(s) for s in audit.get("discovery", ())) != plan.seeds.discovery
+        or tuple(int(s) for s in audit.get("confirmation", ())) != plan.seeds.confirmation
+    ):
+        problems.append("the seed-disjointness audit does not cover the signed seed blocks")
+    if audit:
+        if list(audit.get("overlaps", [])):
+            problems.append("the seed-disjointness audit records overlapping seeds")
+        if not isinstance(audit.get("compared_seed_sources"), list) or not audit.get(
+            "compared_seed_sources"
+        ):
+            problems.append(
+                "the seed-disjointness audit does not identify the prior seed sources it checked"
+            )
+    priced = loaded.get("priced_budget", {})
+    if priced:
+        expected_budget = {
+            "max_attempts": int(plan.require("budget.max_attempts")),
+            "max_trajectories": int(plan.require("budget.max_trajectories")),
+            "wall_time_cap_seconds": float(plan.require("budget.wall_time_cap_seconds")),
+        }
+        for key, expected in expected_budget.items():
+            try:
+                actual = float(priced.get(key, -1))
+            except (TypeError, ValueError):
+                actual = -1.0
+            if actual != float(expected):
+                problems.append(f"the priced-budget artifact does not cover signed {key}")
+        pilot_path = paths.get("measured_pilot")
+        if pilot_path is not None and str(priced.get("measured_pilot_sha256", "")) != \
+                ccs.sha256_file(pilot_path):
+            problems.append("the priced-budget artifact is not bound to the measured pilot")
+        if not str(priced.get("machine_profile", "")).strip():
+            problems.append("the priced-budget artifact records no priced machine profile")
+    pilot = loaded.get("measured_pilot", {})
+    if pilot:
+        try:
+            seconds = float(pilot.get("seconds_per_trajectory", 0.0))
+        except (TypeError, ValueError):
+            seconds = 0.0
+        if not seconds > 0.0:
+            problems.append("the measured-pilot artifact has no positive timing measurement")
+        try:
+            n_measured = int(pilot.get("n_trajectories", 0))
+        except (TypeError, ValueError):
+            n_measured = 0
+        if n_measured < 2:
+            problems.append("the measured-pilot artifact must time at least two trajectories")
+        if str(pilot.get("base_config_sha256", "")) != base_sha:
+            problems.append("the measured-pilot artifact is not bound to the base config")
+        if str(pilot.get("code_sha256", "")) != _code_sha256():
+            problems.append("the measured-pilot artifact is not bound to the current scientific code")
+
+    # Exercise the exact configuration-construction route production will use,
+    # including the generated M1 calibration space and the diagnosis block.
+    # Merely parsing the raw base JSON is insufficient: the historical bug was
+    # precisely that validation and execution took different routes.
+    try:
+        evaluator = ProductionEvaluator(plan)
+        m1 = _model_spaces(plan)[nc.MODEL_M1]
+        params = {
+            name: float((lo + hi) / 2.0)
+            for name, lo, hi in zip(m1.names, m1.space.lower, m1.space.upper)
+        }
+        params[str(plan.require("p_parameter.name"))] = 0.0
+        unit = ne.WorkUnit(
+            stage=nc.STAGE_DISCOVERY, model=nc.MODEL_M1,
+            design_id="readiness-route-probe", seed=int(plan.seeds.discovery[0]),
+            vector_hash=nc.vector_hash(params, names=m1.names),
+            kernel=nc.KERNEL_ANCHOR, parent_ids=("readiness-route-probe",),
+            params=params, parent_manifest_sha256="", code_sha256="readiness",
+            config_sha256="readiness", target_schema=plan.targets.frozen_order,
+        )
+        evaluator.config_for(unit, params)
+    except Exception as exc:  # noqa: BLE001 - every route mismatch is a readiness failure
+        problems.append(f"the production M1 config route failed: {type(exc).__name__}: {exc}")
+    return problems
 
 def command_validate(args: argparse.Namespace) -> int:
     """Dry-run validation.  Runs no simulation under any circumstances."""
@@ -112,9 +291,13 @@ def command_validate(args: argparse.Namespace) -> int:
         print(f"  confirmation seeds: K={plan.k_confirmation}")
         print(f"  kernel quotas:     {plan.kernel_quotas()}")
         print()
-        print("Signed is not the same as launch-ready: the production spec also "
-              "requires a pilot, a priced trajectory budget and the full verification "
-              "suite to pass.")
+        problems = _production_readiness_problems(plan)
+        if problems:
+            print("FAIL CLOSED: signed decisions are not production-ready:")
+            for problem in problems:
+                print(f"  - {problem}")
+            return 3
+        print("All production prerequisites are present, passed, and bound to this plan.")
         return 0
 
     print(f"FAIL CLOSED: {len(pending)} required value(s) are unsigned.")
@@ -192,7 +375,18 @@ def _freeze_parent_acceptance_identity(
 def _frozen_parent_acceptance_identity(stage_dir: Path) -> dict | None:
     """The parent identity this stage froze at prepare, if it has a parent."""
     path = Path(stage_dir) / PARENT_IDENTITY_FILENAME
+    manifest_path = Path(stage_dir) / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    has_parent = bool(manifest.get("parent_manifest_sha256")) or (
+        nc.STAGE_PARENT.get(str(manifest.get("stage") or ""))
+        not in (None, nc.STAGE_PREPARE)
+    )
     if not path.exists():
+        if has_parent:
+            raise ContractError(
+                f"{path} is required for stage {manifest.get('stage')!r} but is missing; "
+                "refusing to discard the frozen parent acceptance identity"
+            )
         return None
     payload = json.loads(path.read_text())
     identity = payload.get("acceptance_input_identity")
@@ -243,6 +437,46 @@ def _assert_acceptance_basis(
     return recorded
 
 
+def _validate_stage_artifacts(
+    stage_dir: Path, *, what: str, validate_all_indexed: bool = False,
+    allow_partial_runtime_growth: bool = False,
+) -> None:
+    """Verify the sealed index before any stage evidence is consumed."""
+    immutable = {
+        "ledger_units.csv", "ledger_meta.json", "design_proposals.csv",
+        "design_vectors.csv", "anchors.csv", "kernel_outcomes.csv",
+    }
+    manifest = json.loads((Path(stage_dir) / "manifest.json").read_text())
+    if (
+        str(manifest.get("model") or "") == nc.MODEL_M1
+        and str(manifest.get("stage") or "") == nc.STAGE_DISCOVERY
+    ):
+        immutable.add(M1_ANCHOR_EVIDENCE_FILENAME)
+    if bool(manifest.get("parent_manifest_sha256")) or \
+       nc.STAGE_PARENT.get(str(manifest.get("stage") or "")) not in (None, nc.STAGE_PREPARE):
+        immutable.add(PARENT_IDENTITY_FILENAME)
+    required_paths = None if validate_all_indexed else sorted(immutable)
+    if allow_partial_runtime_growth:
+        # A PARTIAL merge is a durable checkpoint, not a terminal freeze.
+        # Scientific tables already written by that checkpoint remain sealed,
+        # while journals, durable results, shard snapshots and caches are
+        # expected to grow during a legitimate resume.  Validate every prior
+        # indexed file except that explicitly mutable runtime surface.
+        sealed = ne.validate_artifact_index(stage_dir, required_paths=[])
+        required_paths = sorted(
+            path for path in sealed["entries"]
+            if not ne.is_mutable_stage_runtime_path(path)
+        )
+    try:
+        ne.validate_artifact_index(
+            stage_dir,
+            required_paths=required_paths,
+            require_exact=False,
+        )
+    except ContractError as exc:
+        raise ContractError(f"{what}: stage artifact validation failed: {exc}") from exc
+
+
 # ==========================================================================
 # prepare
 # ==========================================================================
@@ -273,6 +507,175 @@ def _load_anchors(path: Path, model: nc.ModelSpace) -> list[nd.Anchor]:
         )
         for _, row in frame.iterrows()
     ]
+
+
+def _validate_m1_anchor_evidence(
+    path: Path,
+    *,
+    anchors_path: Path,
+    anchors: Sequence[nd.Anchor],
+    plan: nc.FrozenPlan,
+    model: nc.ModelSpace,
+) -> dict:
+    """Prove that caller-supplied positive-p M1 anchors were confirmed.
+
+    A CSV is a vector transport, not confirmation evidence.  This typed
+    artifact binds the verdict to the exact plan, production configuration,
+    scientific code/runtime, target contract, reserved confirmation seeds and
+    every candidate/vector.  It deliberately requires candidate-level
+    replicate counts and nominal scores rather than accepting a generic
+    ``passed=true`` document.
+    """
+    if not path.exists():
+        raise ContractError(f"M1 anchor-confirmation evidence does not exist: {path}")
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"{path}: invalid M1 anchor-confirmation JSON: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ContractError(f"{path}: M1 anchor-confirmation evidence must be a JSON object")
+
+    problems: list[str] = []
+    expected_scalars = {
+        "schema": M1_ANCHOR_EVIDENCE_SCHEMA,
+        "model": nc.MODEL_M1,
+        "plan_sha256": plan.plan_sha256,
+        "anchors_sha256": ccs.sha256_file(anchors_path),
+        "scientific_code_sha256": _code_sha256(),
+        "scientific_config_sha256": _scientific_config_sha256(plan, model),
+        "target_register_sha256": plan.targets.register_sha256,
+        "p_parameter": str(plan.require("p_parameter.name")),
+    }
+    for field, expected in expected_scalars.items():
+        if payload.get(field) != expected:
+            problems.append(f"{field} does not match the frozen {field}")
+    if payload.get("passed") is not True:
+        problems.append("passed is not the Boolean true")
+    for field in ("generated_utc", "command"):
+        if not str(payload.get(field, "")).strip():
+            problems.append(f"{field} is missing")
+    if tuple(payload.get("target_order") or ()) != tuple(plan.targets.frozen_order):
+        problems.append("target_order does not match the frozen target contract")
+    try:
+        recorded_seeds = tuple(int(seed) for seed in payload.get("confirmation_seeds", ()))
+    except (TypeError, ValueError):
+        recorded_seeds = ()
+    if recorded_seeds != plan.seeds.confirmation:
+        problems.append("confirmation_seeds are not the exact reserved confirmation block")
+
+    rows = payload.get("candidates")
+    if not isinstance(rows, list) or not rows:
+        problems.append("candidates must be a non-empty list of candidate-level evidence")
+        rows = []
+    by_id: dict[str, Mapping] = {}
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            problems.append(f"candidates[{index}] is not an object")
+            continue
+        candidate_id = str(row.get("candidate_id", ""))
+        if not candidate_id:
+            problems.append(f"candidates[{index}] has no candidate_id")
+            continue
+        if candidate_id in by_id:
+            problems.append(f"candidate evidence duplicates {candidate_id!r}")
+            continue
+        by_id[candidate_id] = row
+
+    p_name = str(plan.require("p_parameter.name"))
+    expected_by_id = {anchor.anchor_id: anchor for anchor in anchors}
+    if set(by_id) != set(expected_by_id):
+        problems.append(
+            "candidate evidence ids do not exactly match the supplied anchor table "
+            f"(missing={sorted(set(expected_by_id) - set(by_id))}, "
+            f"extra={sorted(set(by_id) - set(expected_by_id))})"
+        )
+    for candidate_id in sorted(set(by_id) & set(expected_by_id)):
+        row = by_id[candidate_id]
+        anchor = expected_by_id[candidate_id]
+        if str(row.get("vector_hash", "")) != anchor.vector_hash:
+            problems.append(f"{candidate_id}: vector_hash does not match the anchor")
+        try:
+            p_value = float(row.get("p_value"))
+            n_replicates = int(row.get("n_replicates"))
+            i_max = float(row.get("nominal_i_max"))
+        except (TypeError, ValueError):
+            problems.append(f"{candidate_id}: malformed p/replicate/I_max evidence")
+            continue
+        if not np.isfinite(p_value) or p_value != float(anchor.params[p_name]) or p_value <= 0.0:
+            problems.append(f"{candidate_id}: p_value is not the anchor's exact positive p")
+        if n_replicates != plan.k_confirmation:
+            problems.append(
+                f"{candidate_id}: n_replicates={n_replicates}, expected "
+                f"K_confirmation={plan.k_confirmation}"
+            )
+        if not np.isfinite(i_max) or i_max > plan.cutoff:
+            problems.append(
+                f"{candidate_id}: nominal_i_max={i_max!r} does not satisfy "
+                f"the primary cutoff {plan.cutoff}"
+            )
+        if row.get("nominal_pass") is not True:
+            problems.append(f"{candidate_id}: nominal_pass is not the Boolean true")
+
+    if problems:
+        raise ContractError(
+            f"{path}: M1 anchor-confirmation evidence is invalid:\n"
+            + "\n".join(f"  - {problem}" for problem in problems)
+        )
+    return dict(payload)
+
+
+def _selected_parent_design(
+    parent_dir: Path, model: nc.ModelSpace, *, child_stage: str
+) -> tuple[list[nd.Anchor], list[nd.Proposal], list[nd.KernelOutcome]]:
+    """Carry exactly the parent's independently recomputed promoted set.
+
+    Promotion and confirmation are allocation stages.  They do not accept a
+    caller-selected CSV and do not generate a fresh neighbourhood.
+    """
+    scores = ne.read_frame_exact(parent_dir / "candidate_scores.csv")
+    if "promoted" not in scores.columns:
+        raise ContractError(f"{parent_dir}: parent scores do not contain 'promoted'")
+    selected_ids = set(
+        scores.loc[scores["promoted"].astype(bool), "design_id"].astype(str)
+    )
+    if not selected_ids:
+        raise ContractError("the parent promoted no candidates; there is no child work to allocate")
+    vectors = ne.read_frame_exact(parent_dir / "design_vectors.csv").set_index("design_id")
+    rows = ne.read_frame_exact(parent_dir / "design_proposals.csv")
+    by_id = {str(row["design_id"]): row for _, row in rows.iterrows()}
+    missing = sorted(selected_ids - set(by_id))
+    if missing:
+        raise ContractError(f"parent promoted unknown design ids: {missing[:5]}")
+    anchors = _load_anchors(parent_dir / "anchors.csv", model)
+    proposals: list[nd.Proposal] = []
+    for design_id in sorted(selected_ids):
+        row = by_id[design_id]
+        params = {name: float(vectors.loc[design_id, name]) for name in model.names}
+        expected_hash = nc.vector_hash(params, names=model.names)
+        if expected_hash != str(row["vector_hash"]):
+            raise ContractError(f"{design_id}: parent vector/hash mismatch during handoff")
+        proposals.append(nd.Proposal(
+            design_id=design_id,
+            stage=child_stage,
+            model=model.model,
+            kernel=str(row["kernel_id"]),
+            kernel_version=str(row.get("kernel_version", "carried/1")),
+            scale=float(row.get("scale", 0.0)),
+            direction_class=str(row.get("direction_class", "carried")),
+            parent_ids=tuple(str(row["parent_ids"]).split("|")),
+            params=params,
+            vector_hash=expected_hash,
+            pre_constraint_vector_hash=str(row.get("pre_constraint_vector_hash", expected_hash)),
+            distance_to_parent=float(row.get("distance_to_parent", 0.0)),
+            rng_state_hash=str(row.get("rng_state_hash", "")),
+            attempt_index=int(row.get("attempt_index", 0)),
+            notes={"carried_from": str(parent_dir), "allocation_only": True},
+        ))
+    outcomes_path = parent_dir / "kernel_outcomes.csv"
+    outcomes: list[nd.KernelOutcome] = []
+    # The original outcomes are copied separately below; they must not be
+    # reconstructed as if the selected subset were a newly generated design.
+    return anchors, proposals, outcomes
 
 
 def _load_archive(
@@ -381,6 +784,16 @@ def build_designs(
     outcomes: list[nd.KernelOutcome] = []
 
     for anchor in anchors:
+        proposals.append(nd.Proposal(
+            design_id=f"{stage}/{model.model}/{nc.KERNEL_ANCHOR}/{anchor.anchor_id}/0000",
+            stage=stage, model=model.model, kernel=nc.KERNEL_ANCHOR,
+            kernel_version="anchor_control/1.0.0", scale=0.0,
+            direction_class="identity", parent_ids=(anchor.anchor_id,),
+            params=dict(anchor.params), vector_hash=anchor.vector_hash,
+            pre_constraint_vector_hash=anchor.vector_hash, distance_to_parent=0.0,
+            rng_state_hash=ccs.sha256_json({"anchor": anchor.anchor_id, "seed": seed}),
+            attempt_index=0, notes={"purpose": "independent endpoint confirmation"},
+        ))
         offset = 0
         for scale in scales:
             outcome = nd.ambient_probes(
@@ -527,7 +940,24 @@ def _parent_tables(parent_dir: Path, model: nc.ModelSpace) -> tuple[pd.DataFrame
             "parent stage first: a confirmed point may not enter the graph or representative "
             "selection without a completed local assessment."
         )
-    return ne.read_frame_exact(anchors_path), ne.read_frame_exact(support_path)
+    anchors = ne.read_frame_exact(anchors_path)
+    support = ne.read_frame_exact(support_path)
+    if "endpoint_confirmed" not in support.columns:
+        raise ContractError(
+            f"{support_path} has no independent endpoint-confirmation verdict"
+        )
+    confirmed = support[support["endpoint_confirmed"].astype(bool)].copy()
+    confirmed_ids = set(confirmed["candidate_id"].astype(str))
+    anchors = anchors[anchors["candidate_id"].astype(str).isin(confirmed_ids)].copy()
+    if anchors.empty:
+        raise ContractError(
+            "the bridge graph has no endpoint independently confirmed on the reserved "
+            "seed block"
+        )
+    if set(anchors["candidate_id"].astype(str)) != confirmed_ids:
+        missing = sorted(confirmed_ids - set(anchors["candidate_id"].astype(str)))
+        raise ContractError(f"confirmed graph endpoints are missing from anchors.csv: {missing}")
+    return anchors, confirmed
 
 
 def command_prepare(args: argparse.Namespace) -> int:
@@ -535,6 +965,8 @@ def command_prepare(args: argparse.Namespace) -> int:
     spaces = _model_spaces(plan)
     model = spaces[args.model]
     is_bridges = args.stage == nc.STAGE_BRIDGES
+    embedded_m0_anchors: list[nd.Anchor] | None = None
+    m0_source_manifest: dict | None = None
 
     if model.model == nc.MODEL_M1:
         nc.assert_m1_identity_preconditions(
@@ -556,9 +988,43 @@ def command_prepare(args: argparse.Namespace) -> int:
                 "identity before M1 is launched, and the pytests that check it are "
                 "skipped under the no-engine guard."
             )
-        gate = nig.assert_gate_satisfied(args.identity_gate)
+        gate = nig.assert_gate_satisfied(
+            args.identity_gate,
+            expected_base_config=str(plan.require("models.base_config")),
+            expected_plan_sha256=plan.plan_sha256,
+            expected_scientific_config_sha256=_scientific_config_sha256(plan, model),
+        )
         print(f"M0/M1 identity gate: PASSED ({gate['n_passed']}/{gate['n_checks']} checks, "
               f"{gate['generated_utc']})")
+        if args.stage == nc.STAGE_DISCOVERY:
+            if not args.m0_confirmed_dir:
+                raise ContractError(
+                    "M1 discovery requires --m0-confirmed-dir naming the COMPLETE M0 "
+                    "confirmation stage"
+                )
+            m0_dir = _stage_directory(args.m0_confirmed_dir)
+            m0_manifest = ne.validate_parent_stage(
+                m0_dir, expected_stage=nc.STAGE_CONFIRMATION,
+                expected_model=nc.MODEL_M0, targets=plan.targets,
+                seeds=plan.seeds, child_stage=None,
+            )
+            _assert_plan_matches_manifest(
+                plan, m0_manifest, what="M0-to-M1 embedding parent"
+            )
+            _assert_acceptance_basis(
+                m0_dir, m0_manifest, plan, what="M0-to-M1 embedding"
+            )
+            m0_source_manifest = m0_manifest
+            m0_scores = ne.read_frame_exact(m0_dir / "candidate_scores.csv")
+            ids = set(m0_scores.loc[m0_scores["nominal_pass"].astype(bool), "design_id"].astype(str))
+            m0_vectors = ne.read_frame_exact(m0_dir / "design_vectors.csv").set_index("design_id")
+            embedded_m0_anchors = []
+            for candidate_id in sorted(ids):
+                m0_params = {name: float(m0_vectors.loc[candidate_id, name]) for name in spaces[nc.MODEL_M0].names}
+                params = nc.embed_m0_in_m1(spaces[nc.MODEL_M0], model, m0_params, p_value=0.0)
+                embedded_m0_anchors.append(nd.Anchor.build(candidate_id, params, model))
+            if not embedded_m0_anchors:
+                raise ContractError("the M0 confirmation stage contains no nominally confirmed vectors")
 
     # A stage beyond the first must descend from a validated, COMPLETE parent.
     # The guard existed and was tested but was not connected: prepare took the
@@ -587,6 +1053,9 @@ def command_prepare(args: argparse.Namespace) -> int:
             seeds=plan.seeds,
             child_stage=args.stage,
         )
+        _assert_plan_matches_manifest(
+            plan, parent_manifest, what=f"prepare {args.stage} parent"
+        )
         parent_manifest_sha256 = ccs.sha256_json(nc.json_safe(parent_manifest))
         if args.parent_manifest_sha256 and args.parent_manifest_sha256 != parent_manifest_sha256:
             raise ContractError(
@@ -597,6 +1066,14 @@ def command_prepare(args: argparse.Namespace) -> int:
         raise ContractError(
             f"stage {args.stage!r} has no parent, but --parent-dir was supplied"
         )
+    if m0_source_manifest is not None:
+        # M1 discovery is the first stage in the M1 stage order, but it is not
+        # scientifically parentless: its entire anchor set comes from the M0
+        # confirmation.  Bind every work unit and the manifest to that exact
+        # validated source, and freeze its acceptance basis like any other
+        # child handoff.
+        parent_manifest = m0_source_manifest
+        parent_manifest_sha256 = ccs.sha256_json(nc.json_safe(parent_manifest))
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -647,28 +1124,138 @@ def command_prepare(args: argparse.Namespace) -> int:
         print(f"  graph: {len(nodes)} node(s), {eligible} eligible, "
               f"{len(edges)} proposed edge(s), {len(minimal)} in the minimal set")
     else:
-        if not args.anchors:
-            raise ContractError(
-                f"stage {args.stage!r} requires --anchors: a CSV of complete joint "
-                "confirmed vectors"
+        if args.stage in (nc.STAGE_PROMOTION, nc.STAGE_CONFIRMATION):
+            if args.anchors or args.archive:
+                raise ContractError(
+                    f"stage {args.stage!r} derives its exact candidate set from the "
+                    "parent's recomputed promoted column; --anchors/--archive are forbidden"
+                )
+            anchors, proposals, outcomes = _selected_parent_design(
+                _stage_directory(args.parent_dir), model, child_stage=args.stage
             )
-        anchors = _load_anchors(Path(args.anchors), model)
-        archive, archive_ids, archive_j = _load_archive(args.archive, model)
-        proposals, outcomes = build_designs(
-            plan, model, anchors, stage=args.stage,
-            archive=archive, archive_ids=archive_ids, archive_j=archive_j,
-        )
+            extra["allocation_only"] = True
+            extra["selected_parent_candidate_ids"] = [p.design_id for p in proposals]
+            extra["selected_parent_vector_hashes"] = [p.vector_hash for p in proposals]
+        else:
+            if embedded_m0_anchors is not None:
+                # M1 starts from the UNION of two independently meaningful
+                # evidence sets: confirmed M0 vectors embedded at exact p=0,
+                # and any independently confirmed positive-p M1 vectors the
+                # caller supplied.  Replacing the latter with the former
+                # would erase precisely the M1 evidence this stage is meant
+                # to extend.  Candidate ids are evidence identities, so a
+                # collision is accepted only when it denotes the same vector.
+                if not args.anchors:
+                    raise ContractError(
+                        "M1 discovery requires --anchors naming independently confirmed "
+                        "positive-p M1 vectors in addition to the sealed M0-at-p=0 "
+                        "embedding source. An M0-only boundary design cannot establish "
+                        "support for the scientifically distinct M1 mechanism."
+                    )
+                if not args.m1_anchor_evidence:
+                    raise ContractError(
+                        "M1 discovery requires --m1-anchor-evidence: an anchor CSV alone "
+                        "does not prove independent confirmation on the reserved seed block"
+                    )
+                independent_path = Path(args.anchors)
+                independent_m1 = _load_anchors(independent_path, model)
+                non_positive = sorted(
+                    anchor.anchor_id for anchor in independent_m1
+                    if not float(anchor.params[model.p_name]) > 0.0
+                )
+                if non_positive:
+                    raise ContractError(
+                        "independent M1 anchors must all have strictly positive p; "
+                        f"exact-p=0 controls come only from the sealed M0 embedding: "
+                        f"{non_positive}"
+                    )
+                evidence = _validate_m1_anchor_evidence(
+                    Path(args.m1_anchor_evidence), anchors_path=independent_path,
+                    anchors=independent_m1, plan=plan, model=model,
+                )
+                ne.atomic_write_json(out / M1_ANCHOR_EVIDENCE_FILENAME, evidence)
+                by_id = {anchor.anchor_id: anchor for anchor in independent_m1}
+                for anchor in embedded_m0_anchors:
+                    prior = by_id.get(anchor.anchor_id)
+                    if prior is not None and prior.vector_hash != anchor.vector_hash:
+                        raise ContractError(
+                            f"M1 anchor id {anchor.anchor_id!r} denotes both an "
+                            "independently confirmed M1 vector and a different embedded "
+                            "M0-at-p=0 vector; candidate ids must be unambiguous"
+                        )
+                    by_id.setdefault(anchor.anchor_id, anchor)
+                ids_by_hash: dict[str, list[str]] = {}
+                for anchor in by_id.values():
+                    ids_by_hash.setdefault(anchor.vector_hash, []).append(anchor.anchor_id)
+                duplicate_vectors = {
+                    vector_hash: sorted(anchor_ids)
+                    for vector_hash, anchor_ids in ids_by_hash.items()
+                    if len(anchor_ids) > 1
+                }
+                if duplicate_vectors:
+                    raise ContractError(
+                        "M1 anchor union assigns different evidence ids to the same "
+                        f"complete vector: {duplicate_vectors}. Deduplicate the confirmed "
+                        "evidence explicitly rather than inflating anchor quotas."
+                    )
+                anchors = [by_id[candidate_id] for candidate_id in sorted(by_id)]
+                extra["m0_embedding_source"] = str(_stage_directory(args.m0_confirmed_dir))
+                extra["m0_embedding_exact_p"] = 0.0
+                extra["m0_embedding_source_manifest_sha256"] = parent_manifest_sha256
+                extra["n_independently_confirmed_m1_anchors"] = len(independent_m1)
+                extra["independently_confirmed_m1_source"] = str(Path(args.anchors))
+                extra["independently_confirmed_m1_source_sha256"] = ccs.sha256_file(
+                    Path(args.anchors)
+                )
+                extra["independently_confirmed_m1_evidence"] = str(
+                    out / M1_ANCHOR_EVIDENCE_FILENAME
+                )
+                extra["independently_confirmed_m1_evidence_sha256"] = ccs.sha256_file(
+                    out / M1_ANCHOR_EVIDENCE_FILENAME
+                )
+                extra["independently_confirmed_m1_evidence_schema"] = evidence["schema"]
+                extra["n_embedded_m0_identity_anchors"] = len(embedded_m0_anchors)
+                extra["m1_anchor_combination"] = "union_by_candidate_id"
+                extra["independently_confirmed_m1_anchor_ids"] = [
+                    anchor.anchor_id for anchor in independent_m1
+                ]
+                extra["independently_confirmed_m1_vector_hashes"] = [
+                    anchor.vector_hash for anchor in independent_m1
+                ]
+                extra["embedded_m0_identity_anchor_ids"] = [
+                    anchor.anchor_id for anchor in embedded_m0_anchors
+                ]
+                extra["embedded_m0_identity_vector_hashes"] = [
+                    anchor.vector_hash for anchor in embedded_m0_anchors
+                ]
+            elif not args.anchors:
+                raise ContractError(
+                    f"stage {args.stage!r} requires --anchors: a CSV of complete joint "
+                    "confirmed vectors"
+                )
+            else:
+                anchors = _load_anchors(Path(args.anchors), model)
+            archive, archive_ids, archive_j = _load_archive(args.archive, model)
+            proposals, outcomes = build_designs(
+                plan, model, anchors, stage=args.stage,
+                archive=archive, archive_ids=archive_ids, archive_j=archive_j,
+            )
     if not anchors:
         raise ContractError("no anchors supplied; there is nothing to assess")
+    if args.stage == nc.STAGE_DISCOVERY:
+        # Reach the already-defined contract from the production CLI.  Anchor
+        # controls are retained: adding exact anchors cannot manufacture
+        # variation, while excluding them could hide a frozen coordinate.
+        nd.assert_coordinates_vary(proposals, model)
 
-    seeds = plan.seeds.seeds_for(args.stage)
+    seeds = () if args.stage == nc.STAGE_PROMOTION else plan.seeds.seeds_for(args.stage)
     code_hash = _code_sha256()
     units = tuple(
         ne.WorkUnit(
             stage=args.stage, model=model.model, design_id=p.design_id, seed=int(seed),
             vector_hash=p.vector_hash, kernel=p.kernel, parent_ids=p.parent_ids,
             params=p.params, parent_manifest_sha256=parent_manifest_sha256,
-            code_sha256=code_hash, config_sha256=plan.plan_sha256,
+            code_sha256=code_hash, config_sha256=_scientific_config_sha256(plan, model),
             target_schema=plan.targets.frozen_order,
         )
         for p in proposals for seed in seeds
@@ -676,6 +1263,16 @@ def command_prepare(args: argparse.Namespace) -> int:
     ledger = ne.Ledger(stage=args.stage, model=model.model, units=units)
     for shards in (1, 2, 3, 4, 7):
         ledger.assert_shard_partition(shards)
+    budget = int(plan.require("budget.max_trajectories"))
+    attempt_budget = int(plan.require("budget.max_attempts"))
+    n_trajectories = len(ledger.unique_result_keys())
+    if n_trajectories > budget or n_trajectories > attempt_budget:
+        raise ContractError(
+            f"the frozen design has {n_trajectories} unique trajectories "
+            f"({len(units)} linked work units) but the declared budgets are "
+            f"{budget} trajectories and {attempt_budget} attempts; refusing to prepare "
+            "work that cannot complete within its signed budget"
+        )
 
     ne.atomic_write_frame(
         out / "design_proposals.csv",
@@ -685,11 +1282,17 @@ def command_prepare(args: argparse.Namespace) -> int:
         out / "design_vectors.csv",
         pd.DataFrame([{"design_id": p.design_id, **p.params} for p in proposals]),
     )
-    ne.atomic_write_frame(
-        out / "kernel_outcomes.csv",
-        pd.DataFrame([{**o.as_row(), "rejection_counts": json.dumps(o.rejection_counts)}
-                      for o in outcomes]),
-    )
+    if args.stage in (nc.STAGE_PROMOTION, nc.STAGE_CONFIRMATION):
+        ne.atomic_write_frame(
+            out / "kernel_outcomes.csv",
+            ne.read_frame_exact(_stage_directory(args.parent_dir) / "kernel_outcomes.csv"),
+        )
+    else:
+        ne.atomic_write_frame(
+            out / "kernel_outcomes.csv",
+            pd.DataFrame([{**o.as_row(), "rejection_counts": json.dumps(o.rejection_counts)}
+                          for o in outcomes]),
+        )
     ne.atomic_write_frame(
         out / "anchors.csv",
         pd.DataFrame([{"candidate_id": a.anchor_id, "vector_hash": a.vector_hash,
@@ -698,9 +1301,35 @@ def command_prepare(args: argparse.Namespace) -> int:
     ledger.save(out)
     frozen_identity = None
     if parent_manifest is not None:
-        frozen_identity = _freeze_parent_acceptance_identity(
-            out, parent_manifest, parent_dir=_stage_directory(args.parent_dir)
+        identity_parent_dir = _stage_directory(
+            args.parent_dir or args.m0_confirmed_dir
         )
+        frozen_identity = _freeze_parent_acceptance_identity(
+            out, parent_manifest, parent_dir=identity_parent_dir
+        )
+    if args.stage == nc.STAGE_PROMOTION:
+        parent_scores = ne.read_frame_exact(
+            _stage_directory(args.parent_dir) / "candidate_scores.csv"
+        )
+        selected = parent_scores[
+            parent_scores["design_id"].astype(str).isin([p.design_id for p in proposals])
+        ].copy()
+        ne.atomic_write_frame(out / "candidate_scores.csv", selected)
+        ne.write_stage_manifest(
+            out, stage=args.stage, model=model.model, status=nc.STATUS_COMPLETE,
+            ledger=ledger, contract=plan.manifest_contract(),
+            parent_manifest=parent_manifest,
+            extra={
+                "n_anchors": len(anchors), "n_proposals": len(proposals),
+                "allocation_only": True,
+                "acceptance_input_identity": frozen_identity,
+                "selected_parent_candidate_ids": [p.design_id for p in proposals],
+                "selected_parent_vector_hashes": [p.vector_hash for p in proposals],
+            },
+        )
+        print(f"PROMOTED {len(proposals)} candidate(s) by frozen allocation only; "
+              "no trajectory was dispatched")
+        return 0
     ne.write_stage_manifest(
         out, stage=args.stage, model=model.model, status=nc.STATUS_PREPARED,
         ledger=ledger, contract=plan.manifest_contract(),
@@ -711,14 +1340,11 @@ def command_prepare(args: argparse.Namespace) -> int:
             **extra,
         },
     )
-    budget = int(plan.require("budget.max_trajectories"))
     print(f"PREPARED {args.stage}/{model.model} in {out}")
     print(f"  anchors:    {len(anchors)}")
     print(f"  proposals:  {len(proposals)}")
     print(f"  work units: {len(units)} (= proposals x K={len(seeds)})")
     print(f"  declared trajectory budget: {budget}")
-    if len(units) > budget:
-        print("  WARNING: the frozen design exceeds the declared trajectory budget.")
     print("\nNo simulation has been run. Dispatch with 'evaluate'.")
     return 0
 
@@ -729,15 +1355,51 @@ def command_prepare(args: argparse.Namespace) -> int:
 
 #: Modules whose content defines the scientific behaviour of a stage.  Hashed
 #: at prepare, re-checked by every worker, and recorded in the manifest.
-CODE_MODULES = (
-    "nroy_contract", "nroy_design", "nroy_execution", "nroy_graph", "nroy_assess",
+CODE_FILES = (
+    "run_robust_nroy_freeze.py", "nroy_contract.py", "nroy_design.py",
+    "nroy_execution.py", "nroy_graph.py", "nroy_assess.py", "run_v3.py",
+    "run_lhs_calibration.py", "calib_extractor.py", "hm_target_register.py",
+    "stage_structured_diagnosis.py", "stochastic_allocation.py", "counter_based_rng.py",
+    # Direct and transitive production-engine dependencies.  Omitting one of
+    # these lets prepared work survive a scientific code change with the same
+    # recorded fingerprint, which is equivalent to running a different model
+    # under old provenance.
+    "engine_v3.py", "config_utils.py", "config_reader.py",
+    "transmission_corrected.py", "demography.py", "migration.py",
+    "schedule_utils.py", "aids_observation.py", "exogenous_diagnoses.py",
+    "output_writer.py", "hm_variance_budget.py",
 )
 
 
 def _code_sha256() -> str:
     return ccs.sha256_json({
-        name: ccs.sha256_file(ROOT / f"{name}.py") for name in CODE_MODULES
+        "files": {name: ccs.sha256_file(ROOT / name) for name in CODE_FILES},
+        "runtime": nig.scientific_runtime_fingerprint(),
     })
+
+
+def _scientific_config_sha256(plan: nc.FrozenPlan, model: nc.ModelSpace) -> str:
+    """Bind work to the plan, base config and exact calibration space contents."""
+    base = Path(str(plan.require("models.base_config")))
+    if not base.is_absolute():
+        base = ROOT / base
+    space = Path(str(plan.require("models.m0.calib_space")))
+    if not space.is_absolute():
+        space = ROOT / space
+    register = Path(plan.targets.register_path)
+    if not register.is_absolute():
+        register = ROOT / register
+    payload = {
+        "plan_sha256": plan.plan_sha256,
+        "base_config_sha256": ccs.sha256_file(base),
+        "m0_calibration_space_sha256": ccs.sha256_file(space),
+        "target_register_sha256": ccs.sha256_file(register),
+        "model": model.model,
+        "parameter_names": list(model.names),
+        "lower": [float(x) for x in model.space.lower],
+        "upper": [float(x) for x in model.space.upper],
+    }
+    return ccs.sha256_json(payload)
 
 
 def _stage_directory(path: str) -> Path:
@@ -756,6 +1418,18 @@ def _stage_directory(path: str) -> Path:
             "Run 'prepare' first."
         )
     return stage_dir
+
+
+def _assert_plan_matches_manifest(plan: nc.FrozenPlan, manifest: Mapping, *, what: str) -> None:
+    """A completed/prepared stage may only be interpreted under its frozen plan."""
+    recorded = str((manifest.get("contract") or {}).get("plan_sha256") or "")
+    if not recorded:
+        raise ContractError(f"{what}: stage manifest records no run-plan hash")
+    if recorded != plan.plan_sha256:
+        raise ContractError(
+            f"{what}: current plan hash {plan.plan_sha256} differs from the stage's "
+            f"frozen plan hash {recorded}; re-prepare instead of reinterpreting evidence"
+        )
 
 
 def surrogate_evaluator(
@@ -922,7 +1596,15 @@ class ProductionEvaluator:
             {name: float(value) for name, value in params.items()},
             self.calib_space_for(unit.model),
         )
-        if unit.model == nc.MODEL_M1:
+        if unit.model == nc.MODEL_M0:
+            # M0 is the legacy diagnosis model.  The shared production base
+            # must contain the M1 block so the p coordinate has a real
+            # injection target, but carrying that block into M0 would silently
+            # turn the supposedly nested base model into M1.  Remove it on the
+            # exact production route rather than relying on a hand-shaped gate
+            # configuration.
+            config = nig.without_stage_block(config)
+        else:
             # M1 pins the routine hazard scale; without it the engine's p=0
             # identity dispatch does not hold and M1 would not nest M0.
             nc.assert_m1_identity_preconditions(
@@ -930,6 +1612,24 @@ class ProductionEvaluator:
                     "p_parameter.routine_hazard_scale_identity_value")),
                 required_value=1.0,
             )
+            node = config
+            for key in nig.PROFILE_PATH:
+                if key not in node:
+                    raise ContractError(
+                        f"the injected M1 config has no {'.'.join(nig.PROFILE_PATH)} block"
+                    )
+                node = node[key]
+            actual = node.get("routine_hazard_scale")
+            if isinstance(actual, Mapping):
+                actual = actual.get("value")
+            declared = float(self.plan.require(
+                "p_parameter.routine_hazard_scale_identity_value"
+            ))
+            if actual is None or float(actual) != declared:
+                raise ContractError(
+                    f"the injected config contains routine_hazard_scale={actual!r}, but "
+                    f"the signed identity value is {declared!r}"
+                )
         return config
 
     def __call__(
@@ -1040,14 +1740,68 @@ def resolve_evaluator(
                 "hash, so their parent artifacts were never validated. Re-prepare with "
                 "--parent-dir before spending production compute."
             )
+    problems = _production_readiness_problems(plan)
+    if problems:
+        raise ContractError(
+            "production prerequisites failed validation:\n"
+            + "\n".join(f"  - {problem}" for problem in problems)
+        )
     return ProductionEvaluator(plan)
 
 
 def command_evaluate(args: argparse.Namespace) -> int:
+    """Own one shard for the full invocation, including crash reconciliation."""
     stage_dir = _stage_directory(args.stage_dir)
+    if int(args.of) < 1 or not (0 <= int(args.shard) < int(args.of)):
+        raise ContractError(
+            f"shard index {args.shard} is out of range for --of {args.of}"
+        )
+    shard_label = f"shard_{args.shard:03d}_of_{args.of:03d}"
+    shard_lock_path = stage_dir / f".{shard_label}.worker.lock"
+    shard_lock = shard_lock_path.open("a")
+    try:
+        try:
+            fcntl.flock(shard_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ContractError(
+                f"{shard_label} already has a live worker; refusing concurrent ownership"
+            ) from exc
+        return _command_evaluate_locked(args)
+    finally:
+        try:
+            fcntl.flock(shard_lock.fileno(), fcntl.LOCK_UN)
+        finally:
+            shard_lock.close()
+
+
+def _command_evaluate_locked(args: argparse.Namespace) -> int:
+    stage_dir = _stage_directory(args.stage_dir)
+    _validate_stage_artifacts(stage_dir, what="evaluate")
     manifest = json.loads((stage_dir / "manifest.json").read_text())
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    _assert_plan_matches_manifest(plan, manifest, what="evaluate")
+    shard_label = f"shard_{args.shard:03d}_of_{args.of:03d}"
+    # We now own this shard for the full command lifetime.  Repair only its
+    # possible unterminated crash tail, then convert any prior RUNNING event
+    # whose final event lives in this shard journal to LOST.  Other shards may
+    # still be healthy and are never touched.
+    owned_journal = stage_dir / ne.Ledger.ATTEMPTS_DIR / f"{shard_label}.jsonl"
+    owned_records = (
+        ne.read_jsonl_records(owned_journal, repair_truncated_tail=True)
+        if owned_journal.exists() else []
+    )
     ledger = ne.Ledger.load(stage_dir)
+    owned_attempt_ids = {str(row.get("attempt_id", "")) for row in owned_records}
+    lost_ids = {
+        attempt.attempt_id for attempt in ledger.running_attempts()
+        if attempt.attempt_id in owned_attempt_ids
+    }
+    for lost in ledger.reconcile_running_attempts_as_lost(
+        lost_attempt_ids=lost_ids,
+        failure_reason="previous owner of this shard ended without a terminal event",
+        failure_class="LostShardWorker",
+    ):
+        ledger.save_attempt_record(stage_dir, shard_label, lost)
     targets = plan.targets
 
     evaluate = resolve_evaluator(
@@ -1060,7 +1814,8 @@ def command_evaluate(args: argparse.Namespace) -> int:
     # stale frozen hash and the merge would see one uniform, wrong version.
     # Refuse here rather than launder the hash.
     frozen_config = {u.config_sha256 for u in ledger.units}
-    if len(frozen_config) == 1 and plan.plan_sha256 not in frozen_config:
+    expected_config = _scientific_config_sha256(plan, _model_spaces(plan)[ledger.model])
+    if len(frozen_config) == 1 and expected_config not in frozen_config:
         raise ContractError(
             f"this worker loaded run plan {plan.plan_sha256}, but the ledger was frozen "
             f"against {next(iter(frozen_config))}. The plan changed after prepare; "
@@ -1075,31 +1830,99 @@ def command_evaluate(args: argparse.Namespace) -> int:
         )
 
     vectors = ne.read_frame_exact(stage_dir / "design_vectors.csv").set_index("design_id")
-    assigned = ledger.rows_for_shard(args.shard, args.of)
-    done = ledger.completed_keys()
     meta = ne.worker_metadata()
 
-    # The declared wall-clock cap. It stops DISPATCH and lets the unit already
-    # in flight finish; the remaining units stay incomplete, which the ordinary
-    # resume path turns into PARTIAL. No new status, no shortcut.
+    # Dispatch accounting is a small transactional database rather than a full
+    # ledger reload before every trajectory.  The old implementation was
+    # globally correct only by reparsing every attempt journal for every unit,
+    # which made a 1,000-unit synthetic confirmation stage quadratic.  The
+    # database is still protected by the cross-process dispatch lock and is
+    # reconciled from the append-only attempt journal whenever a worker starts.
+    # Thus it is an acceleration index, not a second source of scientific truth.
+    budget_state_path = stage_dir / "execution_budget.json"
+    execution_layout_path = stage_dir / "execution_layout.json"
+    dispatch_db_path = stage_dir / "execution_dispatch.sqlite3"
+    dispatch_lock_path = stage_dir / ".dispatch.lock"
+    declared_cap = float(plan.require("budget.wall_time_cap_seconds"))
+    requested_cap = float(args.wall_time_cap_seconds) if args.wall_time_cap_seconds is not None else declared_cap
+    if requested_cap > declared_cap:
+        raise ContractError(
+            f"a worker may shorten but not expand the signed wall-clock cap "
+            f"({requested_cap} > {declared_cap})"
+        )
+    with dispatch_lock_path.open("a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        expected_layout = {
+            "schema": "robust_nroy_execution_layout/1.0.0",
+            "n_shards": int(args.of),
+            "ledger_frozen_sha256": ledger.frozen_sha256,
+            "plan_sha256": plan.plan_sha256,
+        }
+        if execution_layout_path.exists():
+            recorded_layout = json.loads(execution_layout_path.read_text())
+            if recorded_layout != expected_layout:
+                raise ContractError(
+                    "this stage already froze a different execution layout; "
+                    f"recorded={recorded_layout}, requested={expected_layout}. "
+                    "Re-prepare a new stage to change shard count."
+                )
+        else:
+            ne.atomic_write_json(execution_layout_path, expected_layout)
+        if budget_state_path.exists():
+            budget_state = json.loads(budget_state_path.read_text())
+        else:
+            budget_state = {
+                "started_utc": time.time(),
+                "wall_time_cap_seconds": declared_cap,
+            }
+            ne.atomic_write_json(budget_state_path, budget_state)
+        # Reload while holding the global lock.  A ledger loaded before this
+        # lock can be stale because another shard may have durably launched an
+        # attempt in the meantime.  Rebuilding from that stale object would
+        # erase the other shard's reservation and refund global budget.
+        ledger = ne.Ledger.load(stage_dir)
+        # SQLite is an acceleration cache, never evidence.  Rebuild it exactly
+        # from the now-current durable journal every startup; this both repairs
+        # corruption and prevents an internally valid but stale cache from
+        # blocking retry or undercounting dispatch.
+        ne.rebuild_dispatch_index(dispatch_db_path, ledger)
+    assigned = ledger.rows_for_shard(args.shard, args.of)
+    done = ledger.completed_keys()
     cap = ne.WallClockCap(
         cap_seconds=float(
-            args.wall_time_cap_seconds
-            if args.wall_time_cap_seconds is not None
-            else plan.require("budget.wall_time_cap_seconds")
-        )
+            requested_cap
+        ),
+        started_utc=float(budget_state["started_utc"]),
     )
 
     results: list[ne.SeedResult] = []
+    shared_values: dict[str, tuple[float, ...]] = {}
+    shard_dir = stage_dir / "shards"
+    durable_results_dir = stage_dir / "results"
+    for prior in _read_shards(stage_dir, targets):
+        try:
+            ne.validate_durable_seed_result(ledger, prior, targets=targets)
+        except ne.MergeRefused:
+            # A crash after the result file but before the SUCCESS event leaves
+            # the same attempt durably LOST.  It is not reusable, but its
+            # exact frozen row may be overwritten by the paid retry.  Every
+            # other mismatch remains a hard provenance failure.
+            ne.validate_orphaned_lost_seed_result(
+                ledger, prior, targets=targets,
+            )
+            continue
+        key = ne.result_key(
+            prior.stage, prior.model, prior.vector_hash, int(prior.seed)
+        )
+        values = shared_values.get(key)
+        if values is not None and values != prior.values:
+            raise ContractError(
+                f"validated durable rows disagree for scientific result key {key}"
+            )
+        shared_values[key] = prior.values
     for position, unit in enumerate(assigned):
         if unit.key in done:
             continue  # a completed work unit is never rerun
-        if not cap.may_start():
-            cap.record_withheld(
-                sum(1 for later in assigned[position:] if later.key not in done)
-            )
-            break
-        cap.record_dispatch()
         params = {
             name: float(vectors.loc[unit.design_id, name])
             for name in vectors.columns
@@ -1109,43 +1932,199 @@ def command_evaluate(args: argparse.Namespace) -> int:
                 f"{unit.design_id}: the design vector does not match the ledger hash; "
                 "refusing to evaluate a mutated design"
             )
-        attempt_id = ledger.next_attempt_id(unit.design_id, unit.seed)
-        started = time.time()
+        lock_path = dispatch_lock_path
+        if unit.result_key in shared_values:
+            values = shared_values[unit.result_key]
+            with lock_path.open("a") as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                db = sqlite3.connect(dispatch_db_path)
+                row = db.execute(
+                    "SELECT attempt_count, completed FROM unit_state WHERE unit_key=?",
+                    (unit.key_string,),
+                ).fetchone()
+                if row is not None and int(row[1]):
+                    db.close()
+                    continue
+                attempt_count = int(row[0]) if row is not None else 0
+                attempt_id = ne.new_attempt_id(unit.design_id, unit.seed, attempt_count + 1)
+                linked_result = ne.SeedResult(
+                    design_id=unit.design_id, seed=unit.seed, stage=unit.stage,
+                    model=unit.model, vector_hash=unit.vector_hash,
+                    target_order=targets.frozen_order, values=values,
+                    attempt_id=attempt_id, code_sha256=current_code,
+                    config_sha256=expected_config,
+                    parent_manifest_sha256=unit.parent_manifest_sha256,
+                )
+                linked = ledger.record_attempt(ne.AttemptRecord(
+                    attempt_id=attempt_id, design_id=unit.design_id, seed=unit.seed,
+                    status=ne.ATTEMPT_LINKED, started_utc=time.time(), ended_utc=time.time(),
+                    vector_hash=unit.vector_hash, result_hash=linked_result.result_hash, **meta,
+                ))
+                durable_results_dir.mkdir(parents=True, exist_ok=True)
+                ne.atomic_write_json(
+                    durable_results_dir / f"{ccs.sha256_json({'unit': unit.key_string})}.json",
+                    linked_result.as_row(), overwrite_completed=True,
+                )
+                ledger.save_attempt_record(stage_dir, shard_label, linked)
+                db.execute(
+                    "INSERT INTO unit_state VALUES (?, ?, 1) "
+                    "ON CONFLICT(unit_key) DO UPDATE SET attempt_count=excluded.attempt_count, completed=1",
+                    (unit.key_string, attempt_count + 1),
+                )
+                db.commit()
+                db.close()
+            results.append(linked_result)
+            continue
+        with lock_path.open("a") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            db = sqlite3.connect(dispatch_db_path)
+            unit_row = db.execute(
+                "SELECT attempt_count, completed FROM unit_state WHERE unit_key=?",
+                (unit.key_string,),
+            ).fetchone()
+            result_row = db.execute(
+                "SELECT consumed, active, successful FROM result_state WHERE result_key=?",
+                (unit.result_key,),
+            ).fetchone()
+            if (unit_row is not None and int(unit_row[1])) or \
+               (result_row is not None and int(result_row[1])):
+                db.close()
+                continue
+            if result_row is not None and int(result_row[2]):
+                # A successful shared result is being durably materialised by
+                # the worker that owns this shard.  A duplicate invocation
+                # must not dispatch it again; a later resume will link it from
+                # the shard result table.
+                db.close()
+                continue
+            if not cap.may_start():
+                db.close()
+                cap.record_withheld(
+                    sum(1 for later in assigned[position:] if later.key not in done)
+                )
+                break
+            consumed_attempts = int(db.execute(
+                "SELECT consumed_attempts FROM budget WHERE singleton=1"
+            ).fetchone()[0])
+            consumed_trajectories = int(db.execute(
+                "SELECT count(*) FROM result_state WHERE consumed=1"
+            ).fetchone()[0])
+            already_consumed = bool(result_row and int(result_row[0]))
+            if consumed_attempts >= int(plan.require("budget.max_attempts")) or (
+                not already_consumed
+                and consumed_trajectories >= int(plan.require("budget.max_trajectories"))
+            ):
+                db.close()
+                break
+            attempt_count = int(unit_row[0]) if unit_row is not None else 0
+            attempt_id = ne.new_attempt_id(unit.design_id, unit.seed, attempt_count + 1)
+            started = time.time()
+            attempt = ledger.record_attempt(ne.AttemptRecord(
+                attempt_id=attempt_id, design_id=unit.design_id, seed=unit.seed,
+                status=ne.ATTEMPT_RUNNING, started_utc=started,
+                vector_hash=unit.vector_hash, **meta,
+            ))
+            ledger.save_attempt_record(stage_dir, shard_label, attempt)
+            db.execute(
+                "INSERT INTO unit_state VALUES (?, ?, 0) "
+                "ON CONFLICT(unit_key) DO UPDATE SET attempt_count=excluded.attempt_count",
+                (unit.key_string, attempt_count + 1),
+            )
+            db.execute(
+                "INSERT INTO result_state VALUES (?, 1, 1, 0) "
+                "ON CONFLICT(result_key) DO UPDATE SET consumed=1, active=1",
+                (unit.result_key,),
+            )
+            db.execute(
+                "UPDATE budget SET consumed_attempts=consumed_attempts+1 WHERE singleton=1"
+            )
+            db.commit()
+            db.close()
+        cap.record_dispatch()
         try:
             values = evaluate(unit, params, targets.frozen_order)
             result = ne.SeedResult(
                 design_id=unit.design_id, seed=unit.seed, stage=unit.stage, model=unit.model,
                 vector_hash=unit.vector_hash, target_order=targets.frozen_order,
                 values=tuple(float(v) for v in values), attempt_id=attempt_id,
-                code_sha256=current_code, config_sha256=plan.plan_sha256,
+                code_sha256=current_code, config_sha256=expected_config,
                 parent_manifest_sha256=unit.parent_manifest_sha256,
             )
-            ledger.record_attempt(ne.AttemptRecord(
-                attempt_id=attempt_id, design_id=unit.design_id, seed=unit.seed,
-                status=ne.ATTEMPT_SUCCESS, started_utc=started, ended_utc=time.time(),
-                vector_hash=unit.vector_hash, result_hash=result.result_hash, **meta,
-            ))
+            shared_values[unit.result_key] = result.values
+            attempt.status = ne.ATTEMPT_SUCCESS
+            attempt.ended_utc = time.time()
+            attempt.result_hash = result.result_hash
             results.append(result)
-        except ContractError:
+            cap.record_completion()
+            with lock_path.open("a") as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                durable_results_dir.mkdir(parents=True, exist_ok=True)
+                ne.atomic_write_json(
+                    durable_results_dir / f"{ccs.sha256_json({'unit': unit.key_string})}.json",
+                    result.as_row(), overwrite_completed=True,
+                )
+                ledger.save_attempt_record(stage_dir, shard_label, attempt)
+                db = sqlite3.connect(dispatch_db_path)
+                db.execute(
+                    "UPDATE result_state SET active=0, successful=1 WHERE result_key=?",
+                    (unit.result_key,),
+                )
+                db.execute(
+                    "UPDATE unit_state SET completed=1 WHERE unit_key=?",
+                    (unit.key_string,),
+                )
+                db.commit()
+                db.close()
+        except ContractError as exc:
+            attempt.status = ne.ATTEMPT_FAILED
+            attempt.ended_utc = time.time()
+            attempt.failure_reason = str(exc)
+            attempt.failure_class = type(exc).__name__
+            with lock_path.open("a") as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                ledger.save_attempt_record(stage_dir, shard_label, attempt)
+                db = sqlite3.connect(dispatch_db_path)
+                db.execute("UPDATE result_state SET active=0 WHERE result_key=?", (unit.result_key,))
+                db.commit()
+                db.close()
             raise
         except Exception as exc:  # noqa: BLE001 - the failure is data, not a crash
-            ledger.record_attempt(ne.AttemptRecord(
-                attempt_id=attempt_id, design_id=unit.design_id, seed=unit.seed,
-                status=ne.ATTEMPT_FAILED, started_utc=started, ended_utc=time.time(),
-                vector_hash=unit.vector_hash,
-                failure_reason=str(exc), failure_class=type(exc).__name__, **meta,
-            ))
+            attempt.status = ne.ATTEMPT_FAILED
+            attempt.ended_utc = time.time()
+            attempt.failure_reason = str(exc)
+            attempt.failure_class = type(exc).__name__
+            cap.record_completion()
+            with lock_path.open("a") as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                ledger.save_attempt_record(stage_dir, shard_label, attempt)
+                db = sqlite3.connect(dispatch_db_path)
+                db.execute("UPDATE result_state SET active=0 WHERE result_key=?", (unit.result_key,))
+                db.commit()
+                db.close()
 
-    shard_dir = stage_dir / "shards"
     shard_dir.mkdir(parents=True, exist_ok=True)
-    frame = pd.DataFrame([r.as_row() for r in results])
+    shard_path = shard_dir / f"shard_{args.shard:03d}_of_{args.of:03d}.csv"
+    old = ne.read_frame_exact(shard_path) if shard_path.exists() else pd.DataFrame()
+    frame = pd.concat([old, pd.DataFrame([r.as_row() for r in results])], ignore_index=True)
+    if not frame.empty:
+        keys = ["stage", "model", "design_id", "seed"]
+        duplicated = frame.duplicated(keys, keep=False)
+        if duplicated.any():
+            raise ContractError(
+                "resume would persist duplicate scientific results for "
+                f"{frame.loc[duplicated, keys].to_dict('records')[:3]}"
+            )
     ne.atomic_write_frame(
-        shard_dir / f"shard_{args.shard:03d}_of_{args.of:03d}.csv", frame,
+        shard_path, frame,
         overwrite_completed=True,
     )
     # Only this shard's own attempt file. Rewriting the shared ledger here
     # would clobber the other workers' audit rows (and did).
     ledger.save_attempts(stage_dir, f"shard_{args.shard:03d}_of_{args.of:03d}")
+    ne.atomic_write_json(
+        stage_dir / f"budget_audit_shard_{args.shard:03d}_of_{args.of:03d}.json",
+        cap.as_row(), overwrite_completed=True,
+    )
     print(f"shard {args.shard}/{args.of}: {len(results)} result(s) from "
           f"{len(assigned)} assigned unit(s) [{args.evaluator}]")
     return 0
@@ -1156,35 +2135,144 @@ def command_evaluate(args: argparse.Namespace) -> int:
 # ==========================================================================
 
 def _read_shards(stage_dir: Path, targets: nc.TargetContract) -> list[ne.SeedResult]:
-    out: list[ne.SeedResult] = []
+    out: dict[tuple[str, str, str, int], ne.SeedResult] = {}
     shard_dir = stage_dir / "shards"
-    if not shard_dir.exists():
-        return out
-    columns = [f"target:{name}" for name in targets.frozen_order]
-    for path in sorted(shard_dir.glob("shard_*.csv")):
-        frame = ne.read_frame_exact(path)
-        if frame.empty:
-            continue
-        missing = [c for c in columns if c not in frame.columns]
-        if missing:
-            raise ContractError(f"{path}: missing target columns {missing}")
-        for _, row in frame.iterrows():
-            out.append(ne.SeedResult(
-                design_id=str(row["design_id"]), seed=int(row["seed"]),
-                stage=str(row["stage"]), model=str(row["model"]),
-                vector_hash=str(row["vector_hash"]),
-                target_order=targets.frozen_order,
-                values=tuple(float(row[c]) for c in columns),
-                attempt_id=str(row["attempt_id"]),
-                code_sha256=str(row["code_sha256"]), config_sha256=str(row["config_sha256"]),
-            ))
-    return out
+
+    def add(row: Mapping, *, source: Path) -> None:
+        result = ne.seed_result_from_durable_row(
+            row, targets=targets, source=source,
+        )
+        key = (result.stage, result.model, result.design_id, int(result.seed))
+        prior = out.get(key)
+        if prior is not None and prior.as_row() != result.as_row():
+            raise ContractError(
+                f"conflicting durable/shard result rows for frozen key {key}"
+            )
+        out[key] = result
+
+    if shard_dir.exists():
+        for path in sorted(shard_dir.glob("shard_*.csv")):
+            frame = ne.read_frame_exact(path)
+            for row in frame.to_dict("records"):
+                add(row, source=path)
+    durable = stage_dir / "results"
+    if durable.exists():
+        for path in sorted(durable.glob("*.json")):
+            add(json.loads(path.read_text()), source=path)
+    return list(out.values())
+
+
+def _handoff_audit_for_complete_stage(
+    stage_dir: Path, *, stage: str, plan: nc.FrozenPlan, scores: pd.DataFrame,
+) -> pd.DataFrame:
+    """Reconcile generated, dispatched, completed and selected candidates."""
+    proposals = ne.read_frame_exact(stage_dir / "design_proposals.csv")
+    kernel_of = dict(zip(
+        proposals["design_id"].astype(str), proposals["kernel_id"].astype(str)
+    ))
+
+    def counts(frame: pd.DataFrame, mask=None) -> dict[str, int]:
+        selected = frame if mask is None else frame.loc[mask]
+        values = selected["design_id"].astype(str).map(kernel_of)
+        if values.isna().any():
+            raise ContractError("handoff audit found a score with no frozen proposal")
+        return {str(k): int(v) for k, v in values.value_counts().items()}
+
+    dispatched = {
+        str(k): int(v) for k, v in proposals["kernel_id"].astype(str).value_counts().items()
+    }
+    proposed = dict(dispatched)
+    rejected: dict[str, int] = {}
+    quotas: dict[str, int] = {}
+    if stage in (nc.STAGE_DISCOVERY, nc.STAGE_BRIDGES):
+        outcomes = ne.read_frame_exact(stage_dir / "kernel_outcomes.csv")
+        if not outcomes.empty:
+            proposed = {
+                str(k): int(v) for k, v in outcomes.groupby("kernel_id")["n_proposed"].sum().items()
+            }
+            rejected = {
+                str(k): int(v) for k, v in outcomes.groupby("kernel_id")["n_rejected"].sum().items()
+            }
+            for kernel, n in dispatched.items():
+                if kernel not in proposed:
+                    proposed[kernel] = n
+                    rejected[kernel] = 0
+            quotas = {
+                str(k): int(v)
+                for k, v in outcomes.groupby("kernel_id")["quota"].sum().items()
+            }
+        if stage == nc.STAGE_DISCOVERY:
+            n_anchors = len(ne.read_frame_exact(stage_dir / "anchors.csv"))
+            declared = {
+                kernel: quota * n_anchors
+                for kernel, quota in plan.kernel_quotas().items()
+            }
+            mismatched_declared = {
+                kernel: (int(quotas.get(kernel, -1)), int(quota))
+                for kernel, quota in declared.items()
+                if int(quotas.get(kernel, -1)) != int(quota)
+            }
+            if mismatched_declared:
+                raise ContractError(
+                    f"frozen kernel outcome quotas {quotas} do not match the signed "
+                    f"discovery quotas {declared}: {mismatched_declared}"
+                )
+            # Keep additional model-specific frozen families (notably the M1
+            # p-boundary probes) from their explicit kernel outcomes.
+            quotas = {**declared, **quotas}
+            # One exact anchor control is frozen per anchor but it is not a
+            # stochastic design-kernel quota in the plan.
+            quotas[nc.KERNEL_ANCHOR] = int(dispatched.get(nc.KERNEL_ANCHOR, 0))
+    else:
+        # Allocation-only stages freeze their exact selected set.  That set is
+        # the quota; leaving quotas empty used to make every observed family
+        # appear to have an implicit quota of zero.
+        quotas = dict(dispatched)
+
+    completed = counts(scores)
+    if stage == nc.STAGE_DISCOVERY:
+        promoted = counts(scores, scores["promoted"].astype(bool))
+        confirmed: dict[str, int] = {}
+    else:
+        promoted = dict(dispatched)
+        confirmed = counts(scores, scores["nominal_pass"].astype(bool))
+    return ne.handoff_audit(
+        proposed=proposed, rejected=rejected, dispatched=dispatched,
+        completed=completed, promoted=promoted, confirmed=confirmed,
+        quotas=quotas,
+    )
 
 
 def command_merge(args: argparse.Namespace) -> int:
     stage_dir = _stage_directory(args.stage_dir)
-    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    existing_manifest = json.loads((stage_dir / "manifest.json").read_text())
+    if (stage_dir / "seed_results.csv").exists() or (stage_dir / "candidate_scores.csv").exists():
+        _validate_stage_artifacts(
+            stage_dir, what="repeat merge",
+            validate_all_indexed=str(existing_manifest.get("status")) != nc.STATUS_PARTIAL,
+            allow_partial_runtime_growth=(
+                str(existing_manifest.get("status")) == nc.STATUS_PARTIAL
+            ),
+        )
+        if str(existing_manifest.get("status")) != nc.STATUS_PARTIAL:
+            raise ContractError(
+                "this COMPLETE stage has already been merged. Merged scientific evidence "
+                "is immutable; prepare a new stage instead of silently re-indexing it"
+            )
+    _validate_stage_artifacts(stage_dir, what="merge")
+    manifest = existing_manifest
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    frozen_parent_for_plan = _frozen_parent_acceptance_identity(stage_dir)
+    if frozen_parent_for_plan is not None:
+        nc.assert_acceptance_identity(
+            plan.plan_acceptance_fields(), frozen_parent_for_plan,
+            what=(
+                f"merge {stage_dir}: current plan against the acceptance-input "
+                "identity frozen from the parent"
+            ),
+            fields=nc.PLAN_DERIVED_ACCEPTANCE_FIELDS,
+        )
+    _assert_plan_matches_manifest(plan, manifest, what="merge")
     ledger = ne.Ledger.load(stage_dir)
 
     results = _read_shards(stage_dir, plan.targets)
@@ -1197,8 +2285,6 @@ def command_merge(args: argparse.Namespace) -> int:
     seed_frame = ne.merge_seed_results(
         ledger, results, targets=plan.targets, expect_complete=complete
     )
-    ne.atomic_write_frame(stage_dir / "seed_results.csv", seed_frame, overwrite_completed=True)
-
     # These are the numerator and denominator of every implausibility, so a
     # merge that quietly skipped them would publish a COMPLETE, parentable
     # stage containing no acceptance arithmetic at all. Both are required, and
@@ -1223,7 +2309,17 @@ def command_merge(args: argparse.Namespace) -> int:
         if set(base_variance) == set(plan.targets.frozen_order) else list(base_variance),
         what="--base-variance",
     )
-    bad = sorted(k for k, v in base_variance.items() if not float(v) > 0.0)
+    bad_observed = sorted(
+        k for k, v in observed.items() if not np.isfinite(float(v))
+    )
+    if bad_observed:
+        raise ContractError(
+            f"--observed must contain finite numeric values; non-finite for {bad_observed}"
+        )
+    bad = sorted(
+        k for k, v in base_variance.items()
+        if not np.isfinite(float(v)) or not float(v) > 0.0
+    )
     if bad:
         raise ContractError(f"--base-variance must be strictly positive; non-positive for {bad}")
     target_inputs_sha256 = {
@@ -1239,7 +2335,7 @@ def command_merge(args: argparse.Namespace) -> int:
         observed_sha256=target_inputs_sha256["observed"],
         base_variance_sha256=target_inputs_sha256["base_variance"],
     )
-    frozen_parent = _frozen_parent_acceptance_identity(stage_dir)
+    frozen_parent = frozen_parent_for_plan
     if frozen_parent is not None:
         nc.assert_acceptance_identity(
             frozen_parent, identity,
@@ -1264,11 +2360,32 @@ def command_merge(args: argparse.Namespace) -> int:
             "'work_not_run', which is execution bookkeeping, not a finding."
         )
         print(f"no scores recomputed: {scoring_note}")
+        ne.atomic_write_frame(
+            stage_dir / "seed_results.csv", seed_frame, overwrite_completed=True
+        )
+    elif not complete:
+        scoring_note = (
+            f"{len(seed_frame)} seed-level row(s) are retained for audit, but the stage is "
+            f"{resume.status}; partial work is never scored or classified"
+        )
+        print(f"no scores recomputed: {scoring_note}")
+        ne.atomic_write_frame(
+            stage_dir / "seed_results.csv", seed_frame, overwrite_completed=True
+        )
     else:
         scores = ne.recompute_candidate_scores(
             seed_frame, targets=plan.targets, observed=observed,
             base_variance=base_variance, cutoff=plan.cutoff,
             variance_alpha=float(plan.require("promotion.variance_alpha")),
+        )
+        handoff = _handoff_audit_for_complete_stage(
+            stage_dir, stage=str(manifest["stage"]), plan=plan, scores=scores,
+        )
+        ne.atomic_write_frame(
+            stage_dir / "seed_results.csv", seed_frame, overwrite_completed=True
+        )
+        ne.atomic_write_frame(
+            stage_dir / "kernel_audit.csv", handoff, overwrite_completed=True
         )
         ne.atomic_write_frame(
             stage_dir / "candidate_scores.csv", scores, overwrite_completed=True
@@ -1279,6 +2396,7 @@ def command_merge(args: argparse.Namespace) -> int:
         stage_dir, stage=manifest["stage"], model=manifest["model"],
         status=resume.status, ledger=ledger, contract=plan.manifest_contract(),
         parent_manifest=None,
+        parent_manifest_sha256=str(manifest.get("parent_manifest_sha256") or "") or None,
         extra={
             **(manifest.get("extra") or {}),
             "resume": resume.as_row(),
@@ -1313,14 +2431,74 @@ def command_identity_gate(args: argparse.Namespace) -> int:
     """
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    plan = nc.FrozenPlan.load(args.plan)
+    adapter = ProductionEvaluator(plan)
+    spaces = _model_spaces(plan)
+    shared_names = spaces[nc.MODEL_M0].names
+    p_name = str(plan.require("p_parameter.name"))
+
+    routed_vectors: dict[str, dict] = {}
+
+    def routed_config(model_name: str, factor: float, rho: float, p: float) -> dict:
+        """Build gate inputs through the exact production injection route."""
+        m0 = spaces[nc.MODEL_M0]
+        u = np.full(len(m0.names), 0.5, dtype=float)
+        # The historical multiplier values become deterministic locations on
+        # one genuine calibrated coordinate, keeping every probe in bounds.
+        u[0] = min(0.95, max(0.05, 0.5 + (float(factor) - 1.0)))
+        m0_values = m0.denormalise(u)
+        m0_params = {name: float(value) for name, value in zip(shared_names, m0_values)}
+        if model_name == nc.MODEL_M0:
+            model = m0
+            params = m0_params
+        else:
+            model = spaces[nc.MODEL_M1]
+            params = nc.embed_m0_in_m1(m0, model, m0_params, p_value=float(p))
+        vector_hash = nc.vector_hash(params, names=model.names)
+        unit = ne.WorkUnit(
+            stage=nc.STAGE_DISCOVERY, model=model_name,
+            design_id=f"identity/{model_name}/f{factor:g}/p{p:g}/rho{rho:g}",
+            seed=int(args.seeds[0]), vector_hash=vector_hash,
+            kernel=nc.KERNEL_ANCHOR, parent_ids=("identity-gate",), params=params,
+            parent_manifest_sha256="", code_sha256=_code_sha256(),
+            config_sha256=_scientific_config_sha256(plan, model),
+            target_schema=plan.targets.frozen_order,
+        )
+        config = adapter.config_for(unit, params)
+        if model_name == nc.MODEL_M1 and float(rho) != 1.0:
+            node = config
+            for key in nig.PROFILE_PATH:
+                node = node[key]
+            node["routine_hazard_scale"] = {"value": float(rho)}
+        config["run_control"]["end_year"] = {"value": int(args.end_year)}
+        config["run_control"]["deterministic_mode"] = {"value": False}
+        routed_vectors[unit.design_id] = {
+            "model": model_name, "vector_hash": vector_hash,
+            "params": params, "p": float(p), "rho": float(rho),
+        }
+        return config
+
     print("M0/M1 identity gate -- this runs the real engine on short truncated runs.")
-    print(f"  base config: {args.base_config}  end year: {args.end_year}")
+    print(f"  base config: {plan.require('models.base_config')}  end year: {args.end_year}")
     print(f"  seeds:       {list(args.seeds)}")
     print()
     artifact = nig.run_gate(
-        base_config=args.base_config,
+        base_config=str(plan.require("models.base_config")),
         end_year=int(args.end_year),
         seeds=[int(s) for s in args.seeds],
+        config_factory=routed_config,
+        route_evidence={
+            "plan_sha256": plan.plan_sha256,
+            "scientific_config_sha256": _scientific_config_sha256(
+                plan, spaces[nc.MODEL_M1]
+            ),
+            "target_register_sha256": ccs.sha256_file(
+                (ROOT / plan.targets.register_path)
+                if not Path(plan.targets.register_path).is_absolute()
+                else Path(plan.targets.register_path)
+            ),
+            "vectors": routed_vectors,
+        },
     )
     path = ne.atomic_write_json(
         out / nig.GATE_FILENAME, artifact, overwrite_completed=True
@@ -1367,7 +2545,28 @@ def command_classify(args: argparse.Namespace) -> int:
     ``p_coverage.csv``.  No simulation, no engine: this is classification of
     results that already exist.
     """
-    stage_dir, manifest, plan, model, ledger = _stage_context(args)
+    stage_dir = _stage_directory(args.stage_dir)
+    _validate_stage_artifacts(
+        stage_dir, what="classification", validate_all_indexed=True,
+    )
+    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    model = _model_spaces(plan)[str(manifest["model"])]
+    identity = _assert_acceptance_basis(
+        stage_dir, manifest, plan, what="classification"
+    )
+    _assert_plan_matches_manifest(plan, manifest, what="classification")
+    ledger = ne.Ledger.load(stage_dir)
+    if str(manifest.get("stage")) == nc.STAGE_PROMOTION:
+        raise ContractError(
+            "promotion is an allocation-only handoff and has no fresh seed evidence to "
+            "classify; prepare and evaluate the confirmation stage instead"
+        )
+    if str(manifest.get("status")) != nc.STATUS_COMPLETE or ledger.incomplete_units():
+        raise ContractError(
+            f"classification requires a COMPLETE stage with no incomplete work; got "
+            f"status={manifest.get('status')!r}, incomplete={len(ledger.incomplete_units())}"
+        )
     scores = _scores_if_present(stage_dir)
     if scores is None:
         raise ContractError(
@@ -1377,9 +2576,6 @@ def command_classify(args: argparse.Namespace) -> int:
     # Before any label is written: these scores must have been produced on the
     # same acceptance basis as the parent they descend from, and on the one the
     # current plan describes.
-    identity = _assert_acceptance_basis(
-        stage_dir, manifest, plan, what="classification"
-    )
     # A classification is a completed artifact, and a child stage may already
     # have validated this stage's artifact index against it. Silently
     # reclassifying would leave that child's recorded parent hash describing a
@@ -1412,6 +2608,33 @@ def command_classify(args: argparse.Namespace) -> int:
         min_direction_classes=int(plan.require("separation.min_direction_classes")),
         scores=scores,
     )
+    controls = proposals[proposals["kernel_id"].astype(str) == nc.KERNEL_ANCHOR]
+    score_pass = {
+        str(row["design_id"]): bool(row["nominal_pass"])
+        for _, row in scores.iterrows()
+    }
+    score_binding = {
+        str(row["design_id"]): str(row.get("binding_target", ""))
+        for _, row in scores.iterrows()
+    }
+    control_for = {
+        str(row["parent_ids"]).split("|")[0]: str(row["design_id"])
+        for _, row in controls.iterrows()
+    }
+    support["endpoint_confirmation_design_id"] = support["candidate_id"].astype(str).map(control_for).fillna("")
+    support["endpoint_confirmed"] = support["endpoint_confirmation_design_id"].map(
+        lambda design_id: bool(score_pass.get(str(design_id), False))
+    )
+    support["endpoint_binding_target"] = support["endpoint_confirmation_design_id"].map(
+        lambda design_id: score_binding.get(str(design_id), "")
+    )
+    failed_endpoint = ~support["endpoint_confirmed"].astype(bool)
+    support.loc[failed_endpoint, "local_support_label"] = nc.LABEL_UNRESOLVED
+    support.loc[failed_endpoint, "eligible_for_representation"] = False
+    support.loc[failed_endpoint, "reason"] = (
+        "the anchor itself did not nominally confirm on the reserved seed block; "
+        "neighbour evidence cannot make an unconfirmed endpoint eligible"
+    )
     ne.atomic_write_frame(
         stage_dir / "local_support.csv", support, overwrite_completed=True
     )
@@ -1431,6 +2654,7 @@ def command_classify(args: argparse.Namespace) -> int:
         stage_dir, stage=manifest["stage"], model=manifest["model"],
         status=str(manifest["status"]), ledger=ledger,
         contract=plan.manifest_contract(), parent_manifest=None,
+        parent_manifest_sha256=str(manifest.get("parent_manifest_sha256") or "") or None,
         extra={
             **(manifest.get("extra") or {}),
             "acceptance_input_identity": identity,
@@ -1479,6 +2703,10 @@ def command_regions(args: argparse.Namespace) -> int:
         parent_dir, expected_stage=nc.STAGE_BRIDGES, expected_model=model.model,
         targets=plan.targets, seeds=plan.seeds, child_stage=nc.STAGE_REGIONS,
     )
+    identity = _assert_acceptance_basis(
+        parent_dir, validated, plan, what="edge verdicts"
+    )
+    _assert_plan_matches_manifest(plan, validated, what="regions parent")
     ledger = ne.Ledger.load(parent_dir)
     scores = _scores_if_present(parent_dir)
     if scores is None:
@@ -1491,9 +2719,6 @@ def command_regions(args: argparse.Namespace) -> int:
     # the graph's nodes carry. Otherwise an edge could be "sampled-path
     # supported" under one acceptance rule while its endpoints were assessed
     # under another, and the region report would mix the two silently.
-    identity = _assert_acceptance_basis(
-        parent_dir, parent_manifest, plan, what="edge verdicts"
-    )
     nodes = ne.read_frame_exact(parent_dir / "graph_nodes.csv")
     edges_frame = ne.read_frame_exact(parent_dir / "candidate_edges.csv")
     proposals = ne.read_frame_exact(parent_dir / "design_proposals.csv")
@@ -1551,6 +2776,9 @@ def command_regions(args: argparse.Namespace) -> int:
     ne.atomic_write_frame(out / "representatives.csv", representatives)
     ne.atomic_write_frame(out / "representation_eligibility.csv", eligibility)
     ne.atomic_write_frame(out / "graph_nodes.csv", nodes)
+    anchors_path = parent_dir / "anchors.csv"
+    if anchors_path.exists():
+        ne.atomic_write_frame(out / "anchors.csv", ne.read_frame_exact(anchors_path))
     # Carried forward unchanged, not rebuilt: the regions package must report
     # the same local assessment the graph was built from.
     support_path = parent_dir / "local_support.csv"
@@ -1632,7 +2860,12 @@ def command_diagnose(args: argparse.Namespace) -> int:
     (:data:`nroy_contract.CONDITIONAL_DECISIONS`).  The result is written to
     its own file and is never merged into ``candidate_scores``.
     """
+    stage_dir = _stage_directory(args.stage_dir)
+    _validate_stage_artifacts(
+        stage_dir, what="correlated-output diagnosis", validate_all_indexed=True,
+    )
     stage_dir, manifest, plan, _model, _ledger = _stage_context(args)
+    _assert_plan_matches_manifest(plan, manifest, what="correlated-output diagnosis")
     if not bool(plan.get("correlated_output_diagnostic.enabled", False)):
         raise ContractError(
             "correlated_output_diagnostic.enabled is false in the run plan. The diagnostic "
@@ -1666,6 +2899,13 @@ def command_diagnose(args: argparse.Namespace) -> int:
         stage_dir / "correlated_output_diagnostic.json", payload,
         overwrite_completed=True,
     )
+    ne.write_stage_manifest(
+        stage_dir, stage=str(manifest["stage"]), model=str(manifest["model"]),
+        status=str(manifest["status"]), ledger=_ledger,
+        contract=plan.manifest_contract(), parent_manifest=None,
+        parent_manifest_sha256=str(manifest.get("parent_manifest_sha256") or "") or None,
+        extra=manifest.get("extra") or {}, overwrite_completed=True,
+    )
     print(f"correlated-output diagnostic: {diagnostic.status}")
     print(f"  {diagnostic.reason}")
     print(f"  seed blocks (effective stochastic sample size): {diagnostic.n_seed_blocks}")
@@ -1683,10 +2923,14 @@ def command_diagnose(args: argparse.Namespace) -> int:
 
 def command_report(args: argparse.Namespace) -> int:
     stage_dir = _stage_directory(args.stage_dir)
+    _validate_stage_artifacts(
+        stage_dir, what="report", validate_all_indexed=True,
+    )
     manifest = json.loads((stage_dir / "manifest.json").read_text())
     plan_path = args.plan or manifest["contract"]["plan_path"]
-    raw = json.loads(Path(plan_path).read_text())
-    unsigned = [item.path for item in nc.unsigned_values(raw)]
+    plan = nc.FrozenPlan.load(plan_path)
+    _assert_plan_matches_manifest(plan, manifest, what="report")
+    unsigned = [item.path for item in nc.unsigned_values(plan.raw)]
 
     tables: dict[str, pd.DataFrame] = {}
     for name in (
@@ -1694,6 +2938,7 @@ def command_report(args: argparse.Namespace) -> int:
         "candidate_edges", "edge_verdicts", "components", "representatives",
         "kernel_audit", "ledger_units", "ledger_attempts", "p_coverage",
         "design_evidence", "graph_nodes",
+        "anchors", "design_vectors",
     ):
         path = stage_dir / f"{name}.csv"
         if path.exists():
@@ -1705,12 +2950,43 @@ def command_report(args: argparse.Namespace) -> int:
         tables, status=str(manifest["status"]), model=str(manifest["model"]),
         manifest=manifest,
     )
+    model = _model_spaces(plan)[str(manifest["model"])]
+    parameter_frame = tables.get("anchors")
+    binding_targets = None
+    scores = tables.get("candidate_scores")
+    if scores is not None and "binding_target" in scores.columns:
+        binding_targets = {
+            str(row["design_id"]): str(row["binding_target"])
+            for _, row in scores.iterrows()
+        }
+        proposals = tables.get("design_proposals")
+        if proposals is not None:
+            controls = proposals[
+                proposals["kernel_id"].astype(str) == nc.KERNEL_ANCHOR
+            ]
+            for _, row in controls.iterrows():
+                design_id = str(row["design_id"])
+                parent = str(row["parent_ids"]).split("|")[0]
+                if design_id in binding_targets:
+                    binding_targets[parent] = binding_targets[design_id]
+    support = tables.get("local_support")
+    if support is not None and "endpoint_binding_target" in support.columns:
+        if binding_targets is None:
+            binding_targets = {}
+        binding_targets.update({
+            str(row["candidate_id"]): str(row["endpoint_binding_target"])
+            for _, row in support.iterrows()
+            if str(row.get("endpoint_binding_target", ""))
+        })
     written = nrp.write_package(
         stage_dir / "package", tables, facts=facts, manifest=manifest,
         question=QUESTION, unsigned=unsigned,
         kernel_audit=tables.get("kernel_audit"),
         resume=(manifest.get("extra") or {}).get("resume"),
         recomputation_verified="candidate_scores" in tables,
+        parameter_frame=parameter_frame,
+        parameter_names=model.names,
+        binding_targets=binding_targets,
         overwrite_completed=True,
     )
     print(f"wrote {len(written)} artifact(s) to {stage_dir / 'package'}")
@@ -1721,8 +2997,10 @@ def command_report(args: argparse.Namespace) -> int:
 
 def command_resume(args: argparse.Namespace) -> int:
     stage_dir = _stage_directory(args.stage_dir)
+    _validate_stage_artifacts(stage_dir, what="resume")
     manifest = json.loads((stage_dir / "manifest.json").read_text())
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
+    _assert_plan_matches_manifest(plan, manifest, what="resume")
     ledger = ne.Ledger.load(stage_dir)
     decision = ne.plan_resume(
         ledger,
@@ -1753,7 +3031,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True)
     p.add_argument("--anchors", default="",
                    help="CSV of complete joint confirmed vectors; required for every "
-                        "stage except 'bridges', whose node set comes from its parent")
+                        "discovery stage (including independent strictly-positive-p M1 "
+                        "anchors) except 'bridges', whose node set comes from its parent")
     p.add_argument("--archive", default="",
                    help="CSV of complete joint archive vectors (with an optional 'j' "
                         "column) for the declared low-J correlation-following source")
@@ -1768,14 +3047,32 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"path to a passing {nig.GATE_FILENAME}; REQUIRED for "
                         "--model M1, because the pytests that check the identity are "
                         "skipped under the no-engine guard")
+    p.add_argument("--m0-confirmed-dir", default="",
+                   help="COMPLETE M0 confirmation stage; required for M1 discovery so "
+                        "every confirmed M0 vector is embedded at exact p=0")
+    p.add_argument(
+        "--m1-anchor-evidence", default="",
+        help=(
+            f"typed {M1_ANCHOR_EVIDENCE_SCHEMA} JSON proving that every supplied "
+            "positive-p M1 anchor passed the reserved confirmation block; required "
+            "for M1 discovery"
+        ),
+    )
     p.set_defaults(func=command_prepare)
 
     p = sub.add_parser(
         "identity-gate",
         help="run the M0/M1-at-p=0 identity gate (RUNS THE ENGINE; required before M1)",
+        description=(
+            "RUNS THE ENGINE on short, bounded identity trajectories; this is a "
+            "pre-production gate, not a production calibration run"
+        ),
     )
     p.add_argument("--out", required=True, help="directory to write the gate artifact")
-    p.add_argument("--base-config", default=nig.DEFAULT_BASE_CONFIG)
+    p.add_argument(
+        "--plan", required=True,
+        help="signed plan whose ProductionEvaluator.config_for route the gate exercises",
+    )
     p.add_argument("--end-year", type=int, default=nig.DEFAULT_END_YEAR)
     p.add_argument("--seeds", type=int, nargs="+", default=list(nig.DEFAULT_SEEDS))
     p.set_defaults(func=command_identity_gate)

@@ -298,6 +298,18 @@ def test_duplicate_rows_are_refused_even_when_values_agree():
         ne.merge_seed_results(ledger, results + [results[0]], targets=CONTRACT)
 
 
+def test_result_values_are_bound_to_the_recorded_success_hash():
+    space, _, proposals, _ = build_design(n_anchors=1, quota=2)
+    ledger = make_ledger(proposals)
+    vectors = {p.design_id: p.params for p in proposals}
+    results = evaluate(ledger, list(ledger.units), space, vectors)
+    altered = list(results[0].values)
+    altered[0] += 1.0
+    forged = ne.SeedResult(**{**results[0].__dict__, "values": tuple(altered)})
+    with pytest.raises(ne.MergeRefused, match="recorded successful attempt hash"):
+        ne.merge_seed_results(ledger, [forged] + results[1:], targets=CONTRACT)
+
+
 def test_stale_code_or_config_hashes_are_refused_against_the_ledger():
     """Each row is checked against its FROZEN LEDGER ROW, not just against the
     other shards. Checking only that the shards agree with each other would
@@ -335,6 +347,7 @@ def test_a_failed_attempt_cannot_masquerade_as_a_result():
         model=units[0].model, vector_hash=units[0].vector_hash, target_order=TARGETS,
         values=tuple(1.0 for _ in TARGETS), attempt_id="forged",
         code_sha256=units[0].code_sha256, config_sha256=units[0].config_sha256,
+        parent_manifest_sha256=units[0].parent_manifest_sha256,
     )
     with pytest.raises(ne.MergeRefused, match="masquerade"):
         ne.merge_seed_results(ledger, results + [forged], targets=CONTRACT)
@@ -771,6 +784,27 @@ def test_attempts_consume_budget_and_are_never_refunded():
     assert decision.remaining_attempts == 8
 
 
+def test_an_existing_shared_result_can_be_linked_after_launch_budget_is_spent():
+    space, _, proposals, _ = build_design(n_anchors=1, quota=1)
+    source = fx.work_units(
+        [proposals[0]], [DISCOVERY_SEEDS[0]], stage=nc.STAGE_DISCOVERY,
+        model=nc.MODEL_M0, targets=TARGETS,
+    )[0]
+    linked = ne.WorkUnit(
+        **{**source.__dict__, "design_id": source.design_id + "/linked"}
+    )
+    ledger = ne.Ledger(
+        stage=nc.STAGE_DISCOVERY, model=nc.MODEL_M0, units=(source, linked)
+    )
+    ledger.record_attempt(ne.AttemptRecord(
+        attempt_id="source-success", design_id=source.design_id, seed=source.seed,
+        status=ne.ATTEMPT_SUCCESS, vector_hash=source.vector_hash,
+        result_hash="durable-result",
+    ))
+    decision = ne.plan_resume(ledger, max_attempts=1, max_trajectories=1)
+    assert decision.relaunchable == ((linked.design_id, int(linked.seed)),)
+
+
 def test_resume_restores_the_frozen_design_and_never_regenerates_it(tmp_path):
     space, _, proposals, _ = build_design(n_anchors=2, quota=3)
     ledger = make_ledger(proposals)
@@ -1031,11 +1065,17 @@ def test_concurrent_workers_do_not_destroy_the_attempt_audit(tmp_path):
     assert len(restored.completed_keys()) == n_units
     assert restored.is_complete()
 
-    # Each shard wrote its own file; none overwrote another's.
-    shard_files = sorted((stage_dir / ne.Ledger.ATTEMPTS_DIR).glob("*.csv"))
-    assert len(shard_files) == n_shards
-    counts = [len(pd.read_csv(f)) for f in shard_files]
-    assert sum(counts) == n_units, f"per-shard attempt counts {counts} do not sum to {n_units}"
+    # Each launch is checkpointed independently before execution, plus one
+    # compact shard summary; no worker overwrote another's history.
+    attempt_dir = stage_dir / ne.Ledger.ATTEMPTS_DIR
+    assert len(list(attempt_dir.glob("*.csv"))) == n_shards
+    assert len(list(attempt_dir.glob("*.jsonl"))) == n_shards
+    events = [
+        json.loads(line)
+        for path in sorted(attempt_dir.glob("*.jsonl"))
+        for line in path.read_text().splitlines() if line.strip()
+    ]
+    assert len({row["attempt_id"] for row in events}) == n_units
 
     # And the consolidated scientific table still merges cleanly.
     results = []

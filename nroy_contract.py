@@ -117,12 +117,14 @@ KERNEL_ARCHIVE_FOLLOWING = "archive_following"
 KERNEL_CROSS_BLOCK = "cross_block"
 KERNEL_BRIDGE = "bridge"
 KERNEL_P_BOUNDARY = "p_boundary"
+KERNEL_ANCHOR = "anchor_control"
 KERNEL_FAMILIES = (
     KERNEL_AMBIENT,
     KERNEL_ARCHIVE_FOLLOWING,
     KERNEL_CROSS_BLOCK,
     KERNEL_BRIDGE,
     KERNEL_P_BOUNDARY,
+    KERNEL_ANCHOR,
 )
 
 # Stage names.  A stage may only parent its exact declared successor.
@@ -1018,6 +1020,14 @@ class SeedRegistry:
     foreign: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
+        if len(self.discovery) != 5:
+            raise ContractError(
+                f"discovery must contain exactly 5 seeds; got {len(self.discovery)}"
+            )
+        if len(self.confirmation) != 20:
+            raise ContractError(
+                f"confirmation must contain exactly 20 seeds; got {len(self.confirmation)}"
+            )
         for label, block in (("discovery", self.discovery), ("confirmation", self.confirmation)):
             if not block:
                 raise ContractError(f"{label} seed block is empty")
@@ -1703,6 +1713,13 @@ class FrozenPlan:
                 f"the frozen rule is {ccs.IMPLAUSIBILITY_CUTOFF}"
             )
         discrepancy = float(acceptance.get("discrepancy", ccs.PRIMARY_DISCREPANCY))
+        if not np.isfinite(discrepancy) or discrepancy != ccs.PRIMARY_DISCREPANCY:
+            raise ContractError(
+                "this stage may not change the primary model-discrepancy rule: "
+                f"plan says {discrepancy!r}, the frozen rule is "
+                f"{ccs.PRIMARY_DISCREPANCY!r}. The supplied B_i values must already "
+                "contain that declared non-process variance; it is not added twice here."
+            )
 
         plan = cls(
             raw=dict(raw),
@@ -1740,6 +1757,8 @@ class FrozenPlan:
         """Cross-field checks that a per-field signature cannot catch."""
         p_min = float(self.require("p_parameter.min"))
         p_max = float(self.require("p_parameter.max"))
+        if not np.isfinite(p_min) or not np.isfinite(p_max):
+            raise ContractError(f"the p range must be finite; got [{p_min}, {p_max}]")
         if p_min != 0.0:
             raise ContractError(
                 f"the p range must start at exact 0 so that M1 nests M0; got {p_min!r}"
@@ -1765,6 +1784,8 @@ class FrozenPlan:
             )
 
         bins = [float(b) for b in self.require("p_parameter.bins")]
+        if not bins or not np.all(np.isfinite(bins)):
+            raise ContractError(f"p coverage bins must be non-empty and finite: {bins}")
         if sorted(bins) != bins:
             raise ContractError(f"p coverage bins must be ascending: {bins}")
         if bins[0] < p_min or bins[-1] > p_max:
@@ -1773,6 +1794,8 @@ class FrozenPlan:
             )
 
         scales = [float(s) for s in self.require("ambient.scales")]
+        if not np.all(np.isfinite(scales)):
+            raise ContractError(f"ambient scales must be finite: {scales}")
         if len(scales) < 2:
             raise ContractError(f"the spec requires at least two ambient scales; got {scales}")
         if sorted(scales) != scales or len(set(scales)) != len(scales):
@@ -1788,6 +1811,8 @@ class FrozenPlan:
             )
 
         fractions = [float(f) for f in self.require("graph.bridge_fractions")]
+        if not fractions or not np.all(np.isfinite(fractions)):
+            raise ContractError(f"bridge fractions must be non-empty and finite: {fractions}")
         if sorted(fractions) != fractions or len(set(fractions)) != len(fractions):
             raise ContractError(f"bridge fractions must be ascending and distinct: {fractions}")
         if any(not (0.0 < f < 1.0) for f in fractions):
@@ -1803,8 +1828,11 @@ class FrozenPlan:
             raise ContractError("separation.min_direction_classes must be >= 1")
 
         min_an = float(self.require("separation.min_anchor_neighbour"))
-        if min_an <= 0.0:
+        min_nn = float(self.require("separation.min_neighbour_neighbour"))
+        if not np.isfinite(min_an) or min_an <= 0.0:
             raise ContractError("separation.min_anchor_neighbour must be positive")
+        if not np.isfinite(min_nn) or min_nn <= 0.0:
+            raise ContractError("separation.min_neighbour_neighbour must be positive")
         if min_an >= min(scales):
             raise ContractError(
                 f"minimum anchor-neighbour separation ({min_an}) is not smaller than the "
@@ -1815,6 +1843,26 @@ class FrozenPlan:
             raise ContractError("budget.max_trajectories must be positive")
         if int(self.require("budget.max_attempts")) <= 0:
             raise ContractError("budget.max_attempts must be positive")
+        wall_cap = float(self.require("budget.wall_time_cap_seconds"))
+        if not np.isfinite(wall_cap) or wall_cap <= 0.0:
+            raise ContractError("budget.wall_time_cap_seconds must be finite and positive")
+
+        positive_integer_paths = (
+            "representative_selection.n_per_component",
+            "ambient.quota_per_scale",
+            "ambient.max_attempts_per_anchor",
+            "archive_following.neighbour_count",
+            "archive_following.rank_truncation",
+            "graph.neighbour_count",
+        )
+        for path in positive_integer_paths:
+            if int(self.require(path)) <= 0:
+                raise ContractError(f"{path} must be positive")
+
+        for path in ("archive_following.scales", "cross_block.scales"):
+            values = [float(value) for value in self.require(path)]
+            if not values or not np.all(np.isfinite(values)) or any(value <= 0.0 for value in values):
+                raise ContractError(f"{path} must contain finite positive values: {values}")
 
         quotas = self.kernel_quotas()
         if not quotas:

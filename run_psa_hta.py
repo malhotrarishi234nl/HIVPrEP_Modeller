@@ -825,7 +825,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="PSA × HTA — probabilistic sensitivity analysis over full CEA pipeline"
     )
-    parser.add_argument("--config", default="1980_test.json")
+    parser.add_argument("--config", default="configs/1980_test.json")
     parser.add_argument("--hta-config", default="configs/hta_config.json")
     parser.add_argument("--psa-config", default="configs/psa_config.json")
     parser.add_argument("--n-draws", type=int, default=None)

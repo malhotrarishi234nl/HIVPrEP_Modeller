@@ -188,7 +188,7 @@ def test_strict_set_nested_requires_existing_paths():
 
 
 def test_inject_params_deep_copies_base_config_and_disables_outputs_only_in_copy():
-    base_config = load_json(ROOT / "1980_test.json")
+    base_config = load_json(ROOT / "configs" / "1980_test.json")
     calib_space = load_json(ROOT / "configs" / "calib_space.json")
     validate_config_paths(base_config, calib_space)
     original = copy.deepcopy(base_config)
@@ -218,7 +218,7 @@ def test_inject_params_deep_copies_base_config_and_disables_outputs_only_in_copy
 
 
 def test_inject_params_can_force_deterministic_mode_for_scoring_copy():
-    base_config = load_json(ROOT / "1980_test.json")
+    base_config = load_json(ROOT / "configs" / "1980_test.json")
     calib_space = load_json(ROOT / "configs" / "calib_space.json")
 
     injected = inject_params(
@@ -233,7 +233,7 @@ def test_inject_params_can_force_deterministic_mode_for_scoring_copy():
 
 
 def test_best_fit_configs_preserve_deterministic_calibration_mode(tmp_path):
-    base_config = load_json(ROOT / "1980_test.json")
+    base_config = load_json(ROOT / "configs" / "1980_test.json")
     calib_space = load_json(ROOT / "configs" / "calib_space.json")
     ranked = pd.DataFrame(
         [
@@ -265,7 +265,7 @@ def test_best_fit_configs_preserve_deterministic_calibration_mode(tmp_path):
 
 
 def test_refine_calib_space_around_base_narrows_active_bounds():
-    base_config = load_json(ROOT / "1980_test.json")
+    base_config = load_json(ROOT / "configs" / "1980_test.json")
     calib_space = load_json(ROOT / "configs" / "calib_space.json")
     backbone_space = filter_calib_space_for_stage(calib_space, "backbone")
     set_nested(base_config, "population.activity_distribution.value.Medium", 0.325)
@@ -492,12 +492,12 @@ class TestPMsmSync:
         }
 
     def test_p_msm_config_path_exists_in_base_config(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         calib_space = self._calib_space_with_p_msm()
         validate_config_paths(base_config, calib_space)
 
     def test_inject_params_syncs_population_p_msm(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         calib_space = self._calib_space_with_p_msm()
         vector = {
             "p_msm": 0.075,
@@ -510,7 +510,7 @@ class TestPMsmSync:
         assert get_nested(cfg, "population.p_msm.value") == pytest.approx(0.075)
 
     def test_inject_params_syncs_debut_p_msm_to_same_value(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         calib_space = self._calib_space_with_p_msm()
         vector = {
             "p_msm": 0.075,
@@ -523,7 +523,7 @@ class TestPMsmSync:
         assert get_nested(cfg, "demography.sexual_debut.p_msm.value") == pytest.approx(0.075)
 
     def test_inject_params_without_p_msm_leaves_debut_p_msm_unchanged(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         original_debut = get_nested(base_config, "demography.sexual_debut.p_msm.value")
         calib_space = {
             "parameters": [
@@ -548,7 +548,7 @@ class TestPMsmSync:
         assert get_nested(cfg, "demography.sexual_debut.p_msm.value") == pytest.approx(original_debut)
 
     def test_derived_activity_low_correct_when_p_msm_present(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         calib_space = self._calib_space_with_p_msm()
         vector = {
             "p_msm": 0.070,
@@ -563,7 +563,7 @@ class TestPMsmSync:
         )
 
     def test_derived_seed_acute_share_correct_when_p_msm_present(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         calib_space = self._calib_space_with_p_msm()
         vector = {
             "p_msm": 0.060,
@@ -577,7 +577,7 @@ class TestPMsmSync:
         assert stage_dist_acute == pytest.approx(round(1.0 - 0.20 - 0.02, 10))
 
     def test_base_config_not_mutated_by_p_msm_injection(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         import copy
         original = copy.deepcopy(base_config)
         calib_space = self._calib_space_with_p_msm()
@@ -610,7 +610,7 @@ class TestPMsmSync:
         assert "joint" in p_msm["stages"]
 
     def test_v13_9_3_calib_space_passes_validate_config_paths(self):
-        base_config = load_json(ROOT / "1980_test.json")
+        base_config = load_json(ROOT / "configs" / "1980_test.json")
         calib_space = load_json(
             ROOT / "configs" / "calib_space_v13_9_3_msm_denominator_bridge.json"
         )

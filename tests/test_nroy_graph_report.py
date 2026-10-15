@@ -626,13 +626,19 @@ def test_validate_subcommand_fails_closed_on_the_shipped_plan(capsys):
     assert "No production simulation may start" in out
 
 
-def test_validate_subcommand_accepts_a_signed_plan(tmp_path, capsys):
+def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evidence(
+    tmp_path, capsys,
+):
     plan_path = fx.write_signed_plan(tmp_path)
     code = runner.main(["validate", "--plan", str(plan_path)])
     out = capsys.readouterr().out
-    assert code == 0
+    assert code == 3
     assert "All required decisions are signed" in out
-    assert "Signed is not the same as launch-ready" in out
+    assert "not production-ready" in out
+    assert "placeholder/fixture evidence" in out
+    assert "no current evidence schema" in out
+    assert "production M1 config route failed" in out
+    assert "stage_structured_diagnosis" in out
 
 
 def test_prepare_refuses_an_unsigned_plan(tmp_path):
@@ -770,28 +776,32 @@ def test_end_to_end_merged_table_is_identical_across_worker_counts(tmp_path, n_s
     )
 
 
-def test_end_to_end_m1_includes_explicit_p_zero_and_a_tiny_positive_probe(tmp_path):
-    """Both halves of the M1 boundary design, through the real CLI.
+def test_durable_results_survive_loss_of_the_end_of_worker_shard_snapshot(tmp_path):
+    stage_dir = _run_pipeline(tmp_path, 1)
+    expected = ne.read_frame_exact(stage_dir / "seed_results.csv")
+    for path in (stage_dir / "shards").glob("shard_*.csv"):
+        path.unlink()
+    recovered = runner._read_shards(stage_dir, fx.signed_plan(tmp_path).targets)
+    actual = pd.DataFrame([row.as_row() for row in recovered]).sort_values(
+        ["stage", "model", "design_id", "seed"]
+    ).reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        actual[expected.columns], expected.reset_index(drop=True)
+    )
 
-    Exact ``p = 0`` is the identity control, and a declared tiny positive value
-    is probed rather than excluded: the specifications prohibit an exclusion
-    band above zero.
-    """
-    stage_dir = _run_pipeline(
-        tmp_path, 2, model=nc.MODEL_M1,
-        overrides={"p_parameter.extra_probe_values": [1e-18]},
+
+def test_m1_discovery_refuses_caller_selected_anchors(tmp_path):
+    """M1 must consume the automatic exact-p=0 M0 embedding handoff."""
+    plan_path = fx.write_signed_plan(
+        tmp_path, **{"p_parameter.extra_probe_values": [1e-18]}
     )
-    vectors = ne.read_frame_exact(stage_dir / "design_vectors.csv")
-    assert (vectors[fx.P_NAME] == 0.0).any(), "M1 must include exact p=0 designs"
-    assert (vectors[fx.P_NAME] == 1e-18).any(), (
-        "a declared tiny positive p must be probed, not excluded as discontinuous"
-    )
-    # And it was really evaluated, not merely proposed.
-    tiny = vectors[vectors[fx.P_NAME] == 1e-18]["design_id"].astype(str).tolist()
-    scored = set(
-        ne.read_frame_exact(stage_dir / "candidate_scores.csv")["design_id"].astype(str)
-    )
-    assert set(tiny) <= scored, "the tiny positive probe was proposed but never scored"
+    anchors = _write_anchors(tmp_path / "anchors.csv", fx.m1_space())
+    code = runner.main([
+        "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "m1"),
+        "--anchors", str(anchors), "--model", nc.MODEL_M1,
+        "--identity-gate", str(fx.write_identity_gate(tmp_path)),
+    ])
+    assert code == 1
 
 
 def test_evaluate_refuses_a_mutated_design_vector(tmp_path):
@@ -1096,6 +1106,16 @@ def test_merge_refuses_acceptance_inputs_that_do_not_match_the_contract(tmp_path
     ]) == 1
     assert "strictly positive" in capsys.readouterr().err
 
+    nonfinite = dict(observed)
+    nonfinite[TARGETS[0]] = float("nan")
+    (tmp_path / "nan.json").write_text(json.dumps(nonfinite))
+    assert runner.main([
+        "merge", "--plan", str(plan_path), "--stage-dir", str(stage_dir),
+        "--observed", str(tmp_path / "nan.json"),
+        "--base-variance", str(tmp_path / "v.json"),
+    ]) == 1
+    assert "finite numeric" in capsys.readouterr().err
+
 
 def test_merge_records_the_hashes_of_the_acceptance_inputs(tmp_path):
     """A stage must record what z_i and B_i actually were."""
@@ -1138,6 +1158,24 @@ def test_a_later_stage_requires_a_validated_complete_parent(tmp_path, capsys):
     ]) == 1
     assert "may be a parent" in capsys.readouterr().err
 
+
+def test_child_refuses_a_complete_parent_from_a_different_signed_plan(
+    tmp_path, capsys,
+):
+    first = tmp_path / "first"
+    first.mkdir()
+    parent = _run_pipeline(first, 1)
+    other_plan = fx.write_signed_plan(
+        tmp_path / "other", **{"budget.wall_time_cap_seconds": 3599}
+    )
+    code = runner.main([
+        "prepare", "--plan", str(other_plan),
+        "--out", str(tmp_path / "wrong_plan_child"),
+        "--model", nc.MODEL_M0, "--stage", nc.STAGE_PROMOTION,
+        "--parent-dir", str(parent),
+    ])
+    assert code == 1
+    assert "differs from the stage's frozen plan hash" in capsys.readouterr().err
 
 def test_the_first_stage_needs_no_parent_and_refuses_a_spurious_one(tmp_path, capsys):
     plan_path = fx.write_signed_plan(tmp_path)

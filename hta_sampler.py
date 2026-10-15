@@ -10,6 +10,8 @@ Distribution parameterisations:
       alpha = (mean / se)^2,  scale = se^2 / mean
   - Beta: specify alpha and beta directly. If the configured value is negative
     (AE utility-decrement convention), draws keep the negative sign.
+  - linked: copy one earlier active Beta/Gamma draw after validating that the
+    source support fits the target's declared bounds (no silent clipping).
   - fixed: skipped (not sampled).
 
 Array-indexed paths (adverse_events.items, prevention_costs.shared) use the
@@ -32,7 +34,7 @@ from scipy.stats import qmc
 
 
 # Distribution types supported in hta_config (lowercase, as in the JSON)
-_SUPPORTED_DIST_TYPES = {"gamma", "beta"}
+_SUPPORTED_DIST_TYPES = {"gamma", "beta", "linked"}
 
 
 class HTASampler:
@@ -87,19 +89,47 @@ class HTASampler:
         if K == 0:
             return pd.DataFrame()
 
+        sampled_positions = [
+            j for j, (_path, _frozen, _bounds, entry) in enumerate(self._param_specs)
+            if entry.get("distribution", {}).get("type") != "linked"
+        ]
+        sample_column = {position: column for column, position in enumerate(sampled_positions)}
+
         if self._method == "lhs":
-            unit_samples = self._lhs_samples(n, K, seed)
+            unit_samples = self._lhs_samples(n, len(sampled_positions), seed)
         else:
             rng = np.random.default_rng(seed)
-            unit_samples = rng.uniform(0, 1, size=(n, K))
+            unit_samples = rng.uniform(0, 1, size=(n, len(sampled_positions)))
 
         draws_matrix = np.empty((n, K), dtype=np.float64)
+        index_of = {path: index for index, (path, *_rest) in enumerate(self._param_specs)}
         for j, (path, frozen, bounds, entry) in enumerate(self._param_specs):
             lo, hi = bounds
-            raw = frozen.ppf(unit_samples[:, j])
-            if _is_negative_beta(entry):
-                raw = -raw
-            draws_matrix[:, j] = np.clip(raw, lo, hi)
+            dist_block = entry.get("distribution", {})
+            if dist_block.get("type") == "linked":
+                source = str(dist_block.get("source_path", "")).strip()
+                if source not in index_of or index_of[source] >= j:
+                    raise ValueError(
+                        f"linked HTA parameter '{path}' requires an earlier sampled "
+                        f"source_path; got {source!r}"
+                    )
+                raw = draws_matrix[:, index_of[source]].copy()
+                outside = (raw < lo) | (raw > hi) | ~np.isfinite(raw)
+                if np.any(outside):
+                    observed_lo = float(np.nanmin(raw))
+                    observed_hi = float(np.nanmax(raw))
+                    raise ValueError(
+                        f"linked HTA parameter '{path}' received source draws outside "
+                        f"its declared bounds [{lo}, {hi}] (observed "
+                        f"[{observed_lo}, {observed_hi}]); refusing to clip a linked "
+                        "uncertain quantity"
+                    )
+                draws_matrix[:, j] = raw
+            else:
+                raw = frozen.ppf(unit_samples[:, sample_column[j]])
+                if _is_negative_beta(entry):
+                    raw = -raw
+                draws_matrix[:, j] = np.clip(raw, lo, hi)
 
         return pd.DataFrame(draws_matrix, columns=self.param_paths)
 
@@ -243,6 +273,14 @@ class HTASampler:
         if path in self._exclude_paths:
             return
 
+        if dist_type == "linked":
+            # Link defects are configuration errors, never optional parameters.
+            # They must abort sampler construction rather than turn into a
+            # warning plus silent omission.
+            frozen, bounds = self._build_link(path, entry)
+            self._param_specs.append((path, frozen, bounds, entry))
+            return
+
         try:
             frozen, bounds = self._build_distribution(path, entry)
         except Exception as e:
@@ -251,6 +289,82 @@ class HTASampler:
             return
 
         self._param_specs.append((path, frozen, bounds, entry))
+
+    def _build_link(self, path: str, entry: dict):
+        """Validate an identity link and return its target bounds."""
+        dist_block = entry.get("distribution", {})
+        raw_source = dist_block.get("source_path")
+        if not isinstance(raw_source, str) or not raw_source.strip():
+            raise ValueError(
+                f"linked HTA parameter '{path}' requires a non-empty source_path"
+            )
+        source = raw_source.strip()
+        if source == path:
+            raise ValueError(f"linked HTA parameter '{path}' cannot reference itself")
+
+        known = {
+            registered_path: (frozen, bounds, source_entry)
+            for registered_path, frozen, bounds, source_entry in self._param_specs
+        }
+        if source not in known:
+            reason = self._unavailable_link_source_reason(source)
+            raise ValueError(
+                f"linked HTA parameter '{path}' requires an earlier active stochastic "
+                f"source_path; {source!r} is {reason}"
+            )
+
+        _source_frozen, source_bounds, source_entry = known[source]
+        source_type = source_entry.get("distribution", {}).get("type")
+        if source_type == "linked":
+            raise ValueError(
+                f"linked HTA parameter '{path}' cannot use nested link source {source!r}"
+            )
+        if source_type not in {"beta", "gamma"}:
+            raise ValueError(
+                f"linked HTA parameter '{path}' source {source!r} is not a directly "
+                "sampled Beta/Gamma parameter"
+            )
+
+        target_bounds = _linked_bounds(path, entry)
+        source_lo, source_hi = source_bounds
+        target_lo, target_hi = target_bounds
+        if not all(
+            isinstance(value, (int, float))
+            and not isinstance(value, (bool, np.bool_))
+            and np.isfinite(value)
+            for value in (source_lo, source_hi)
+        ) or source_lo > source_hi:
+            raise ValueError(
+                f"linked HTA parameter '{path}' source {source!r} has invalid "
+                f"sampled bounds [{source_lo}, {source_hi}]"
+            )
+        if source_lo < target_lo or source_hi > target_hi:
+            raise ValueError(
+                f"linked HTA parameter '{path}' source {source!r} sampled bounds "
+                f"[{source_lo}, {source_hi}] exceed target bounds "
+                f"[{target_lo}, {target_hi}]; align the bounds rather than silently "
+                "clipping a shared uncertain quantity"
+            )
+        return None, target_bounds
+
+    def _unavailable_link_source_reason(self, source: str) -> str:
+        """Explain why a configured link source is not in the active registry."""
+        source_entry = _find_hta_entry(self._hta_config, source)
+        if source_entry is None:
+            return "missing (or is a nested field rather than a parameter path)"
+        source_type = source_entry.get("distribution", {}).get("type", "fixed")
+        if source_type == "fixed":
+            return "fixed, not stochastic"
+        if source_type == "linked":
+            return "another link (nested links are forbidden)"
+        if source in self._exclude_paths:
+            return "excluded by hta_sampling.exclude_parameters"
+        status = source_entry.get("distribution_status", "")
+        if self._exclude_placeholders and "placeholder" in status:
+            return "excluded by hta_sampling.exclude_placeholders"
+        if source_type not in _SUPPORTED_DIST_TYPES:
+            return f"unsupported by HTASampler (distribution type {source_type!r})"
+        return "forward or unavailable because its own distribution is invalid"
 
     # ── Distribution building ────────────────────────────────────────────────
 
@@ -381,6 +495,54 @@ def _get_val(entry, default):
     if isinstance(entry, dict) and "value" in entry:
         return entry["value"]
     return default
+
+
+def _find_hta_entry(config: dict, dot_path: str):
+    """Resolve a canonical sampler path, including list items addressed by id."""
+    node = config
+    for segment in dot_path.split("."):
+        if isinstance(node, dict):
+            if segment not in node:
+                return None
+            node = node[segment]
+        elif isinstance(node, list):
+            node = next(
+                (
+                    item for item in node
+                    if isinstance(item, dict) and item.get("id") == segment
+                ),
+                None,
+            )
+            if node is None:
+                return None
+        else:
+            return None
+    return node if isinstance(node, dict) else None
+
+
+def _linked_bounds(path: str, entry: dict) -> tuple:
+    """Read a linked target's declared bounds without inventing clipping limits."""
+    bounds = entry.get("bounds", {})
+    if not isinstance(bounds, dict):
+        raise ValueError(f"linked HTA parameter '{path}' bounds must be a dict")
+    lower = bounds.get("lower", -np.inf)
+    upper = bounds.get("upper", np.inf)
+    if (
+        not isinstance(lower, (int, float))
+        or isinstance(lower, (bool, np.bool_))
+        or not isinstance(upper, (int, float))
+        or isinstance(upper, (bool, np.bool_))
+        or np.isnan(lower)
+        or np.isnan(upper)
+    ):
+        raise ValueError(f"linked HTA parameter '{path}' bounds must be numeric")
+    lower, upper = float(lower), float(upper)
+    if lower > upper:
+        raise ValueError(
+            f"linked HTA parameter '{path}' bounds are reversed: "
+            f"{lower} > {upper}"
+        )
+    return lower, upper
 
 
 def _is_negative_beta(entry: dict) -> bool:

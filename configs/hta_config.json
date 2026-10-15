@@ -264,12 +264,13 @@
       "source": "Popping et al. 2021 (Lancet Reg Health Eur 8:100177; NL PLHIV utility 0.850); Popping et al. 2023 (PLoS ONE 18:e0280877; late/very-late presentation costs persist through 5 years); Tengs & Lin 2002 / Nichols 2016 untreated AIDS utility anchor 0.70",
       "bounds": {
         "lower": 0.85,
-        "upper": 0.98,
+        "upper": 1.0,
         "lower_source": "Popping 2021 absolute Dutch PLHIV EQ-5D-5L utility, conservative unnormalised sensitivity",
-        "upper_source": "Popping 2021 normalized stable chronic ART utility"
+        "upper_source": "Model susceptible/no-HIV convention and linked chronic-on-ART upper bound"
       },
       "distribution": {
-        "type": "fixed"
+        "type": "linked",
+        "source_path": "utilities.hiv_chronic_on_art"
       },
       "distribution_status": "derived_from_hiv_chronic_on_art"
     },

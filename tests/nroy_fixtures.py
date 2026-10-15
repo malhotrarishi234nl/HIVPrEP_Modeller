@@ -115,8 +115,53 @@ def signed_plan_dict(**overrides) -> dict:
 
 
 def write_signed_plan(tmp_path: Path, **overrides) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    # Production validation correctly refuses the shipped deterministic debug
+    # config.  The verification fixture therefore makes an explicit stochastic
+    # copy and binds all four non-decision prerequisites to the exact plan.
+    base = json.loads((ROOT / ccs.BASE_CONFIG_PATH).read_text())
+    base.setdefault("run_control", {})["deterministic_mode"] = {
+        "value": False,
+        "notes": "verification-suite stochastic fixture",
+    }
+    base_path = tmp_path / "stochastic_base_config.json"
+    base_path.write_text(json.dumps(base, indent=1))
+    prereq = {
+        "config_registry": str(tmp_path / "CONFIG_REGISTRY.md"),
+        "measured_pilot": str(tmp_path / "measured_pilot.json"),
+        "priced_budget": str(tmp_path / "priced_budget.json"),
+        "seed_disjointness_audit": str(tmp_path / "seed_disjointness_audit.json"),
+    }
+    overrides = {
+        "models.base_config": str(base_path),
+        "production_prerequisites": prereq,
+        **overrides,
+    }
+    raw = signed_plan_dict(**overrides)
     path = tmp_path / "signed_plan.json"
-    path.write_text(json.dumps(signed_plan_dict(**overrides), indent=1))
+    path.write_text(json.dumps(raw, indent=1))
+    plan_sha = ccs.sha256_file(path)
+    (tmp_path / "CONFIG_REGISTRY.md").write_text(
+        "# Verification fixture only\n\n"
+        f"plan: {plan_sha}\n"
+        f"base config: {ccs.sha256_file(base_path)}\n"
+        f"M0 calibration space: {ccs.sha256_file(M0_CALIB_SPACE)}\n"
+    )
+    common = {"passed": True, "plan_sha256": plan_sha}
+    (tmp_path / "measured_pilot.json").write_text(json.dumps({
+        **common, "seconds_per_trajectory": 0.001,
+    }))
+    (tmp_path / "priced_budget.json").write_text(json.dumps({
+        **common,
+        "max_attempts": int(raw["budget"]["max_attempts"]),
+        "max_trajectories": int(raw["budget"]["max_trajectories"]),
+        "wall_time_cap_seconds": float(raw["budget"]["wall_time_cap_seconds"]),
+    }))
+    (tmp_path / "seed_disjointness_audit.json").write_text(json.dumps({
+        **common,
+        "discovery": list(raw["seeds"]["discovery"]),
+        "confirmation": list(raw["seeds"]["confirmation"]),
+    }))
     return path
 
 
@@ -124,7 +169,10 @@ def signed_plan(tmp_path: Path, **overrides) -> nc.FrozenPlan:
     return nc.FrozenPlan.load(write_signed_plan(tmp_path, **overrides), root=ROOT)
 
 
-def write_identity_gate(tmp_path: Path, *, passed: bool = True, **overrides) -> Path:
+def write_identity_gate(
+    tmp_path: Path, *, passed: bool = True, base_config: str | Path | None = None,
+    **overrides,
+) -> Path:
     """A **fabricated** identity-gate artifact, for testing the gate *check*.
 
     It carries the real code fingerprint, so the staleness check is exercised
@@ -139,14 +187,22 @@ def write_identity_gate(tmp_path: Path, *, passed: bool = True, **overrides) -> 
     """
     import nroy_identity_gate as nig  # noqa: PLC0415 - test-only
 
+    if base_config is None and (tmp_path / "signed_plan.json").exists():
+        base_config = json.loads((tmp_path / "signed_plan.json").read_text())["models"]["base_config"]
+    base_config = base_config or nig.DEFAULT_BASE_CONFIG
+    resolved_base = Path(base_config)
+    if not resolved_base.is_absolute():
+        resolved_base = ROOT / resolved_base
     artifact = {
         "schema": nig.GATE_VERSION,
         "passed": bool(passed),
         "generated_utc": "2026-10-14T00:00:00Z",
-        "base_config": nig.DEFAULT_BASE_CONFIG,
+        "base_config": str(base_config),
+        "base_config_sha256": ccs.sha256_file(resolved_base),
         "end_year": nig.DEFAULT_END_YEAR,
         "seeds": list(nig.DEFAULT_SEEDS),
         "code_sha256": nig.code_fingerprint(),
+        "environment": nig.scientific_runtime_fingerprint(),
         "checks": [
             {"check": name, "passed": bool(passed), "detail": "fabricated fixture",
              "evidence": {}}
@@ -162,10 +218,78 @@ def write_identity_gate(tmp_path: Path, *, passed: bool = True, **overrides) -> 
             "was run. This is not evidence that the identity holds."
         ),
     }
+    plan_path = tmp_path / "signed_plan.json"
+    if plan_path.exists():
+        import run_robust_nroy_freeze as runner  # noqa: PLC0415 - test-only
+
+        plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+        m1 = runner._model_spaces(plan)[nc.MODEL_M1]
+        artifact.update({
+            "config_route": "ProductionEvaluator.config_for",
+            "route_evidence": {
+                "plan_sha256": plan.plan_sha256,
+                "scientific_config_sha256": runner._scientific_config_sha256(plan, m1),
+                "vectors": {"fabricated-test-vector": {"vector_hash": "fixture"}},
+            },
+        })
     artifact.update(overrides)
     tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / nig.GATE_FILENAME
     path.write_text(json.dumps(artifact, indent=1))
+    return path
+
+
+def write_m1_anchor_evidence(
+    tmp_path: Path,
+    *,
+    plan_path: Path,
+    anchors_path: Path,
+    **overrides,
+) -> Path:
+    """Typed positive-p confirmation evidence for M1 CLI contract tests.
+
+    Like the identity-gate helper above, this is explicitly a verification
+    fixture.  It exercises strict reconciliation; it is not scientific
+    evidence and must never be copied into a production run.
+    """
+    import run_robust_nroy_freeze as runner  # noqa: PLC0415 - test-only
+
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    model = runner._model_spaces(plan)[nc.MODEL_M1]
+    anchors = runner._load_anchors(anchors_path, model)
+    payload = {
+        "schema": runner.M1_ANCHOR_EVIDENCE_SCHEMA,
+        "passed": True,
+        "generated_utc": "2026-10-14T00:00:00Z",
+        "command": "verification-suite fabricated M1 confirmation fixture",
+        "model": nc.MODEL_M1,
+        "plan_sha256": plan.plan_sha256,
+        "anchors_sha256": ccs.sha256_file(anchors_path),
+        "scientific_code_sha256": runner._code_sha256(),
+        "scientific_config_sha256": runner._scientific_config_sha256(plan, model),
+        "target_register_sha256": plan.targets.register_sha256,
+        "target_order": list(plan.targets.frozen_order),
+        "p_parameter": str(plan.require("p_parameter.name")),
+        "confirmation_seeds": list(plan.seeds.confirmation),
+        "candidates": [
+            {
+                "candidate_id": anchor.anchor_id,
+                "vector_hash": anchor.vector_hash,
+                "p_value": float(anchor.params[model.p_name]),
+                "n_replicates": plan.k_confirmation,
+                "nominal_i_max": 0.0,
+                "nominal_pass": True,
+            }
+            for anchor in anchors
+        ],
+        "fixture_warning": (
+            "FABRICATED by the verification suite to test evidence validation; "
+            "not production confirmation evidence"
+        ),
+    }
+    payload.update(overrides)
+    path = tmp_path / "m1_anchor_confirmation.json"
+    path.write_text(json.dumps(payload, indent=1))
     return path
 
 
@@ -359,6 +483,7 @@ def evaluate_units(
             model=unit.model, vector_hash=unit.vector_hash, target_order=tuple(targets),
             values=values, attempt_id=attempt_id,
             code_sha256=unit.code_sha256, config_sha256=unit.config_sha256,
+            parent_manifest_sha256=unit.parent_manifest_sha256,
         )
         if ledger is not None:
             ledger.record_attempt(ne.AttemptRecord(

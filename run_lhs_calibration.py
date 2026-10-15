@@ -1035,7 +1035,7 @@ def run_lhs_calibration(args: argparse.Namespace) -> dict:
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run separate LHS epidemic calibration.")
-    parser.add_argument("--config", default=str(ROOT / "1980_test.json"))
+    parser.add_argument("--config", default=str(ROOT / "configs" / "1980_test.json"))
     parser.add_argument("--n", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--workers", type=int, default=-1)

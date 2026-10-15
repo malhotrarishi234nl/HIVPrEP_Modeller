@@ -49,12 +49,13 @@ prevent.
 from __future__ import annotations
 
 import copy
+import importlib.metadata
 import json
 import platform
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -73,7 +74,17 @@ PROFILE_PATH = ("transmission_model", "disease", "diagnosis", "stage_structured_
 
 #: Modules whose content decides whether the identity holds.  The gate records
 #: their hash, and an M1 design is refused if they have changed since.
-GATE_CODE_MODULES = ("run_v3.py", "stage_structured_diagnosis.py", "counter_based_rng.py")
+GATE_CODE_MODULES = (
+    "nroy_identity_gate.py", "run_v3.py", "stage_structured_diagnosis.py", "counter_based_rng.py",
+    "stochastic_allocation.py", "run_lhs_calibration.py", "calib_extractor.py",
+    "hm_target_register.py", "nroy_contract.py", "run_robust_nroy_freeze.py",
+    "engine_v3.py", "config_utils.py", "config_reader.py",
+    "transmission_corrected.py", "demography.py", "migration.py",
+    "schedule_utils.py", "aids_observation.py", "exogenous_diagnoses.py",
+    "output_writer.py", "hm_variance_budget.py",
+)
+
+GateConfigFactory = Callable[[str, float, float, float], dict]
 
 #: Several seeds: the identity must hold per realised trajectory, not merely in
 #: distribution.
@@ -93,6 +104,40 @@ DEFAULT_END_YEAR = 1990
 #: Non-vacuity requires both: infections must happen, and there must be an
 #: undiagnosed AIDS-stage pool for the symptom hazard to act on.
 VACUITY_COLUMNS = ("new_infections_msm", "aids_undiagnosed_start")
+
+#: The certificate is only complete when every one of these named checks is
+#: present exactly once.  Keep this next to the artifact contract rather than
+#: reconstructing it at the validation call site: the names are part of the
+#: signed evidence surface.
+REQUIRED_GATE_CHECKS = (
+    "not_vacuous",
+    "identity_at_exact_p_zero",
+    "deliberate_failures_do_fail",
+    "positive_p_changes_the_trajectory",
+)
+
+
+def scientific_runtime_fingerprint() -> dict[str, str]:
+    """Runtime dependencies capable of changing deterministic trajectories.
+
+    Source hashes alone are not a complete scientific fingerprint: Python,
+    NumPy, pandas and SciPy versions (and the execution platform) can change
+    RNG, distribution, reduction or floating-point behaviour without editing
+    any repository file.
+    """
+    try:
+        scipy_version = importlib.metadata.version("scipy")
+    except importlib.metadata.PackageNotFoundError:
+        scipy_version = "missing"
+    return {
+        "python_implementation": platform.python_implementation(),
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "pandas": pd.__version__,
+        "scipy": scipy_version,
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+    }
 
 
 # ==========================================================================
@@ -232,7 +277,8 @@ def check_not_vacuous(config: Mapping, seed: int) -> CheckResult:
 
 
 def check_identity(
-    config: Mapping, seeds: Sequence[int], *, vectors: Sequence[float] = (1.0,)
+    config: Mapping, seeds: Sequence[int], *, vectors: Sequence[float] = (1.0,),
+    config_factory: GateConfigFactory | None = None,
 ) -> CheckResult:
     """Multi-vector, multi-seed exact identity at ``p = 0``.
 
@@ -244,9 +290,17 @@ def check_identity(
     comparisons: list[dict] = []
     for factor in vectors:
         base = config if factor == 1.0 else perturbed_config(config, factor)
+        m0_config = (
+            config_factory(nc.MODEL_M0, float(factor), 1.0, 0.0)
+            if config_factory else without_stage_block(base)
+        )
+        m1_config = (
+            config_factory(nc.MODEL_M1, float(factor), 1.0, 0.0)
+            if config_factory else with_stage_block(base, rho=1.0, p=0.0)
+        )
         for seed in seeds:
-            m0 = run_engine(without_stage_block(base), seed)
-            m1 = run_engine(with_stage_block(base, rho=1.0, p=0.0), seed)
+            m0 = run_engine(m0_config, seed)
+            m1 = run_engine(m1_config, seed)
             same, detail = identical(m0, m1)
             comparisons.append({
                 "vector_multiplier": float(factor),
@@ -265,20 +319,29 @@ def check_identity(
     )
 
 
-def check_deliberate_failures(config: Mapping, seed: int) -> CheckResult:
+def check_deliberate_failures(
+    config: Mapping, seed: int, *, config_factory: GateConfigFactory | None = None,
+) -> CheckResult:
     """The comparison must fail when it should.  A check that cannot fail is none.
 
     Two deliberate failures, both required by spec sec. 9: a differing non-``p``
     input, and an unpinned routine hazard scale (``is_identity`` is ``rho == 1.0
     AND p == 0.0``, so ``p = 0`` alone does not execute the legacy path).
     """
-    m0 = run_engine(without_stage_block(config), seed)
+    m0 = run_engine(
+        config_factory(nc.MODEL_M0, 1.0, 1.0, 0.0)
+        if config_factory else without_stage_block(config),
+        seed,
+    )
     cases = {
         "perturbed_non_p_input": run_engine(
+            config_factory(nc.MODEL_M1, 1.4, 1.0, 0.0)
+            if config_factory else
             with_stage_block(perturbed_config(config, 1.4), rho=1.0, p=0.0), seed
         ),
         "routine_hazard_scale_not_pinned": run_engine(
-            with_stage_block(config, rho=0.8, p=0.0), seed
+            config_factory(nc.MODEL_M1, 1.0, 0.8, 0.0)
+            if config_factory else with_stage_block(config, rho=0.8, p=0.0), seed
         ),
     }
     evidence = {}
@@ -300,7 +363,8 @@ def check_deliberate_failures(config: Mapping, seed: int) -> CheckResult:
 
 
 def check_positive_p_is_live(
-    config: Mapping, seed: int, *, values: Sequence[float] = (1e-18, 0.35)
+    config: Mapping, seed: int, *, values: Sequence[float] = (1e-18, 0.35),
+    config_factory: GateConfigFactory | None = None,
 ) -> CheckResult:
     """A positive ``p`` must change the trajectory, however small.
 
@@ -310,12 +374,20 @@ def check_positive_p_is_live(
     not whether the value is admissible.  It also proves the identity is a
     property of the dispatch rather than of an inert parameter.
     """
-    m0 = run_engine(without_stage_block(config), seed)
+    m0 = run_engine(
+        config_factory(nc.MODEL_M0, 1.0, 1.0, 0.0)
+        if config_factory else without_stage_block(config),
+        seed,
+    )
     evidence = {}
     inert = []
     for value in values:
         same, detail = identical(
-            m0, run_engine(with_stage_block(config, rho=1.0, p=float(value)), seed)
+            m0, run_engine(
+                config_factory(nc.MODEL_M1, 1.0, 1.0, float(value))
+                if config_factory else with_stage_block(config, rho=1.0, p=float(value)),
+                seed,
+            )
         )
         evidence[repr(float(value))] = {"identical": bool(same), "detail": detail}
         if same:
@@ -348,6 +420,8 @@ def run_gate(
     seeds: Sequence[int] = DEFAULT_SEEDS,
     vector_multipliers: Sequence[float] = (1.0, 0.9, 1.15),
     root: Path = ROOT,
+    config_factory: GateConfigFactory | None = None,
+    route_evidence: Mapping[str, Any] | None = None,
 ) -> dict:
     """Run every check and return the gate artifact.
 
@@ -356,12 +430,21 @@ def run_gate(
     fixture it exists to prevent.
     """
     config = gate_config(base_config=base_config, end_year=end_year, root=root)
+    if config_factory is not None:
+        config = config_factory(nc.MODEL_M0, 1.0, 1.0, 0.0)
     started = time.time()
     checks = [
         check_not_vacuous(config, int(seeds[0])),
-        check_identity(config, [int(s) for s in seeds], vectors=vector_multipliers),
-        check_deliberate_failures(config, int(seeds[0])),
-        check_positive_p_is_live(config, int(seeds[0])),
+        check_identity(
+            config, [int(s) for s in seeds], vectors=vector_multipliers,
+            config_factory=config_factory,
+        ),
+        check_deliberate_failures(
+            config, int(seeds[0]), config_factory=config_factory,
+        ),
+        check_positive_p_is_live(
+            config, int(seeds[0]), config_factory=config_factory,
+        ),
     ]
     passed = all(check.passed for check in checks)
     base_path = Path(base_config)
@@ -377,15 +460,14 @@ def run_gate(
         "seeds": [int(s) for s in seeds],
         "vector_multipliers": [float(m) for m in vector_multipliers],
         "code_sha256": code_fingerprint(root),
+        "config_route": (
+            "ProductionEvaluator.config_for" if config_factory else "legacy_raw_config"
+        ),
+        "route_evidence": dict(route_evidence or {}),
         "checks": [check.as_dict() for check in checks],
         "n_checks": len(checks),
         "n_passed": sum(1 for check in checks if check.passed),
-        "environment": {
-            "python": platform.python_version(),
-            "numpy": np.__version__,
-            "pandas": pd.__version__,
-            "platform": platform.platform(),
-        },
+        "environment": scientific_runtime_fingerprint(),
         "meaning": (
             "M0 and M1-at-exact-p=0 give bit-identical scientific outputs across the "
             "recorded vectors and seeds, on the recorded code. This is a prerequisite "
@@ -398,7 +480,102 @@ def run_gate(
     }
 
 
-def assert_gate_satisfied(path: str | Path, *, root: Path = ROOT) -> dict:
+def _validate_gate_result_summary(artifact: Mapping[str, Any]) -> None:
+    """Reject internally inconsistent or malformed gate evidence.
+
+    ``passed`` is a derived summary, not an independent authorisation bit.  A
+    certificate is valid only when its named results and redundant counts all
+    describe the same outcome.  The redundancy is intentional: validating it
+    makes accidental truncation, hand editing, and partial result assembly
+    fail closed instead of silently authorising M1.
+    """
+    checks = artifact.get("checks")
+    if not isinstance(checks, list):
+        raise ContractError(
+            "identity gate artifact has malformed checks; expected a list of "
+            "named boolean results; re-run the gate"
+        )
+
+    names: list[str] = []
+    results: list[bool] = []
+    for index, check in enumerate(checks):
+        if not isinstance(check, Mapping):
+            raise ContractError(
+                f"identity gate artifact check {index} is not an object; re-run the gate"
+            )
+        name = check.get("check")
+        result = check.get("passed")
+        if not isinstance(name, str) or not name:
+            raise ContractError(
+                f"identity gate artifact check {index} has no valid name; re-run the gate"
+            )
+        # Do not accept truthy strings or integers in scientific evidence.
+        if type(result) is not bool:
+            raise ContractError(
+                f"identity gate artifact check {name!r} has non-boolean passed="
+                f"{result!r}; re-run the gate"
+            )
+        names.append(name)
+        results.append(result)
+
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ContractError(
+            f"identity gate artifact repeats check(s) {duplicates}; each check must "
+            "appear exactly once; re-run the gate"
+        )
+    missing = sorted(set(REQUIRED_GATE_CHECKS) - set(names))
+    if missing:
+        raise ContractError(
+            f"the identity gate artifact is missing check(s) {missing}, so it "
+            "certifies less than this code requires; re-run the gate"
+        )
+
+    top_level_passed = artifact.get("passed")
+    if type(top_level_passed) is not bool:
+        raise ContractError(
+            "identity gate artifact has a non-boolean top-level passed value; "
+            "re-run the gate"
+        )
+    n_checks = artifact.get("n_checks")
+    n_passed = artifact.get("n_passed")
+    if type(n_checks) is not int or type(n_passed) is not int:
+        raise ContractError(
+            "identity gate artifact has non-integer n_checks/n_passed counts; "
+            "re-run the gate"
+        )
+
+    observed_n_checks = len(checks)
+    observed_n_passed = sum(results)
+    observed_passed = all(results)
+    contradictions = []
+    if n_checks != observed_n_checks:
+        contradictions.append(
+            f"n_checks={n_checks}, but {observed_n_checks} checks are recorded"
+        )
+    if n_passed != observed_n_passed:
+        contradictions.append(
+            f"n_passed={n_passed}, but {observed_n_passed} checks passed"
+        )
+    if top_level_passed != observed_passed:
+        contradictions.append(
+            f"passed={top_level_passed}, but all recorded checks passed="
+            f"{observed_passed}"
+        )
+    if contradictions:
+        raise ContractError(
+            "identity gate artifact contains contradictory result evidence: "
+            + "; ".join(contradictions)
+            + "; re-run the gate"
+        )
+
+
+def assert_gate_satisfied(
+    path: str | Path, *, root: Path = ROOT,
+    expected_base_config: str | Path | None = None,
+    expected_plan_sha256: str | None = None,
+    expected_scientific_config_sha256: str | None = None,
+) -> dict:
     """Refuse an M1 design unless the gate passed on the code now on disk.
 
     Four separate refusals, because each failure mode is different:
@@ -427,25 +604,39 @@ def assert_gate_satisfied(path: str | Path, *, root: Path = ROOT) -> dict:
             f"identity gate artifact has schema {artifact.get('schema')!r}, this code "
             f"requires {GATE_VERSION!r}; re-run the gate"
         )
-    if not artifact.get("passed"):
+    _validate_gate_result_summary(artifact)
+    if not artifact["passed"]:
         failed = [
-            c["check"] for c in artifact.get("checks", []) if not c.get("passed")
+            c["check"] for c in artifact["checks"] if not c["passed"]
         ]
         raise ContractError(
             f"the M0/M1 identity gate did NOT pass: {failed or 'unknown check'}. "
             "M1 does not nest M0 under the recorded code, so no M1 design may be "
             "prepared. See the artifact for each check's detail."
         )
-    recorded = {c["check"] for c in artifact.get("checks", [])}
-    required = {
-        "not_vacuous", "identity_at_exact_p_zero",
-        "deliberate_failures_do_fail", "positive_p_changes_the_trajectory",
-    }
-    if not required <= recorded:
-        raise ContractError(
-            f"the identity gate artifact is missing check(s) {sorted(required - recorded)}, "
-            "so it certifies less than this code requires; re-run the gate"
-        )
+    if expected_plan_sha256 is not None:
+        if artifact.get("config_route") != "ProductionEvaluator.config_for":
+            raise ContractError(
+                "the identity gate did not exercise ProductionEvaluator.config_for; "
+                "a raw-config comparison cannot authorise production M1 work"
+            )
+        route = artifact.get("route_evidence") or {}
+        if str(route.get("plan_sha256", "")) != str(expected_plan_sha256):
+            raise ContractError(
+                "the identity gate is not bound to this signed run plan; re-run the gate"
+            )
+        if expected_scientific_config_sha256 is not None and str(
+            route.get("scientific_config_sha256", "")
+        ) != str(expected_scientific_config_sha256):
+            raise ContractError(
+                "the identity gate is not bound to this scientific configuration; "
+                "re-run the gate"
+            )
+        vectors = route.get("vectors")
+        if not isinstance(vectors, Mapping) or not vectors:
+            raise ContractError(
+                "the identity gate records no production-routed work-unit vectors"
+            )
     current = code_fingerprint(root)
     stale = {
         name: (artifact.get("code_sha256", {}).get(name), current[name])
@@ -461,6 +652,35 @@ def assert_gate_satisfied(path: str | Path, *, root: Path = ROOT) -> dict:
             + "\nRe-run the gate. A stale artifact is exactly what would hide a "
             "regression in the identity dispatch."
         )
+    recorded_runtime = artifact.get("environment")
+    current_runtime = scientific_runtime_fingerprint()
+    if recorded_runtime != current_runtime:
+        raise ContractError(
+            "the identity gate was proved under a different scientific runtime and "
+            "is stale:\n"
+            f"  - gate: {recorded_runtime!r}\n"
+            f"  - now:  {current_runtime!r}\n"
+            "Re-run the gate under the runtime that will execute production."
+        )
+    base = Path(str(artifact.get("base_config") or ""))
+    if not base.is_absolute():
+        base = root / base
+    recorded_base = str(artifact.get("base_config_sha256") or "")
+    if not base.exists() or not recorded_base or ccs.sha256_file(base) != recorded_base:
+        raise ContractError(
+            "the identity gate base configuration is missing or changed since the gate "
+            "ran; re-run the gate against the signed production configuration"
+        )
+    if expected_base_config is not None:
+        expected = Path(expected_base_config)
+        if not expected.is_absolute():
+            expected = root / expected
+        if not expected.exists() or ccs.sha256_file(expected) != recorded_base:
+            raise ContractError(
+                "the identity gate was not run against the signed production base "
+                "configuration; re-run the gate with --base-config set to the plan's "
+                "models.base_config"
+            )
     return artifact
 
 

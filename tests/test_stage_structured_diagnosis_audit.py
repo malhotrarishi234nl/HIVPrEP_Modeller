@@ -87,12 +87,8 @@ def test_symptom_uplift_is_aids_only_and_not_msm_multiplied():
     result = e._step_stage_structured_diagnosis(
         2000, 0.2, 1, StageStructuredDiagnosis(True, 0.8, 0.35)
     )
-    assert rates["stage_structured_diagnosis_non_msm_acute"] == \
-        rates["stage_structured_diagnosis_non_msm_chronic"]
-    assert rates["stage_structured_diagnosis_msm_acute"] == \
-        rates["stage_structured_diagnosis_msm_chronic"]
     assert rates["stage_structured_diagnosis_non_msm_aids"] > \
-        rates["stage_structured_diagnosis_non_msm_chronic"]
+        rates["stage_structured_diagnosis_non_msm_non_aids"]
     expected_msm_aids = stage_step_probability(
         0.4, routine_hazard_scale=0.8,
         aids_symptom_annual_probability=0.35,

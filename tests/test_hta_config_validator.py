@@ -387,7 +387,7 @@ class TestValidatorDistributionTypes:
             validate_hta_config(config)
 
     def test_all_valid_types_pass(self):
-        for dist_type in ("fixed", "beta", "gamma", "lognormal", "normal"):
+        for dist_type in ("fixed", "beta", "gamma", "lognormal", "normal", "linked"):
             config = minimal_valid_v2_config()
             if dist_type == "beta":
                 config["utilities"]["hiv_chronic_on_art"]["distribution"] = {
@@ -398,11 +398,99 @@ class TestValidatorDistributionTypes:
                 config["utilities"]["hiv_chronic_on_art"]["distribution"] = {
                     "type": dist_type, "mean": 0.85, "se": 0.05
                 }
+            elif dist_type == "linked":
+                config["utilities"]["aids_on_art"] = {
+                    "value": 0.85,
+                    "bounds": {"lower": 0.0, "upper": 1.0},
+                    "distribution": {
+                        "type": "linked",
+                        "source_path": "utilities.hiv_chronic_on_art",
+                    },
+                }
             else:
                 config["utilities"]["hiv_chronic_on_art"]["distribution"] = {
                     "type": "fixed"
                 }
             validate_hta_config(config)  # Should not raise
+
+
+class TestValidatorLinkedDistributions:
+    @staticmethod
+    def _add_link(config, source="utilities.hiv_chronic_on_art", bounds=None):
+        config["utilities"]["aids_on_art"] = {
+            "value": 0.85,
+            "bounds": bounds or {"lower": 0.0, "upper": 1.0},
+            "distribution": {"type": "linked", "source_path": source},
+        }
+
+    def test_valid_earlier_stochastic_source_passes(self):
+        config = minimal_valid_v2_config()
+        self._add_link(config)
+        validate_hta_config(config)
+
+    @pytest.mark.parametrize(
+        ("source", "message"),
+        [
+            ("utilities.missing", "does not name"),
+            ("utilities.susceptible", "fixed"),
+            ("utilities.hiv_chronic_on_art.value", "does not name"),
+        ],
+    )
+    def test_missing_fixed_and_nested_field_sources_fail(self, source, message):
+        config = minimal_valid_v2_config()
+        self._add_link(config, source=source)
+        with pytest.raises(ValueError, match=message):
+            validate_hta_config(config)
+
+    def test_forward_source_fails(self):
+        config = minimal_valid_v2_config()
+        config["utilities"]["hiv_chronic_on_art"]["distribution"] = {
+            "type": "linked", "source_path": "utilities.aids_on_art"
+        }
+        config["utilities"]["aids_on_art"] = {
+            "value": 0.7,
+            "distribution": {"type": "beta", "alpha": 7, "beta": 3},
+        }
+        with pytest.raises(ValueError, match="must be an earlier"):
+            validate_hta_config(config)
+
+    def test_self_link_fails(self):
+        config = minimal_valid_v2_config()
+        config["utilities"]["hiv_chronic_on_art"]["distribution"] = {
+            "type": "linked",
+            "source_path": "utilities.hiv_chronic_on_art",
+        }
+        with pytest.raises(ValueError, match="cannot reference itself"):
+            validate_hta_config(config)
+
+    def test_nested_link_fails(self):
+        config = minimal_valid_v2_config()
+        config["utilities"]["first_link"] = {
+            "value": 0.85,
+            "bounds": {"lower": 0.0, "upper": 1.0},
+            "distribution": {
+                "type": "linked",
+                "source_path": "utilities.hiv_chronic_on_art",
+            },
+        }
+        self._add_link(config, source="utilities.first_link")
+        with pytest.raises(ValueError, match="nested linked"):
+            validate_hta_config(config)
+
+    def test_cyclic_links_fail_with_explicit_diagnostic(self):
+        config = minimal_valid_v2_config()
+        config["utilities"]["hiv_chronic_on_art"]["distribution"] = {
+            "type": "linked", "source_path": "utilities.aids_on_art"
+        }
+        self._add_link(config, source="utilities.hiv_chronic_on_art")
+        with pytest.raises(ValueError, match="cyclic linked"):
+            validate_hta_config(config)
+
+    def test_source_support_must_fit_target_bounds(self):
+        config = minimal_valid_v2_config()
+        self._add_link(config, bounds={"lower": 0.0, "upper": 0.98})
+        with pytest.raises(ValueError, match="exceed linked target bounds"):
+            validate_hta_config(config)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

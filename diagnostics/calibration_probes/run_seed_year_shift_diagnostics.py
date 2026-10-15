@@ -35,7 +35,7 @@ from run_historical_seed_diagnostics import (
     run_candidate_with_stage_stocks,
 )
 from calib_extractor import extract_annual_outputs
-HMD_POP_PATH = ROOT / "Validation " / "HMD_NL_Pop.txt"
+HMD_POP_PATH = ROOT.parent / "data" / "raw" / "validation" / "HMD_NL_Pop.txt"
 CALIB_START_YEAR = 1980
 CALIB_END_YEAR = 2025
 

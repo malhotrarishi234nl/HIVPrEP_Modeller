@@ -1,0 +1,29 @@
+# Robust-NROY production configuration registry
+
+Status: INCOMPLETE — not production evidence
+
+Replace every `<REQUIRED: ...>` marker from the fully signed plan and current
+files. Do not rename the final file: the validator requires `CONFIG_REGISTRY.md`.
+
+| Binding | Value |
+|---|---|
+| plan path | `<REQUIRED: signed plan path>` |
+| plan SHA-256 | `<REQUIRED: signed plan hash>` |
+| base-config path | `<REQUIRED: stochastic M1-capable config path>` |
+| base-config SHA-256 | `<REQUIRED: config hash>` |
+| M0 calibration-space path | `<REQUIRED: path>` |
+| M0 calibration-space SHA-256 | `<REQUIRED: hash>` |
+| target-register path | `<REQUIRED: path>` |
+| target-register SHA-256 | `<REQUIRED: hash>` |
+| target order | `<REQUIRED: exact ordered 13-target JSON array>` |
+| scientific-code SHA-256 | `<REQUIRED: run_robust_nroy_freeze._code_sha256()>` |
+| scientific runtime | `<REQUIRED: nroy_identity_gate.scientific_runtime_fingerprint()>` |
+| discovery seeds | `<REQUIRED: exact signed block>` |
+| confirmation seeds | `<REQUIRED: exact signed reserved block>` |
+| generated UTC | `<REQUIRED: ISO-8601 UTC>` |
+| producing command | `<REQUIRED: exact command>` |
+| reviewer | `<REQUIRED: name/role>` |
+| review date | `<REQUIRED: date>` |
+
+The registry is valid only if all hashes are recomputed after the plan is signed
+and the selected base configuration is final.

@@ -546,6 +546,12 @@ def render_region_report(
                     series = pd.to_numeric(block[column], errors="coerce").dropna()
                     if not series.empty:
                         lines.append(f"| {column} | {series.min():.6g} | {series.max():.6g} |")
+        else:
+            lines += [
+                "",
+                "- baseline-state ranges: unavailable; this stage contains no frozen "
+                "candidate-level baseline-state table, so none were reconstructed or inferred",
+            ]
         lines.append("")
     return "\n".join(lines)
 

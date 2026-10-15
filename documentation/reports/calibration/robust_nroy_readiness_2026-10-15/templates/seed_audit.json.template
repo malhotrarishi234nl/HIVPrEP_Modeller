@@ -1,0 +1,20 @@
+{
+  "schema": "robust_nroy_seed_audit/1.0.0",
+  "status": "INCOMPLETE",
+  "production_eligible": false,
+  "generated_utc": null,
+  "command": null,
+  "passed": null,
+  "plan_sha256": null,
+  "scientific_code_sha256": null,
+  "scientific_runtime": {},
+  "discovery": [],
+  "confirmation": [],
+  "proposal_rng": null,
+  "compared_seed_sources": [],
+  "source_hashes": {},
+  "overlaps": [],
+  "limitations": [
+    "A passing audit must enumerate every searched manifest/register, not only the plan's known_used_elsewhere list."
+  ]
+}

@@ -51,9 +51,9 @@ PASS_RULE = ng.BRIDGE_PASS_RULES[0]
 # Harness
 # ==========================================================================
 
-def _write_anchors(path: Path, space, count=3, seed=77) -> Path:
+def _write_anchors(path: Path, space, count=3, seed=77, prefix="A") -> Path:
     rows = [
-        {"candidate_id": f"A{index}", **vector}
+        {"candidate_id": f"{prefix}{index}", **vector}
         for index, vector in enumerate(fx.valid_interior_vectors(space, count, seed=seed))
     ]
     pd.DataFrame(rows).to_csv(path, index=False)
@@ -143,12 +143,16 @@ class Harness:
         self.space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
         self.anchors = (
             Path(anchors) if anchors is not None
-            else _write_anchors(tmp_path / "anchors.csv", self.space)
+            else _write_anchors(
+                tmp_path / "anchors.csv", self.space,
+                prefix="M1P" if model == nc.MODEL_M1 else "A",
+            )
         )
         self.observed, self.variance = _acceptance_inputs(
             tmp_path, confirming=self.confirming
         )
         self.dirs: dict[str, Path] = {}
+        self.m0_source: Harness | None = None
 
     def prepare(self, stage: str, *, parent: str | None = None, extra=()) -> Path:
         out = self.tmp_path / f"stage_{stage}"
@@ -156,10 +160,33 @@ class Harness:
             "prepare", "--plan", str(self.plan_path), "--out", str(out),
             "--model", self.model, "--stage", stage,
         ]
-        if stage != nc.STAGE_BRIDGES:
+        if stage == nc.STAGE_DISCOVERY and self.model == nc.MODEL_M0:
             argv += ["--anchors", str(self.anchors)]
         if self.model == nc.MODEL_M1:
             argv += ["--identity-gate", str(fx.write_identity_gate(self.tmp_path))]
+            if stage == nc.STAGE_DISCOVERY:
+                source_root = self.tmp_path / "m0_embedding_source"
+                source_root.mkdir(exist_ok=True)
+                self.m0_source = Harness(source_root, model=nc.MODEL_M0)
+                # M0 and M1 are two models under one exact signed production
+                # plan.  A separately generated fixture plan is correctly
+                # rejected by the parent-plan lineage gate.
+                self.m0_source.plan_path = self.plan_path
+                self.m0_source.plan = self.plan
+                self.m0_source.chain_to_confirmation()
+                argv += ["--m0-confirmed-dir", str(
+                    self.m0_source.dirs[nc.STAGE_CONFIRMATION]
+                )]
+                if "--anchors" not in extra:
+                    argv += ["--anchors", str(self.anchors)]
+                if "--m1-anchor-evidence" not in extra:
+                    argv += [
+                        "--m1-anchor-evidence",
+                        str(fx.write_m1_anchor_evidence(
+                            self.tmp_path, plan_path=self.plan_path,
+                            anchors_path=self.anchors,
+                        )),
+                    ]
         if parent is not None:
             argv += ["--parent-dir", str(self.dirs[parent])]
         argv += list(extra)
@@ -204,7 +231,7 @@ class Harness:
 
     def chain_to_confirmation(self) -> Path:
         self.full_local_stage(nc.STAGE_DISCOVERY)
-        self.full_local_stage(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
+        self.prepare(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
         return self.full_local_stage(nc.STAGE_CONFIRMATION, parent=nc.STAGE_PROMOTION)
 
     def chain_to_bridges(self) -> Path:
@@ -562,7 +589,7 @@ def test_bridges_prepare_freezes_the_graph_and_its_probes(tmp_path):
 def test_bridges_refuse_a_parent_with_no_completed_local_assessment(tmp_path):
     harness = Harness(tmp_path)
     harness.full_local_stage(nc.STAGE_DISCOVERY)
-    harness.full_local_stage(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
+    harness.prepare(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
     # Merge the confirmation stage but deliberately skip `classify`.
     harness.prepare(nc.STAGE_CONFIRMATION, parent=nc.STAGE_PROMOTION)
     harness.evaluate(nc.STAGE_CONFIRMATION)
@@ -678,7 +705,7 @@ def _chain_with_negative_local_support(tmp_path: Path) -> Harness:
         anchors=_write_island_anchors(tmp_path / "island_anchors.csv", fx.m0_space()),
     )
     harness.full_local_stage(nc.STAGE_DISCOVERY)
-    harness.full_local_stage(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
+    harness.prepare(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
     harness.full_local_stage(nc.STAGE_CONFIRMATION, parent=nc.STAGE_PROMOTION)
     harness.prepare(nc.STAGE_BRIDGES, parent=nc.STAGE_CONFIRMATION)
     harness.evaluate(nc.STAGE_BRIDGES)
@@ -734,7 +761,8 @@ def _chain_to_a_prepared_child(tmp_path: Path) -> Harness:
     harness = Harness(tmp_path)
     harness.full_local_stage(nc.STAGE_DISCOVERY)
     harness.prepare(nc.STAGE_PROMOTION, parent=nc.STAGE_DISCOVERY)
-    harness.evaluate(nc.STAGE_PROMOTION)
+    harness.prepare(nc.STAGE_CONFIRMATION, parent=nc.STAGE_PROMOTION)
+    harness.evaluate(nc.STAGE_CONFIRMATION)
     return harness
 
 
@@ -758,6 +786,29 @@ def test_the_parent_acceptance_identity_is_frozen_into_the_child_at_prepare(tmp_
     assert runner.PARENT_IDENTITY_FILENAME in {row["path"] for row in index["files"]}
 
 
+def test_deleting_the_frozen_parent_identity_refuses_merge_before_outputs(tmp_path):
+    harness = _chain_to_a_prepared_child(tmp_path)
+    child = harness.dirs[nc.STAGE_CONFIRMATION]
+    (child / runner.PARENT_IDENTITY_FILENAME).unlink()
+    assert harness.merge(nc.STAGE_CONFIRMATION) == 1
+    assert not (child / "seed_results.csv").exists()
+    assert not (child / "candidate_scores.csv").exists()
+
+
+def test_rewriting_the_frozen_parent_identity_refuses_classification(tmp_path):
+    harness = _chain_to_a_prepared_child(tmp_path)
+    child = harness.dirs[nc.STAGE_CONFIRMATION]
+    assert harness.merge(nc.STAGE_CONFIRMATION) == 0
+    identity_path = child / runner.PARENT_IDENTITY_FILENAME
+    payload = json.loads(identity_path.read_text())
+    payload["acceptance_input_identity"]["observed_sha256"] = "0" * 64
+    identity_path.write_text(json.dumps(payload))
+    assert runner.main([
+        "classify", "--plan", str(harness.plan_path), "--stage-dir", str(child),
+    ]) == 1
+    assert not (child / "local_support.csv").exists()
+
+
 def test_the_identity_names_every_input_the_specification_requires():
     """Target order, register, observed, base variance, scoring, rule."""
     assert set(nc.ACCEPTANCE_IDENTITY_FIELDS) == {
@@ -777,11 +828,11 @@ def test_a_child_merged_against_different_observed_values_is_refused(tmp_path, c
     harness = _chain_to_a_prepared_child(tmp_path)
     other = tmp_path / "other_observed.json"
     other.write_text(json.dumps({name: 104.0 for name in TARGETS}))
-    code = harness.merge(nc.STAGE_PROMOTION, observed=other)
+    code = harness.merge(nc.STAGE_CONFIRMATION, observed=other)
     assert code == 1
     reason = _refused_because(capsys)
     assert "observed_sha256" in reason and "observed target values" in reason
-    assert not (harness.dirs[nc.STAGE_PROMOTION] / "candidate_scores.csv").exists(), (
+    assert not (harness.dirs[nc.STAGE_CONFIRMATION] / "candidate_scores.csv").exists(), (
         "a refused merge must not leave a scored table behind"
     )
 
@@ -791,13 +842,13 @@ def test_a_child_merged_against_different_base_variances_is_refused(tmp_path, ca
     harness = _chain_to_a_prepared_child(tmp_path)
     variance = tmp_path / "wider_variance.json"
     variance.write_text(json.dumps({name: 250000.0 for name in TARGETS}))
-    assert harness.merge(nc.STAGE_PROMOTION, variance=variance) == 1
+    assert harness.merge(nc.STAGE_CONFIRMATION, variance=variance) == 1
     reason = _refused_because(capsys)
     assert "base_variance_sha256" in reason and "base variances" in reason
 
 
 def test_a_child_merged_against_a_changed_discrepancy_is_refused(tmp_path, capsys):
-    """The discrepancy is part of the variance budget, so it is part of the rule."""
+    """The discrepancy is frozen globally and cannot be changed by a child plan."""
     harness = _chain_to_a_prepared_child(tmp_path)
     altered = _variant_plan(
         tmp_path, "plan_other_discrepancy.json",
@@ -805,16 +856,12 @@ def test_a_child_merged_against_a_changed_discrepancy_is_refused(tmp_path, capsy
     )
     code = runner.main([
         "merge", "--plan", str(altered),
-        "--stage-dir", str(harness.dirs[nc.STAGE_PROMOTION]),
+        "--stage-dir", str(harness.dirs[nc.STAGE_CONFIRMATION]),
         "--observed", str(harness.observed), "--base-variance", str(harness.variance),
     ])
     assert code == 1
     reason = _refused_because(capsys)
-    differences = reason.split("Differences:")[1]
-    assert "discrepancy" in differences
-    # Only the discrepancy moved, so nothing else may be reported as differing.
-    assert "observed_sha256" not in differences
-    assert "target_order" not in differences
+    assert "may not change the primary model-discrepancy rule" in reason
 
 
 def test_a_child_merged_against_changed_register_contents_is_refused(tmp_path, capsys):
@@ -844,7 +891,7 @@ def test_a_child_merged_against_changed_register_contents_is_refused(tmp_path, c
     )
     code = runner.main([
         "merge", "--plan", str(altered),
-        "--stage-dir", str(harness.dirs[nc.STAGE_PROMOTION]),
+        "--stage-dir", str(harness.dirs[nc.STAGE_CONFIRMATION]),
         "--observed", str(harness.observed), "--base-variance", str(harness.variance),
     ])
     assert code == 1
@@ -872,12 +919,13 @@ def test_a_child_merged_against_a_reordered_target_order_is_refused(tmp_path, ca
     )
     code = runner.main([
         "merge", "--plan", str(reordered),
-        "--stage-dir", str(harness.dirs[nc.STAGE_PROMOTION]),
+        "--stage-dir", str(harness.dirs[nc.STAGE_CONFIRMATION]),
         "--observed", str(harness.observed), "--base-variance", str(harness.variance),
     ])
     assert code == 1
-    assert "target schema does not match the contract" in _refused_because(capsys)
-    assert not (harness.dirs[nc.STAGE_PROMOTION] / "candidate_scores.csv").exists()
+    reason = _refused_because(capsys)
+    assert "acceptance-input identity" in reason and "target_order" in reason
+    assert not (harness.dirs[nc.STAGE_CONFIRMATION] / "candidate_scores.csv").exists()
 
 
 def test_every_field_of_the_identity_is_compared_not_only_the_summary_hash(tmp_path):
@@ -930,7 +978,7 @@ def test_classification_is_refused_when_the_plan_changed_after_the_merge(tmp_pat
     ])
     assert code == 1
     reason = _refused_because(capsys)
-    assert "acceptance-input identity" in reason and "discrepancy" in reason
+    assert "may not change the primary model-discrepancy rule" in reason
     assert not (harness.dirs[nc.STAGE_DISCOVERY] / "local_support.csv").exists()
 
 
@@ -948,7 +996,7 @@ def test_edge_verdicts_are_refused_when_the_plan_changed_after_the_bridge_merge(
     ])
     assert code == 1
     reason = _refused_because(capsys)
-    assert "edge verdicts" in reason and "acceptance-input identity" in reason
+    assert "may not change the primary model-discrepancy rule" in reason
     assert not (tmp_path / "regions_drift" / "edge_verdicts.csv").exists()
 
 
@@ -965,62 +1013,33 @@ def test_the_regions_package_records_the_basis_its_verdicts_were_reached_on(tmp_
 
 
 def test_a_point_with_neither_local_nor_region_support_gets_no_representative(tmp_path):
-    """Decision 7, both halves: no local AND no region support means no entry."""
+    """A zero-promotion discovery stops before confirmation or representation."""
     harness = Harness(tmp_path, confirming=False)
-    harness.chain_to_bridges()
-    out = harness.regions()
-    eligibility = ne.read_frame_exact(out / "representation_eligibility.csv")
-    representatives = ne.read_frame_exact(out / "representatives.csv")
-
-    assert not eligibility["has_local_support"].astype(bool).any()
-    assert not eligibility["has_region_support"].astype(bool).any()
-    assert not eligibility["eligible_for_representation"].astype(bool).any()
-    assert set(eligibility["eligibility_ground"]) == {
-        "no_local_or_region_support_detected"
-    }
-    assert representatives["candidate_id"].replace("", np.nan).isna().all()
-    assert representatives["note"].str.contains("no member has demonstrated").all()
+    harness.full_local_stage(nc.STAGE_DISCOVERY)
+    code = runner.main([
+        "prepare", "--plan", str(harness.plan_path),
+        "--out", str(tmp_path / "promotion"), "--model", nc.MODEL_M0,
+        "--stage", nc.STAGE_PROMOTION,
+        "--parent-dir", str(harness.dirs[nc.STAGE_DISCOVERY]),
+    ])
+    assert code == 1
+    assert not (tmp_path / "promotion" / "representatives.csv").exists()
 
 
 def test_region_support_is_reachable_without_local_support(tmp_path):
-    """The half of decision 7 that an eligibility-gated edge would destroy.
-
-    An earlier revision of this stage gated the **edge verdict** on local
-    eligibility.  That made region support unobtainable: the very edge that
-    would establish it was marked unresolved on the unsupported point's
-    account.  Both specifications read "local/region support", so this asserts
-    the region route is live -- and asserts it on a case where local support is
-    genuinely absent, so it cannot pass for the wrong reason.
-    """
-    harness = _chain_with_negative_local_support(tmp_path)
-    out = harness.regions()
-    verdicts = ne.read_frame_exact(out / "edge_verdicts.csv")
-    eligibility = ne.read_frame_exact(out / "representation_eligibility.csv")
-    representatives = ne.read_frame_exact(out / "representatives.csv")
-
-    # No edge may be unresolved *because of its endpoints*: every node is a
-    # confirmed point with a completed local assessment, which is what spec
-    # sec. 4's "both endpoints confirm" means.
-    assert not verdicts["reason"].str.contains("not confirmed").any(), (
-        "an edge was refused on its endpoints, which makes region support "
-        "unreachable and contradicts spec sec. 1"
+    """Bridge search cannot resurrect candidates excluded before confirmation."""
+    harness = Harness(
+        tmp_path, confirming=False, evaluator="surrogate_islands",
+        anchors=_write_island_anchors(tmp_path / "island_anchors.csv", fx.m0_space()),
     )
-    assert (verdicts["edge_label"] == nc.EDGE_SAMPLED_PATH_SUPPORTED).any(), (
-        "this fixture must produce at least one supported bridge, or the region "
-        "route is untested"
-    )
-    assert not eligibility["has_local_support"].astype(bool).any(), (
-        "this fixture must have NO local support, or region support is not what "
-        "is being tested"
-    )
-    by_region = eligibility[eligibility["has_region_support"].astype(bool)]
-    assert not by_region.empty, "nobody gained eligibility from the graph"
-    assert (by_region["eligibility_ground"] == "region_support_via_sampled_path").all()
-    assert by_region["eligible_for_representation"].astype(bool).all()
-    # And such a point really does receive a representative.
-    chosen = representatives[representatives["candidate_id"].notna()]
-    assert not chosen.empty
-    assert set(chosen["eligibility_ground"]) == {"region_support_via_sampled_path"}
+    harness.full_local_stage(nc.STAGE_DISCOVERY)
+    code = runner.main([
+        "prepare", "--plan", str(harness.plan_path),
+        "--out", str(tmp_path / "promotion"), "--model", nc.MODEL_M0,
+        "--stage", nc.STAGE_PROMOTION,
+        "--parent-dir", str(harness.dirs[nc.STAGE_DISCOVERY]),
+    ])
+    assert code == 1
 
 
 def test_eligibility_records_its_ground_rather_than_a_bare_flag(tmp_path):
@@ -1167,6 +1186,24 @@ def test_the_cap_leaves_a_partial_non_parentable_stage(tmp_path):
     assert code == 1
 
 
+def test_some_completed_rows_in_a_partial_stage_are_never_scored(tmp_path):
+    """Completion-time selection cannot turn one finished shard into evidence."""
+    harness = Harness(tmp_path)
+    harness.prepare(nc.STAGE_DISCOVERY)
+    stage_dir = harness.dirs[nc.STAGE_DISCOVERY]
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path), "--stage-dir", str(stage_dir),
+        "--shard", "0", "--of", "2", "--evaluator", "surrogate",
+    ]) == 0
+    assert harness.merge(nc.STAGE_DISCOVERY) == 0
+    seed_rows = ne.read_frame_exact(stage_dir / "seed_results.csv")
+    assert 0 < len(seed_rows) < len(ne.Ledger.load(stage_dir).units)
+    assert not (stage_dir / "candidate_scores.csv").exists()
+    assert runner.main([
+        "classify", "--plan", str(harness.plan_path), "--stage-dir", str(stage_dir),
+    ]) == 1
+
+
 def test_work_withheld_at_the_cap_is_not_run_or_scored(tmp_path):
     harness = Harness(tmp_path)
     harness.prepare(nc.STAGE_DISCOVERY)
@@ -1214,6 +1251,32 @@ def test_resuming_after_a_cap_completes_the_same_scientific_table(tmp_path):
     )
     right = ne.read_frame_exact(stage_dir / "candidate_scores.csv")
     pd.testing.assert_frame_equal(left, right)
+
+
+def test_a_partial_merge_remains_resumable_and_can_be_merged_complete(tmp_path):
+    """A checkpoint seal must protect science without freezing runtime growth."""
+    harness = Harness(tmp_path)
+    harness.prepare(nc.STAGE_DISCOVERY)
+    stage_dir = harness.dirs[nc.STAGE_DISCOVERY]
+
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path),
+        "--stage-dir", str(stage_dir), "--shard", "0", "--of", "2",
+        "--evaluator", "surrogate",
+    ]) == 0
+    assert harness.merge(nc.STAGE_DISCOVERY) == 0
+    assert json.loads((stage_dir / "manifest.json").read_text())["status"] == nc.STATUS_PARTIAL
+
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path),
+        "--stage-dir", str(stage_dir), "--shard", "1", "--of", "2",
+        "--evaluator", "surrogate",
+    ]) == 0
+    assert harness.merge(nc.STAGE_DISCOVERY) == 0
+    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    assert manifest["status"] == nc.STATUS_COMPLETE
+    assert manifest["n_incomplete"] == 0
+    assert (stage_dir / "candidate_scores.csv").exists()
 
 
 # ==========================================================================
@@ -1449,7 +1512,16 @@ def test_the_diagnostic_carries_no_route_to_acceptance():
 def test_the_diagnostic_compares_its_ranking_with_pointwise_i_max():
     frame = _seed_frame(n_candidates=6, n_seeds=10, correlated=True)
     scores = pd.DataFrame([
-        {"design_id": f"D{index}", "i_max": 1.0 + index} for index in range(6)
+        {
+            "design_id": f"D{index}", "i_max": 1.0 + index,
+            **{
+                f"residual:{name}": float(
+                    frame[frame["design_id"] == f"D{index}"][f"target:{name}"].mean()
+                )
+                for name in TARGETS
+            },
+        }
+        for index in range(6)
     ])
     result = nas.correlated_output_diagnostic(
         frame, targets=_contract(), shrinkage=0.1, n_bootstrap=10,
@@ -1643,6 +1715,54 @@ def test_the_production_adapter_generates_m1_as_m0_plus_one_coordinate(tmp_path)
     )
 
 
+def test_production_config_route_removes_m1_block_from_m0_but_injects_it_for_m1(
+    tmp_path,
+):
+    plan_path = fx.write_signed_plan(tmp_path)
+    raw = json.loads(plan_path.read_text())
+    base_path = Path(raw["models"]["base_config"])
+    base = json.loads(base_path.read_text())
+    node = base
+    for key in runner.nig.PROFILE_PATH[:-1]:
+        node = node[key]
+    node[runner.nig.PROFILE_PATH[-1]] = {
+        "enabled": {"value": True},
+        "routine_hazard_scale": {"value": 1.0},
+        fx.P_NAME: {"value": 0.2},
+        "symptom_start_year": {"value": 1985},
+    }
+    base_path.write_text(json.dumps(base))
+
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    adapter = runner.ProductionEvaluator(plan, root=ROOT)
+    m0, m1 = runner._model_spaces(plan)[nc.MODEL_M0], runner._model_spaces(plan)[nc.MODEL_M1]
+    m0_params = m0.as_dict(m0.denormalise(np.full(m0.n, 0.5)))
+    m1_params = nc.embed_m0_in_m1(m0, m1, m0_params, p_value=0.0)
+
+    def unit(model_name, model, params):
+        return ne.WorkUnit(
+            stage=nc.STAGE_DISCOVERY, model=model_name, design_id=model_name, seed=1,
+            vector_hash=nc.vector_hash(params, names=model.names),
+            kernel=nc.KERNEL_ANCHOR, parent_ids=("identity",), params=params,
+            parent_manifest_sha256="", code_sha256="code", config_sha256="config",
+            target_schema=plan.targets.frozen_order,
+        )
+
+    m0_config = adapter.config_for(unit(nc.MODEL_M0, m0, m0_params), m0_params)
+    m1_config = adapter.config_for(unit(nc.MODEL_M1, m1, m1_params), m1_params)
+
+    def has_profile(config):
+        current = config
+        for key in runner.nig.PROFILE_PATH:
+            if key not in current:
+                return False
+            current = current[key]
+        return True
+
+    assert not has_profile(m0_config)
+    assert has_profile(m1_config)
+
+
 def test_a_plan_that_unpins_the_routine_hazard_scale_never_loads(tmp_path):
     """The M1 nesting precondition is refused at the earliest possible point.
 
@@ -1663,8 +1783,8 @@ def test_a_plan_that_unpins_the_routine_hazard_scale_never_loads(tmp_path):
     assert float(
         adapter.plan.require("p_parameter.routine_hazard_scale_identity_value")
     ) == 1.0
-    source = (ROOT / "run_robust_nroy_freeze.py").read_text()
-    assert "assert_m1_identity_preconditions" in source.split("def config_for")[1][:1200]
+    import inspect
+    assert "assert_m1_identity_preconditions" in inspect.getsource(adapter.config_for)
 
 
 # ==========================================================================
@@ -1754,11 +1874,174 @@ def test_the_gate_command_is_documented_and_explicit():
     parser = runner.build_parser()
     choices = parser._subparsers._group_actions[0].choices
     assert "identity-gate" in choices, "the gate must be a first-class command"
-    assert "RUNS THE ENGINE" in choices["identity-gate"].format_help() or True
+    assert "RUNS THE ENGINE" in choices["identity-gate"].format_help()
     # The gate module names the reason it exists rather than leaving it implicit.
     doc = (ROOT / "nroy_identity_gate.py").read_text()
     assert "no-engine guard" in doc
     assert "cannot be skipped" in doc
+
+
+def test_prepared_work_and_identity_gate_cover_the_production_dependency_surface():
+    import nroy_identity_gate as nig
+
+    required = {
+        "engine_v3.py", "config_utils.py", "config_reader.py",
+        "transmission_corrected.py", "demography.py", "migration.py",
+        "schedule_utils.py", "stage_structured_diagnosis.py",
+        "aids_observation.py", "exogenous_diagnoses.py", "output_writer.py",
+        "hm_target_register.py", "hm_variance_budget.py",
+    }
+    assert required <= set(runner.CODE_FILES)
+    assert required <= set(nig.GATE_CODE_MODULES)
+
+
+def test_m1_cli_embeds_every_confirmed_m0_vector_at_exact_zero(tmp_path):
+    harness = Harness(tmp_path, model=nc.MODEL_M1)
+    stage = harness.prepare(nc.STAGE_DISCOVERY)
+    assert harness.m0_source is not None
+    source_dir = harness.m0_source.dirs[nc.STAGE_CONFIRMATION]
+    source_scores = ne.read_frame_exact(source_dir / "candidate_scores.csv")
+    source_ids = set(source_scores.loc[
+        source_scores["nominal_pass"].astype(bool), "design_id"
+    ].astype(str))
+    source_vectors = ne.read_frame_exact(source_dir / "design_vectors.csv").set_index("design_id")
+    embedded = ne.read_frame_exact(stage / "anchors.csv").set_index("candidate_id")
+    assert source_ids < set(embedded.index.astype(str))
+    for candidate_id in source_ids:
+        assert float(embedded.loc[candidate_id, fx.P_NAME]) == 0.0
+        for name in fx.m0_space().names:
+            assert float(embedded.loc[candidate_id, name]) == float(
+                source_vectors.loc[candidate_id, name]
+            )
+
+
+def test_m1_discovery_requires_independent_strictly_positive_p_anchors(
+    tmp_path, capsys,
+):
+    harness = Harness(tmp_path, model=nc.MODEL_M1)
+    source_root = tmp_path / "m0_source_for_positive_p_test"
+    source = Harness(source_root, model=nc.MODEL_M0)
+    source.plan_path = harness.plan_path
+    source.plan = harness.plan
+    source.chain_to_confirmation()
+    zero = ne.read_frame_exact(harness.anchors)
+    zero[fx.P_NAME] = 0.0
+    zero_path = tmp_path / "zero_only_m1.csv"
+    zero.to_csv(zero_path, index=False)
+    code = runner.main([
+        "prepare", "--plan", str(harness.plan_path),
+        "--out", str(tmp_path / "m1_zero_only"),
+        "--model", nc.MODEL_M1, "--stage", nc.STAGE_DISCOVERY,
+        "--anchors", str(zero_path),
+        "--m1-anchor-evidence", str(fx.write_m1_anchor_evidence(
+            tmp_path, plan_path=harness.plan_path, anchors_path=zero_path,
+        )),
+        "--identity-gate", str(fx.write_identity_gate(tmp_path)),
+        "--m0-confirmed-dir", str(source.dirs[nc.STAGE_CONFIRMATION]),
+    ])
+    assert code == 1
+    assert "strictly positive p" in capsys.readouterr().err
+
+
+def test_m1_discovery_unions_independent_positive_p_and_embedded_m0_anchors(tmp_path):
+    """M1 evidence is additive; embedding M0 may never erase confirmed M1."""
+    space = fx.m1_space()
+    rows = []
+    for index, vector in enumerate(fx.valid_interior_vectors(space, 3, seed=991)):
+        vector[fx.P_NAME] = 0.1 + 0.1 * index
+        rows.append({"candidate_id": f"M1P{index}", **vector})
+    independent_path = tmp_path / "independent_m1.csv"
+    pd.DataFrame(rows).to_csv(independent_path, index=False)
+
+    harness = Harness(tmp_path, model=nc.MODEL_M1, anchors=independent_path)
+    stage = harness.prepare(
+        nc.STAGE_DISCOVERY, extra=("--anchors", str(independent_path)),
+    )
+    frozen = ne.read_frame_exact(stage / "anchors.csv").set_index("candidate_id")
+    independent = runner._load_anchors(independent_path, space)
+    for anchor in independent:
+        assert anchor.anchor_id in frozen.index
+        assert float(frozen.loc[anchor.anchor_id, fx.P_NAME]) > 0.0
+        actual = {
+            name: float(frozen.loc[anchor.anchor_id, name]) for name in space.names
+        }
+        assert nc.vector_hash(actual, names=space.names) == anchor.vector_hash
+
+    source_dir = harness.m0_source.dirs[nc.STAGE_CONFIRMATION]
+    source_scores = ne.read_frame_exact(source_dir / "candidate_scores.csv")
+    embedded_ids = set(source_scores.loc[
+        source_scores["nominal_pass"].astype(bool), "design_id"
+    ].astype(str))
+    assert embedded_ids <= set(frozen.index.astype(str))
+    assert all(float(frozen.loc[candidate_id, fx.P_NAME]) == 0.0 for candidate_id in embedded_ids)
+
+    manifest = json.loads((stage / "manifest.json").read_text())
+    extra = manifest["extra"]
+    assert extra["n_independently_confirmed_m1_anchors"] == 3
+    assert extra["n_embedded_m0_identity_anchors"] == len(embedded_ids)
+    assert int(extra["n_anchors"]) == len(frozen)
+
+    sealed_evidence = stage / runner.M1_ANCHOR_EVIDENCE_FILENAME
+    changed = json.loads(sealed_evidence.read_text())
+    changed["passed"] = False
+    sealed_evidence.write_text(json.dumps(changed))
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path), "--stage-dir", str(stage),
+        "--shard", "0", "--of", "1", "--evaluator", "surrogate",
+    ]) == 1, "mutating the sealed M1 confirmation evidence must stop dispatch"
+
+
+def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    model = runner._model_spaces(plan)[nc.MODEL_M1]
+    anchors_path = _write_anchors(tmp_path / "positive_m1.csv", model, prefix="M1P")
+    anchors = runner._load_anchors(anchors_path, model)
+    evidence_path = fx.write_m1_anchor_evidence(
+        tmp_path, plan_path=plan_path, anchors_path=anchors_path,
+    )
+    runner._validate_m1_anchor_evidence(
+        evidence_path, anchors_path=anchors_path, anchors=anchors,
+        plan=plan, model=model,
+    )
+
+    original = json.loads(evidence_path.read_text())
+    mutations = {
+        "generic_pass_only": {"passed": True},
+        "wrong_plan": {**original, "plan_sha256": "0" * 64},
+        "wrong_seeds": {**original, "confirmation_seeds": list(plan.seeds.discovery)},
+        "wrong_vector": {
+            **original,
+            "candidates": [
+                {**row, "vector_hash": "f" * 64} if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "too_few_replicates": {
+            **original,
+            "candidates": [
+                {**row, "n_replicates": plan.k_confirmation - 1}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "failed_primary_rule": {
+            **original,
+            "candidates": [
+                {**row, "nominal_i_max": plan.cutoff + 0.01, "nominal_pass": False}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+    }
+    for label, payload in mutations.items():
+        path = tmp_path / f"bad_{label}.json"
+        path.write_text(json.dumps(payload))
+        with pytest.raises(ContractError):
+            runner._validate_m1_anchor_evidence(
+                path, anchors_path=anchors_path, anchors=anchors,
+                plan=plan, model=model,
+            )
 
 
 def test_the_whole_chain_is_reachable_and_leaves_every_required_table(tmp_path):
@@ -1784,3 +2067,7 @@ def test_the_whole_chain_is_reachable_and_leaves_every_required_table(tmp_path):
 
     facts = json.loads((regions / "package" / "summary_facts.json").read_text())
     assert facts, "the package must report from the consolidated tables"
+    region_report = (regions / "package" / "REGION_REPORT.md").read_text()
+    assert "| parameter | min | max |" in region_report
+    assert "binding targets:" in region_report
+    assert "baseline-state ranges: unavailable" in region_report

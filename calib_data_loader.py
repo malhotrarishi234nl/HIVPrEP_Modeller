@@ -35,9 +35,16 @@ _UPPER_KEYS = {
 
 
 def default_unaids_path(root: str | Path | None = None) -> Path:
-    """Return the repository-default UNAIDS Netherlands estimates CSV path."""
+    """Return the canonical sibling-data UNAIDS Netherlands CSV path.
+
+    Large/raw inputs moved to ``../data/raw`` during repository reorganisation;
+    the repository ``.gitignore`` documents that storage contract.
+    """
     base = Path(root) if root is not None else Path(__file__).resolve().parent
-    return base / "Validation " / "HIV Data UNAIDS" / "ZIP Files" / "netherlands_estimates_2025.csv"
+    return (
+        base.parent / "data" / "raw" / "validation" / "HIV Data UNAIDS"
+        / "ZIP Files" / "netherlands_estimates_2025.csv"
+    )
 
 
 def _parse_float(value: str | None) -> float | None:

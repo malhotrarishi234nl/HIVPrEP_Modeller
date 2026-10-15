@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 from run_v3 import SimulationEngineV3
 
 
-CONFIG_PATH = ROOT / "1980_test.json"
+CONFIG_PATH = ROOT / "configs" / "1980_test.json"
 
 
 def _load_config() -> dict:

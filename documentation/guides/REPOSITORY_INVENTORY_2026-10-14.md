@@ -31,14 +31,18 @@ top-level module with zero inbound references.
 | path | size | status |
 |---|---|---|
 | `outputs/` | ~12 GB | git-ignored; run artifacts, one directory per run |
-| `logs/` | ~644 KB | **newly git-ignored in this pass**; generated run logs |
+| `logs/` | ~644 KB | generated logs ignored, except two retained validation-evidence JSONs |
 | `sbi-logs/` | ~2.9 MB | git-ignored |
 | `__pycache__/` | ~5.3 MB | git-ignored |
 | `diagnostics/` | ~220 KB | tracked; small diagnostic artifacts, still referenced |
 
 `logs/` held generated run logs and had been picked up by the pre-existing
-safety checkpoint commit. It is now ignored and untracked; **the files remain
-on disk**. No other generated artifact is mixed into a source directory. The
+safety checkpoint commit. Generated contents remain ignored, but
+`stage_structured_diagnosis_focused_calibration_20260922/validate_only.json`
+and `validate_only_cap75.json` are explicitly unignored so their candidate IDs,
+timing/budget estimates and seed-preflight provenance can be retained in a
+fresh clone. The files remain on disk. No other generated artifact is mixed
+into a source directory. The
 only non-source files inside a source directory are
 `configs/hm_focused_warm_start_20260916.csv` and
 `configs/hm_forecast_windows_warm_start_20260921.csv`, which are warm-start
@@ -184,13 +188,11 @@ bound as "at least 93%". The correct unimodal Vysochanskii–Petunin bound is
 the build spec's figure is wrong and should be corrected when that document is
 next revised.
 
-## 5. Pre-existing test failures (not caused by this pass)
+## 5. Repository-wide verification and residual failures
 
-The full suite was run before and after. This pass modified **zero** existing
-tracked source files, so none of the following is attributable to it.
-
-Full suite, under the no-engine guard: **2339 passed, 74 failed, 268 skipped,
-5 errors**.
+The review baseline was **2475 passed, 71 failed, 270 skipped, 5 errors** under
+the no-engine guard. This remediation modifies existing source and tests, so
+the earlier claim that zero tracked source files changed no longer applies.
 
 The failures are dominated by two environmental path problems, not logic:
 
@@ -202,7 +204,7 @@ The failures are dominated by two environmental path problems, not logic:
    expected directory name. Accounts for the
    `test_validation_data_loader.py` errors and some LHS failures.
 
-Three pre-existing failures are now **closed**, all in the A-12 family:
+The earlier A-12 guard findings are now **closed**:
 
 - `test_a12_deterministic_allocation_audit.py::test_syntax_candidate_scan_is_nonempty_and_scoped_to_reviewed_files`
   — `untriaged rounding syntax functions: [('run_v3.py', '_step_stage_structured_diagnosis')]`.
@@ -214,40 +216,18 @@ Three pre-existing failures are now **closed**, all in the A-12 family:
   materiality judgement on the incremental estimand; `DX-04` records both, so
   the baseline was regenerated.
 - `test_a12_review_guards.py::test_call_fingerprint_baseline_matches_the_audited_candidate_count`
-  — 266 → 269 call sites, with the reason in the test's docstring.
+  — 266 → 271 call sites. The five additions are scalar conversions of
+  already-integer event tensors for counters, not new allocation boundaries.
 
-**Full-suite reconciliation**, before and after, under the no-engine guard:
+The remaining failures are environmental/provenance gaps: the missing
+root-level `1980_test.json`, unavailable `Validation /` source data, frozen
+historical artifacts that correctly reject the changed runtime, and the
+missing `documentation/BACKLOG.md`. The HTA `utilities.aids_on_art` gap is
+closed by linking it exactly to `utilities.hiv_chronic_on_art`, without adding
+an independent PSA dimension. The neutral MSM diagnosis multiplier now takes
+the exact legacy all-orientations allocation and RNG route.
 
-| | before | after |
-|---|---|---|
-| passed | 2365 | 2462 |
-| **failed** | **74** | **71** |
-| skipped | 270 | 270 |
-| errors | 5 | 5 |
-
-Every remaining failure and error is classified by root cause in
-`NROY_COMPLETION_PASS_2026-10-14.md` section 3: 39 from the missing
-root-level `1980_test.json`, 6 from the missing `Validation /` directory, 28
-from frozen run artifacts correctly refusing a changed runtime, 1 missing
-`documentation/BACKLOG.md`, 1 missing HTA utility parameter, and 1 cascade.
-The per-file breakdown of the "after" run matches that classification exactly,
-with no residue.
-
-One pre-existing finding there is worth separate attention, because it is the
-same *kind* of question as the M0/M1 identity:
-
-- `tests/test_msm_relative_diagnosis_v13_10.py::TestStepDiagnosisBehavior::test_enabled_with_multiplier_one_matches_baseline`
-  fails with `Multiplier=1.0 should produce identical MSM diagnoses;
-  ref=93601, mult1=86772` — a 7% gap at a parameter value where the path
-  should reduce to the baseline. It is skipped under the no-engine guard, so it
-  surfaces only through the joint-fit runner's validate gate, which already
-  records it as a *tolerated* failure with `"tolerated_failure_still_fails":
-  true`. If the cause is a differently keyed RNG stream on the other branch it
-  is a coupling artefact and the test needs a distributional comparison; if not
-  it is a real discrepancy in the diagnosis path. It should be resolved before
-  the diagnosis mechanism carries production results, and
-  `nroy_identity_gate.check_deliberate_failures` is the pattern for telling
-  the two apart.
+The final guarded-suite totals are recorded in section 7.
 
 ## 6. Implementation status of the robust-NROY stage
 
@@ -310,7 +290,8 @@ A fully signed plan would still not be a launch authorisation. The production
 specification additionally requires a measured pilot, a priced trajectory
 budget, `CONFIG_REGISTRY.md` with frozen candidate identities, and a
 confirmation that the production seed block is disjoint from earlier runs.
-None of those exists. `validate` says so even when every value is signed.
+None of those exists. Both `validate` and the production evaluator now refuse
+the launch unless all four plan-bound artifacts pass their content checks.
 
 Two further prerequisites are specific to M1 and are recorded here because
 they are easy to miss:
@@ -332,8 +313,14 @@ they are easy to miss:
 - Reference scan for `fix_thesis` and `__delete_test` across all tracked file
   types: **no remaining references outside the archive**.
 - `git check-ignore` confirms `logs/` is ignored and its files remain on disk.
-- Production-relevant suite (section 3.3): **322 passed** (synthetic; no
-  engine, no trajectories).
+- Remediation-focused suite: **503 passed, 17 skipped** (synthetic; no engine,
+  no trajectories).
+- Neutral-route and A-12 regression follow-up: **47 passed, 4 skipped**.
+- Full guarded repository suite: **2488 passed, 71 failed, 270 skipped,
+  5 errors** in 440.44s. One failure was a stale DX-04 assertion found by that
+  run; it was corrected and its focused rerun passed. Pytest's remaining-failure
+  inventory is therefore **70 failures and 5 setup errors**; the full 7-minute
+  suite was not repeated a third time after that assertion-only correction.
 - M0/M1 engine identity suite: **18 passed** (user-run; 14 of them skipped
   under `pytest_no_engine_guard`, which is why the `identity-gate` command
   exists).
@@ -342,25 +329,13 @@ they are easy to miss:
   on a fixture where the mechanism can actually fire.
 - Full suite: see section 5 for the before/after reconciliation.
 
-### 7.1 Source files this work modified
+### 7.1 Source files this remediation modified
 
-Only one pre-existing executable file was touched, and by one line:
-
-| file | change |
-|---|---|
-| `tools/run_a12_deterministic_allocation_audit.py` | +1 line: the `DX-04` inventory row (section 8) |
-| `tools/a12_call_fingerprints.json` | regenerated after that triage, 266 → 269 call sites |
-| `tests/test_a12_review_guards.py` | the matching count, with the reason in its docstring |
-
-Everything else is new (`nroy_*.py`, `run_robust_nroy_freeze.py`, the
-production plan, the test modules, this document), plus `.gitignore` and the
-two spec documents, which the user edited.
-
-**No existing model, calibration, scoring or economics module was modified.**
-`run_v3.py`, `aids_observation.py`, `calib_extractor.py`,
-`run_coupled_calibration.py` and `run_lhs_calibration.py` — the modules every
-remaining failure points at — have **zero** commits on this branch. No
-pre-existing failure is attributable to this work or to the repository moves.
+The remediation changes the robust-NROY command and its contract, execution,
+identity, assessment and reporting modules; `run_v3.py` for neutral MSM and
+DX-04 allocation identity; HTA sampling/configuration for the linked AIDS
+utility; the A-12 inventory/fingerprint; and their focused tests. It does not
+alter historical output artifacts or run a production trajectory.
 
 ## 8. A-12 triage of `_step_stage_structured_diagnosis` (DX-04)
 
@@ -369,40 +344,35 @@ its six-pool allocation and conservation behaviour tested, and the finding
 closed or explicitly documented before M1 production use. It was the only
 untriaged rounding site in the A-12 inventory, and it is the M1 mechanism.
 
-**What the code does.** It partitions the undiagnosed tensor into six disjoint
-pools — non-MSM and MSM, each by acute / chronic / AIDS — and allocates each
-separately through the shared aggregate-preserving allocator
+**What the code does now.** It partitions the undiagnosed tensor into four
+rate blocks — non-MSM and MSM, each by non-AIDS / AIDS — and allocates each
+through the shared aggregate-preserving allocator
 `stochastic_allocation.deterministic_allocate_events`.
 
-**The finding.** `stage_step_probability` depends on the stage only through
-`aids_stage`, so acute and chronic share **one** step probability within a
-population. The six pools therefore span only **four** distinct rate blocks,
-and the shared non-AIDS block is split into two separate allocations. That is a
-genuine fragmentation of a rate block, which the A-12 audit treats as a defect
-unless it is bounded and justified.
+**The finding and repair.** `stage_step_probability` depends on the stage only
+through `aids_stage`, so acute and chronic share one step probability. They are
+therefore allocated together. This removes the previous ±1-person-per-population
+per-step rounding differential while preserving stage-resolved event tensors.
 
 **Measured, not assumed** (`tests/test_a12_stage_structured_diagnosis_allocation.py`,
-30 tests, no engine):
+31 tests, no engine):
 
 | property | result |
 |---|---|
 | partition disjoint and exhaustive | yes, asserted against the real tensor |
 | total diagnoses conserved | **exactly**; tensor total unchanged, no negative cell |
 | stage counters sum to the total | yes (the function also asserts this itself) |
-| effect of the extra split | **≤ 1 person per population per step**, both signs, in ~21% of a random sweep |
-| effect on the total | **none** — the split moves people between stages only |
+| effect of the former extra split | **eliminated**; combined-reference differential is exactly zero |
+| effect on the total | aggregate diagnoses now match the declared rate-block allocation exactly |
 | per-pool allocator itself | not fragmentation-sensitive (that is `ALLOC-01`) |
 
 **Classification:** `rate_stratified_aggregate`, `fragmentation_sensitive =
-True`, differential 1 person. Not `cellwise`: each pool is allocated
+False`, differential 0 people. Not `cellwise`: each pool is allocated
 aggregate-preservingly over many cells.
 
-**Disposition.** The split is **retained**, because the stage-resolved
-diagnosis counters (`hiv_diagnoses_in_acute_stage` and friends) are model
-*outputs*, so the allocation has to be resolved by stage. Merging the pools
-would mean splitting a merged total by pool weights — a different estimator,
-and therefore a modelling decision rather than a refactor. The inventory row
-records both options and says which is which.
+**Disposition.** The split was removed. The allocator returns a tensor, so
+acute and chronic diagnoses remain directly countable after one combined
+non-AIDS allocation; no post-hoc redistribution is required.
 
 **Current activity.** Dormant in the production base case: that config carries
 no `stage_structured_diagnosis` block, so the profile loads disabled and

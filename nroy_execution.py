@@ -25,9 +25,11 @@ mechanically separate:
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import os
 import platform
+import sqlite3
 import socket
 import tempfile
 import time
@@ -44,6 +46,7 @@ import nroy_contract as nc
 from coupled_calibration_search import ContractError
 
 LEDGER_SCHEMA_VERSION = "nroy_ledger/1.0.0"
+ARTIFACT_INDEX_SCHEMA_VERSION = "nroy_artifact_index/1.0.0"
 
 # Attempt/row statuses.
 ATTEMPT_PENDING = "pending"
@@ -51,8 +54,10 @@ ATTEMPT_RUNNING = "running"
 ATTEMPT_SUCCESS = "success"
 ATTEMPT_FAILED = "failed"
 ATTEMPT_LOST = "lost"
+ATTEMPT_LINKED = "linked_existing_result"
 ATTEMPT_STATUSES = (
     ATTEMPT_PENDING, ATTEMPT_RUNNING, ATTEMPT_SUCCESS, ATTEMPT_FAILED, ATTEMPT_LOST,
+    ATTEMPT_LINKED,
 )
 #: Statuses that consumed a launch attempt and therefore consumed budget.
 ATTEMPT_CONSUMED = frozenset({ATTEMPT_SUCCESS, ATTEMPT_FAILED, ATTEMPT_LOST, ATTEMPT_RUNNING})
@@ -88,6 +93,14 @@ def atomic_write_text(path: str | Path, text: str, *, overwrite_completed: bool 
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, target)
+        # Persist the directory entry as well as the file contents.  Without
+        # this fsync a power loss can occur after the atomic rename appears to
+        # succeed but before the new filename is durable.
+        directory_fd = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
@@ -281,6 +294,63 @@ def new_attempt_id(design_id: str, seed: int, ordinal: int) -> str:
     return f"{design_id}#s{int(seed)}#a{int(ordinal):03d}"
 
 
+def read_jsonl_records(
+    path: str | Path, *, repair_truncated_tail: bool = False
+) -> list[dict]:
+    """Read a durable JSON-lines journal without laundering corruption.
+
+    A process can be killed while its final ``write`` is in progress.  The
+    resulting *unterminated final fragment* is the one recoverable condition:
+    it was never a durable event and is ignored.  A complete final record does
+    not need a trailing newline and is accepted.  Malformed UTF-8/JSON anywhere
+    else -- including a newline-terminated final line -- proves that durable
+    journal history is corrupt and fails closed.
+
+    Returning mappings only is deliberate.  Attempt journals are event
+    objects; accepting a scalar or array here would merely defer corruption to
+    a less intelligible ``.get``/field error during ledger restoration.
+    """
+    journal = Path(path)
+    raw = journal.read_bytes()
+    records: list[dict] = []
+    lines = raw.splitlines(keepends=True)
+    durable_bytes = 0
+    for index, encoded in enumerate(lines, start=1):
+        terminated = encoded.endswith((b"\n", b"\r"))
+        payload = encoded.rstrip(b"\r\n")
+        try:
+            if not payload.strip():
+                raise ValueError("blank journal record")
+            decoded = payload.decode("utf-8")
+            record = json.loads(decoded)
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"journal record is {type(record).__name__}, expected an object"
+                )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            is_final = index == len(lines)
+            if is_final and not terminated:
+                # The only safe recovery: bytes from the final event never
+                # reached their newline/flush boundary, so the event did not
+                # become part of the durable journal.
+                if repair_truncated_tail:
+                    # The caller must own this shard journal exclusively.  A
+                    # physical truncate is necessary before appending the next
+                    # event, or today's recoverable tail becomes tomorrow's
+                    # fatal interior corruption.
+                    with journal.open("r+b") as stream:
+                        stream.truncate(durable_bytes)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                break
+            raise ContractError(
+                f"attempt journal {journal} is corrupt at durable line {index}: {exc}"
+            ) from exc
+        records.append(record)
+        durable_bytes += len(encoded)
+    return records
+
+
 @dataclass
 class Ledger:
     """The immutable frozen work list, plus its mutable attempt audit.
@@ -322,6 +392,39 @@ class Ledger:
                 )
         if not self.frozen_sha256:
             self.frozen_sha256 = self.compute_frozen_hash()
+        self._assert_attempt_audit()
+
+    def _assert_attempt_audit(self) -> None:
+        """Reject duplicate, orphaned or contradictory restored attempt state."""
+        units = {
+            (unit.design_id, int(unit.seed)): unit for unit in self.units
+        }
+        seen_ids: set[str] = set()
+        successful_units: set[tuple[str, int]] = set()
+        for attempt in self.attempts:
+            if attempt.attempt_id in seen_ids:
+                raise ContractError(
+                    f"attempt audit repeats attempt_id {attempt.attempt_id!r}"
+                )
+            seen_ids.add(attempt.attempt_id)
+            key = (attempt.design_id, int(attempt.seed))
+            unit = units.get(key)
+            if unit is None:
+                raise ContractError(
+                    f"attempt {attempt.attempt_id!r} does not correspond to a frozen unit"
+                )
+            if attempt.vector_hash and attempt.vector_hash != unit.vector_hash:
+                raise ContractError(
+                    f"attempt {attempt.attempt_id!r} vector hash does not match its "
+                    "frozen unit"
+                )
+            if attempt.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED):
+                if key in successful_units:
+                    raise ContractError(
+                        f"work unit {attempt.design_id} seed {attempt.seed} has more than "
+                        "one successful/linked attempt"
+                    )
+                successful_units.add(key)
 
     def compute_frozen_hash(self) -> str:
         return ccs.sha256_json({
@@ -392,6 +495,111 @@ class Ledger:
         """Launch attempts consume budget, including the ones that were lost."""
         return sum(1 for a in self.attempts if a.status in ATTEMPT_CONSUMED)
 
+    def consumed_result_keys(self) -> set[str]:
+        """Unique scientific trajectories ever launched.
+
+        Retries consume another *attempt* but do not invent another frozen
+        vector-by-seed trajectory.  Conversely, two work units that share the
+        same vector and seed share one trajectory even though both receive a
+        separately bound result row.  Keeping these two budgets distinct is
+        required for result-key de-duplication to remain scientifically and
+        financially meaningful.
+        """
+        units = {
+            (unit.design_id, int(unit.seed)): unit
+            for unit in self.units
+        }
+        consumed: set[str] = set()
+        for attempt in self.attempts:
+            if attempt.status not in ATTEMPT_CONSUMED:
+                continue
+            unit = units.get((attempt.design_id, int(attempt.seed)))
+            if unit is not None:
+                consumed.add(unit.result_key)
+        return consumed
+
+    def successful_result_keys(self) -> set[str]:
+        """Scientific result keys with at least one durable successful row."""
+        units = {
+            (unit.design_id, int(unit.seed)): unit
+            for unit in self.units
+        }
+        successful: set[str] = set()
+        for attempt in self.attempts:
+            if attempt.status not in (ATTEMPT_SUCCESS, ATTEMPT_LINKED):
+                continue
+            unit = units.get((attempt.design_id, int(attempt.seed)))
+            if unit is not None:
+                successful.add(unit.result_key)
+        return successful
+
+    def running_attempts(self) -> tuple[AttemptRecord, ...]:
+        """Return the durable attempts that have no terminal event yet."""
+        return tuple(a for a in self.attempts if a.status == ATTEMPT_RUNNING)
+
+    def reconcile_running_attempts_as_lost(
+        self,
+        *,
+        lost_attempt_ids: Iterable[str],
+        ended_utc: float | None = None,
+        failure_reason: str = "worker ended without a terminal durable event",
+        failure_class: str = "LostWorker",
+    ) -> tuple[AttemptRecord, ...]:
+        """Advance proven-dead ``RUNNING`` attempts to durable ``LOST`` events.
+
+        The caller must supply the exact ids whose worker ownership is known
+        to have ended (for example, after acquiring that worker shard's
+        full-lifetime lock).  Marking every restored ``RUNNING`` attempt lost
+        would race with healthy workers on other shards, so this method has no
+        implicit "all" mode.
+
+        ``LOST`` is a terminal state of the *same* launch attempt.  The method
+        therefore replaces the in-memory state under the same ``attempt_id``
+        and queues the replacement event in ``recorded_this_process`` for the
+        caller to append with :meth:`save_attempt_record`.  Lost launches stay
+        in :data:`ATTEMPT_CONSUMED`; reconciliation never refunds budget.
+        """
+        requested = {str(value) for value in lost_attempt_ids}
+        if not requested:
+            return ()
+        by_id = {attempt.attempt_id: (index, attempt)
+                 for index, attempt in enumerate(self.attempts)}
+        missing = sorted(requested - set(by_id))
+        if missing:
+            raise ContractError(
+                f"cannot mark unknown attempt id(s) LOST: {missing}"
+            )
+        not_running = sorted(
+            attempt_id for attempt_id in requested
+            if by_id[attempt_id][1].status != ATTEMPT_RUNNING
+        )
+        if not_running:
+            states = {attempt_id: by_id[attempt_id][1].status
+                      for attempt_id in not_running}
+            raise ContractError(
+                f"only RUNNING attempts may transition to LOST; found {states}"
+            )
+        stopped = float(time.time() if ended_utc is None else ended_utc)
+        reconciled: list[AttemptRecord] = []
+        for attempt_id in sorted(requested):
+            index, running = by_id[attempt_id]
+            if running.started_utc is not None and stopped < float(running.started_utc):
+                raise ContractError(
+                    f"attempt {attempt_id} cannot end at {stopped} before it started "
+                    f"at {running.started_utc}"
+                )
+            lost = replace(
+                running,
+                status=ATTEMPT_LOST,
+                ended_utc=stopped,
+                failure_reason=str(failure_reason),
+                failure_class=str(failure_class),
+            )
+            self.attempts[index] = lost
+            self.recorded_this_process.append(lost)
+            reconciled.append(lost)
+        return tuple(reconciled)
+
     def record_attempt(self, attempt: AttemptRecord) -> AttemptRecord:
         unit_keys = {(u.design_id, int(u.seed)) for u in self.units}
         if (attempt.design_id, int(attempt.seed)) not in unit_keys:
@@ -401,10 +609,18 @@ class Ledger:
             )
         if any(a.attempt_id == attempt.attempt_id for a in self.attempts):
             raise ContractError(f"duplicate attempt_id {attempt.attempt_id}")
-        if attempt.status == ATTEMPT_SUCCESS:
+        unit = next(
+            u for u in self.units
+            if u.design_id == attempt.design_id and int(u.seed) == int(attempt.seed)
+        )
+        if attempt.vector_hash and attempt.vector_hash != unit.vector_hash:
+            raise ContractError(
+                f"attempt {attempt.attempt_id} vector hash does not match its frozen unit"
+            )
+        if attempt.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED):
             already = [
                 a for a in self.attempts_for(attempt.design_id, int(attempt.seed))
-                if a.status == ATTEMPT_SUCCESS
+                if a.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED)
             ]
             if already:
                 raise ContractError(
@@ -418,7 +634,7 @@ class Ledger:
     def completed_keys(self) -> set[tuple[str, str, str, int]]:
         return {
             (self.stage, self.model, a.design_id, int(a.seed))
-            for a in self.attempts if a.status == ATTEMPT_SUCCESS
+            for a in self.attempts if a.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED)
         }
 
     def incomplete_units(self) -> list[WorkUnit]:
@@ -442,6 +658,24 @@ class Ledger:
     #: Subdirectory holding one append-only attempt file per shard.
     ATTEMPTS_DIR = "attempts"
 
+    def save_attempt_record(
+        self, directory: str | Path, shard_label: str, attempt: AttemptRecord
+    ) -> Path:
+        """Durably append one attempt-state event without quadratic rewrites."""
+        base = Path(directory) / self.ATTEMPTS_DIR
+        base.mkdir(parents=True, exist_ok=True)
+        path = base / f"{shard_label}.jsonl"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(nc.json_safe(attempt.as_row()), sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        directory_fd = os.open(base, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        return path
+
     def save_attempts(self, directory: str | Path, shard_label: str) -> Path:
         """Write THIS worker's attempts to its own file.
 
@@ -454,12 +688,21 @@ class Ledger:
         """
         base = Path(directory) / self.ATTEMPTS_DIR
         base.mkdir(parents=True, exist_ok=True)
-        mine = list(self.recorded_this_process)
-        frame = (
-            pd.DataFrame([a.as_row() for a in mine]) if mine else self.attempt_frame().iloc[0:0]
-        )
+        target = base / f"{shard_label}.csv"
+        rows: dict[str, dict] = {}
+        if target.exists():
+            for row in read_frame_exact(target).to_dict("records"):
+                if str(row.get("attempt_id", "")):
+                    rows[str(row["attempt_id"])] = row
+        for attempt in self.recorded_this_process:
+            row = attempt.as_row()
+            # The row is an append-only logical attempt whose state advances
+            # running -> success/failed. Rewriting that one row preserves the
+            # launch record across a crash without inventing a second attempt.
+            rows[attempt.attempt_id] = row
+        frame = pd.DataFrame(list(rows.values()), columns=self.attempt_frame().columns)
         return atomic_write_frame(
-            base / f"{shard_label}.csv", frame, overwrite_completed=True
+            target, frame, overwrite_completed=True
         )
 
     def save(self, directory: str | Path, *, overwrite_completed: bool = False) -> dict:
@@ -512,38 +755,139 @@ class Ledger:
                 config_sha256=str(row["config_sha256"]),
                 target_schema=schema,
             ))
-        attempts: list[AttemptRecord] = []
-        seen_ids: set[str] = set()
+        attempts_by_id: dict[str, AttemptRecord] = {}
         # The shared file is the single-process view; attempts/*.csv are the
         # per-shard trails. Union them, de-duplicating by attempt_id, so a
         # distributed run reconstructs the COMPLETE audit history.
         sources = [base / "ledger_attempts.csv"]
         sources += sorted((base / cls.ATTEMPTS_DIR).glob("*.csv")) \
             if (base / cls.ATTEMPTS_DIR).exists() else []
+        def parsed_attempt(row: Mapping) -> AttemptRecord | None:
+            if not str(row.get("attempt_id", "")):
+                return None
+            return AttemptRecord(
+                attempt_id=str(row["attempt_id"]), design_id=str(row["design_id"]),
+                seed=int(row["seed"]), status=str(row["status"]),
+                started_utc=_opt_float(row.get("started_utc")),
+                ended_utc=_opt_float(row.get("ended_utc")),
+                host=str(row.get("host", "") or ""),
+                process=str(row.get("process", "") or ""),
+                vector_hash=str(row.get("vector_hash", "") or ""),
+                result_hash=str(row.get("result_hash", "") or ""),
+                failure_reason=str(row.get("failure_reason", "") or ""),
+                failure_class=str(row.get("failure_class", "") or ""),
+            )
+
         for attempts_path in sources:
             if not attempts_path.exists():
                 continue
             frame = read_frame_exact(attempts_path)
             for _, row in frame.iterrows():
-                if not str(row.get("attempt_id", "")):
-                    continue
-                if str(row["attempt_id"]) in seen_ids:
-                    continue
-                seen_ids.add(str(row["attempt_id"]))
-                attempts.append(AttemptRecord(
-                    attempt_id=str(row["attempt_id"]),
-                    design_id=str(row["design_id"]),
-                    seed=int(row["seed"]),
-                    status=str(row["status"]),
-                    started_utc=_opt_float(row.get("started_utc")),
-                    ended_utc=_opt_float(row.get("ended_utc")),
-                    host=str(row.get("host", "") or ""),
-                    process=str(row.get("process", "") or ""),
-                    vector_hash=str(row.get("vector_hash", "") or ""),
-                    result_hash=str(row.get("result_hash", "") or ""),
-                    failure_reason=str(row.get("failure_reason", "") or ""),
-                    failure_class=str(row.get("failure_class", "") or ""),
-                ))
+                attempt = parsed_attempt(row)
+                if attempt is not None:
+                    prior = attempts_by_id.get(attempt.attempt_id)
+                    if prior is not None and prior.as_row() != attempt.as_row():
+                        raise ContractError(
+                            f"attempt snapshots disagree for {attempt.attempt_id!r}"
+                        )
+                    attempts_by_id[attempt.attempt_id] = attempt
+        if (base / cls.ATTEMPTS_DIR).exists():
+            journal_latest: dict[str, AttemptRecord] = {}
+            journal_source: dict[str, Path] = {}
+            unit_map = {
+                (unit.design_id, int(unit.seed)): unit for unit in units
+            }
+            for journal in sorted((base / cls.ATTEMPTS_DIR).glob("*.jsonl")):
+                for row in read_jsonl_records(journal):
+                    attempt = parsed_attempt(row)
+                    if attempt is None:
+                        raise ContractError(f"{journal}: journal event has no attempt_id")
+                    unit = unit_map.get((attempt.design_id, int(attempt.seed)))
+                    if unit is None or attempt.vector_hash != unit.vector_hash:
+                        raise ContractError(
+                            f"{journal}: attempt {attempt.attempt_id!r} is not bound to "
+                            "its exact frozen unit/vector"
+                        )
+                    prior = journal_latest.get(attempt.attempt_id)
+                    if prior is None:
+                        if attempt.status not in (ATTEMPT_RUNNING, ATTEMPT_LINKED):
+                            raise ContractError(
+                                f"{journal}: attempt {attempt.attempt_id!r} starts in "
+                                f"terminal state {attempt.status!r}"
+                            )
+                        if attempt.started_utc is None:
+                            raise ContractError(
+                                f"{journal}: attempt {attempt.attempt_id!r} has no start time"
+                            )
+                        if attempt.status == ATTEMPT_RUNNING and (
+                            attempt.ended_utc is not None or attempt.result_hash
+                        ):
+                            raise ContractError(
+                                f"{journal}: RUNNING attempt {attempt.attempt_id!r} "
+                                "already carries terminal fields"
+                            )
+                        if attempt.status == ATTEMPT_LINKED and (
+                            attempt.ended_utc is None or not attempt.result_hash
+                        ):
+                            raise ContractError(
+                                f"{journal}: linked attempt {attempt.attempt_id!r} lacks "
+                                "a terminal time or result hash"
+                            )
+                        journal_source[attempt.attempt_id] = journal
+                    else:
+                        if journal_source[attempt.attempt_id] != journal:
+                            raise ContractError(
+                                f"attempt {attempt.attempt_id!r} appears in more than one "
+                                "shard journal"
+                            )
+                        if prior.status != ATTEMPT_RUNNING or attempt.status not in {
+                            ATTEMPT_SUCCESS, ATTEMPT_FAILED, ATTEMPT_LOST,
+                        }:
+                            raise ContractError(
+                                f"{journal}: ambiguous attempt transition for "
+                                f"{attempt.attempt_id!r}: {prior.status!r} -> "
+                                f"{attempt.status!r}"
+                            )
+                        immutable_identity = (
+                            prior.design_id, int(prior.seed), prior.started_utc,
+                            prior.host, prior.process, prior.vector_hash,
+                        )
+                        terminal_identity = (
+                            attempt.design_id, int(attempt.seed), attempt.started_utc,
+                            attempt.host, attempt.process, attempt.vector_hash,
+                        )
+                        if immutable_identity != terminal_identity:
+                            raise ContractError(
+                                f"{journal}: attempt {attempt.attempt_id!r} changed identity "
+                                "between RUNNING and terminal events"
+                            )
+                        if attempt.ended_utc is None or (
+                            attempt.started_utc is not None
+                            and float(attempt.ended_utc) < float(attempt.started_utc)
+                        ):
+                            raise ContractError(
+                                f"{journal}: attempt {attempt.attempt_id!r} has an invalid "
+                                "terminal time"
+                            )
+                        if attempt.status == ATTEMPT_SUCCESS and not attempt.result_hash:
+                            raise ContractError(
+                                f"{journal}: successful attempt {attempt.attempt_id!r} "
+                                "has no result hash"
+                            )
+                    journal_latest[attempt.attempt_id] = attempt
+            for attempt_id, attempt in journal_latest.items():
+                snapshot = attempts_by_id.get(attempt_id)
+                if snapshot is not None and snapshot.status not in {
+                    ATTEMPT_RUNNING, attempt.status,
+                }:
+                    raise ContractError(
+                        f"attempt snapshot for {attempt_id!r} contradicts its journal "
+                        f"({snapshot.status!r} versus {attempt.status!r})"
+                    )
+                attempts_by_id[attempt_id] = attempt
+        attempts = sorted(
+            attempts_by_id.values(), key=lambda attempt: attempt.attempt_id
+        )
         ledger = cls(
             stage=str(meta["stage"]),
             model=str(meta["model"]),
@@ -570,6 +914,130 @@ def _opt_float(value) -> float | None:
     except (TypeError, ValueError):
         return None
     return None if np.isnan(number) else number
+
+
+def rebuild_dispatch_index(path: str | Path, ledger: Ledger) -> dict:
+    """Atomically rebuild the SQLite dispatch cache from durable ledger truth.
+
+    The append-only attempt journals and frozen ledger are authoritative;
+    SQLite is only a concurrency/lookup acceleration index.  Rebuilding on
+    worker startup is consequently safer than trying to repair a possibly
+    corrupt database in place, and also corrects counters that are internally
+    valid SQLite but disagree with the journal.
+
+    The caller must hold the cross-process dispatch lock and ensure no other
+    connection is open while the replacement occurs.  Any ``RUNNING`` events
+    that are known to be abandoned must be reconciled to ``LOST`` *before*
+    calling this function; live running attempts are intentionally preserved
+    as active reservations.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary_name = tempfile.mkstemp(
+        dir=str(target.parent), prefix=f".{target.name}.", suffix=".tmp"
+    )
+    os.close(handle)
+    temporary = Path(temporary_name)
+    # sqlite3.connect expects either no file or a valid database, not the
+    # zero-byte file created by mkstemp on every supported SQLite version.
+    temporary.unlink()
+
+    attempts_by_pair: dict[tuple[str, int], list[AttemptRecord]] = {}
+    for attempt in ledger.attempts:
+        attempts_by_pair.setdefault(
+            (attempt.design_id, int(attempt.seed)), []
+        ).append(attempt)
+
+    by_result = ledger.unique_result_keys()
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(temporary)
+        connection.execute("PRAGMA journal_mode=DELETE")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute(
+            "CREATE TABLE unit_state "
+            "(unit_key TEXT PRIMARY KEY, attempt_count INTEGER NOT NULL, "
+            "completed INTEGER NOT NULL)"
+        )
+        connection.execute(
+            "CREATE TABLE result_state "
+            "(result_key TEXT PRIMARY KEY, consumed INTEGER NOT NULL, "
+            "active INTEGER NOT NULL, successful INTEGER NOT NULL)"
+        )
+        connection.execute(
+            "CREATE TABLE budget "
+            "(singleton INTEGER PRIMARY KEY CHECK(singleton=1), "
+            "consumed_attempts INTEGER NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO budget VALUES (1, ?)", (ledger.consumed_attempts(),)
+        )
+        for unit in ledger.units:
+            attempts = attempts_by_pair.get((unit.design_id, int(unit.seed)), ())
+            completed = any(
+                attempt.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED)
+                for attempt in attempts
+            )
+            connection.execute(
+                "INSERT INTO unit_state VALUES (?, ?, ?)",
+                (unit.key_string, len(attempts), int(completed)),
+            )
+        for scientific_key, units in by_result.items():
+            relevant = [
+                attempt
+                for unit in units
+                for attempt in attempts_by_pair.get(
+                    (unit.design_id, int(unit.seed)), ()
+                )
+            ]
+            consumed = any(
+                attempt.status in ATTEMPT_CONSUMED for attempt in relevant
+            )
+            successful = any(
+                attempt.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED)
+                for attempt in relevant
+            )
+            active = (
+                any(attempt.status == ATTEMPT_RUNNING for attempt in relevant)
+                and not successful
+            )
+            connection.execute(
+                "INSERT INTO result_state VALUES (?, ?, ?, ?)",
+                (scientific_key, int(consumed), int(active), int(successful)),
+            )
+        connection.commit()
+        integrity = connection.execute("PRAGMA integrity_check").fetchone()
+        if integrity != ("ok",):
+            raise ContractError(
+                f"rebuilt dispatch index failed SQLite integrity_check: {integrity!r}"
+            )
+        connection.close()
+        connection = None
+        with temporary.open("rb") as stream:
+            os.fsync(stream.fileno())
+
+        # A corrupt WAL must not survive replacement of its main database.
+        # The dispatch lock/no-open-connection precondition makes removal safe.
+        for suffix in ("-wal", "-shm"):
+            Path(str(target) + suffix).unlink(missing_ok=True)
+        os.replace(temporary, target)
+        directory_fd = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if connection is not None:
+            connection.close()
+        temporary.unlink(missing_ok=True)
+
+    return {
+        "path": str(target),
+        "consumed_attempts": ledger.consumed_attempts(),
+        "consumed_trajectories": len(ledger.consumed_result_keys()),
+        "n_units": len(ledger.units),
+        "n_running": len(ledger.running_attempts()),
+    }
 
 
 def worker_metadata() -> dict:
@@ -622,6 +1090,7 @@ class SeedResult:
             "stage": self.stage,
             "model": self.model,
             "vector_hash": self.vector_hash,
+            "target_order": "|".join(self.target_order),
             "attempt_id": self.attempt_id,
             "result_hash": self.result_hash,
             "code_sha256": self.code_sha256,
@@ -631,6 +1100,145 @@ class SeedResult:
         for name, value in zip(self.target_order, self.values):
             row[f"target:{name}"] = float(value)
         return row
+
+
+_SEED_RESULT_METADATA_FIELDS = frozenset({
+    "design_id", "seed", "stage", "model", "vector_hash", "attempt_id",
+    "target_order", "result_hash", "code_sha256", "config_sha256",
+    "parent_manifest_sha256",
+})
+
+
+def seed_result_from_durable_row(
+    row: Mapping,
+    *,
+    targets: nc.TargetContract,
+    source: str | Path = "durable result row",
+) -> SeedResult:
+    """Parse one durable result using its recorded provenance, never current values.
+
+    The persisted schema is exact.  Unknown fields such as a self-described
+    ``result_key`` or parameter vector are not trusted inputs
+    and are refused rather than silently ignored.  Target values are keyed by
+    the frozen target names, and the declared result hash must match a fresh
+    recomputation before the row can be considered for linking.
+    """
+    expected = _SEED_RESULT_METADATA_FIELDS | {
+        f"target:{name}" for name in targets.frozen_order
+    }
+    present = {str(key) for key in row}
+    missing = sorted(expected - present)
+    extra = sorted(present - expected)
+    if missing or extra:
+        raise ContractError(
+            f"{source}: durable seed-result schema mismatch; "
+            f"missing={missing}, unexpected={extra}"
+        )
+    recorded_target_order = tuple(str(row["target_order"]).split("|"))
+    if recorded_target_order != targets.frozen_order:
+        raise ContractError(
+            f"{source}: target schema does not match the contract; recorded "
+            f"{list(recorded_target_order)}, expected {list(targets.frozen_order)}"
+        )
+    result = SeedResult(
+        design_id=str(row["design_id"]),
+        seed=int(row["seed"]),
+        stage=str(row["stage"]),
+        model=str(row["model"]),
+        vector_hash=str(row["vector_hash"]),
+        target_order=recorded_target_order,
+        values=tuple(float(row[f"target:{name}"]) for name in targets.frozen_order),
+        attempt_id=str(row["attempt_id"]),
+        code_sha256=str(row["code_sha256"]),
+        config_sha256=str(row["config_sha256"]),
+        parent_manifest_sha256=str(row["parent_manifest_sha256"] or ""),
+    )
+    declared_hash = str(row["result_hash"])
+    if result.result_hash != declared_hash:
+        raise ContractError(
+            f"{source}: declared result hash {declared_hash!r} does not match "
+            f"recomputed {result.result_hash!r}"
+        )
+    return result
+
+
+def validate_durable_seed_result(
+    ledger: Ledger,
+    result: SeedResult,
+    *,
+    targets: nc.TargetContract,
+) -> None:
+    """Require an exact frozen unit and its original terminal attempt event.
+
+    This is the single-row form of the merge gate for evaluation-time result
+    reuse.  It prevents a stale row from being reduced to bare values and then
+    rewrapped with the current design/code/config/parent/attempt provenance.
+    """
+    merge_seed_results(ledger, [result], targets=targets, expect_complete=False)
+
+
+def validate_orphaned_lost_seed_result(
+    ledger: Ledger,
+    result: SeedResult,
+    *,
+    targets: nc.TargetContract,
+) -> None:
+    """Validate the sole reusable-file exception: an exact row from a LOST attempt.
+
+    A crash can occur after atomically writing the result but before appending
+    the SUCCESS event.  Once shard reconciliation marks that RUNNING attempt
+    LOST, the row must not be reused, but it may remain in place for the retry
+    to overwrite.  This validator ensures the exception cannot become a way to
+    ignore an arbitrary stale row merely because it borrowed a lost id.
+    """
+    key = (result.stage, result.model, result.design_id, int(result.seed))
+    unit = ledger.by_key().get(key)
+    problems: list[str] = []
+    if unit is None:
+        problems.append(f"no frozen work unit for key {key}")
+    else:
+        if result.vector_hash != unit.vector_hash:
+            problems.append("vector hash does not match the frozen unit")
+        if tuple(result.target_order) != targets.frozen_order:
+            problems.append("target order does not match the frozen contract")
+        if tuple(unit.target_schema) != targets.frozen_order:
+            problems.append("frozen unit target schema does not match the contract")
+        if result.code_sha256 != unit.code_sha256:
+            problems.append("code hash does not match the frozen unit")
+        if result.config_sha256 != unit.config_sha256:
+            problems.append("configuration hash does not match the frozen unit")
+        if result.parent_manifest_sha256 != unit.parent_manifest_sha256:
+            problems.append("parent-manifest hash does not match the frozen unit")
+    matching_attempts = [
+        attempt for attempt in ledger.attempts
+        if attempt.attempt_id == result.attempt_id
+    ]
+    if len(matching_attempts) != 1:
+        problems.append(
+            f"expected one durable attempt {result.attempt_id!r}, found "
+            f"{len(matching_attempts)}"
+        )
+    else:
+        attempt = matching_attempts[0]
+        if attempt.status != ATTEMPT_LOST:
+            problems.append(
+                f"attempt {result.attempt_id!r} is {attempt.status!r}, not LOST"
+            )
+        if (
+            attempt.design_id != result.design_id
+            or int(attempt.seed) != int(result.seed)
+            or attempt.vector_hash != result.vector_hash
+        ):
+            problems.append("LOST attempt identity does not match the durable result")
+        if attempt.result_hash and attempt.result_hash != result.result_hash:
+            problems.append("LOST attempt result hash contradicts the durable result")
+    if not np.all(np.isfinite(np.asarray(result.values, dtype=float))):
+        problems.append("durable result contains non-finite target values")
+    if problems:
+        raise ContractError(
+            "durable result is not an exact orphan of a reconciled LOST attempt:\n"
+            + "\n".join(f"  - {problem}" for problem in problems)
+        )
 
 
 # ==========================================================================
@@ -706,10 +1314,7 @@ def merge_seed_results(
                 f"ledger {unit.config_sha256})"
             )
             continue
-        if (
-            result.parent_manifest_sha256
-            and result.parent_manifest_sha256 != unit.parent_manifest_sha256
-        ):
+        if result.parent_manifest_sha256 != unit.parent_manifest_sha256:
             problems.append(
                 f"{key}: parent-manifest hash mismatch (result "
                 f"{result.parent_manifest_sha256}, ledger {unit.parent_manifest_sha256})"
@@ -725,14 +1330,27 @@ def merge_seed_results(
         problems.append(f"mixed config versions across shards: {sorted(config_versions)}")
 
     successful = {
-        (ledger.stage, ledger.model, a.design_id, int(a.seed))
-        for a in ledger.attempts if a.status == ATTEMPT_SUCCESS
+        (ledger.stage, ledger.model, a.design_id, int(a.seed)): a
+        for a in ledger.attempts if a.status in (ATTEMPT_SUCCESS, ATTEMPT_LINKED)
     }
     for key in sorted(collected):
         if key not in successful:
             problems.append(
                 f"{key}: a result was supplied but no successful attempt is recorded; "
                 "a failed or in-flight attempt may not masquerade as a result"
+            )
+            continue
+        attempt = successful[key]
+        result = collected[key]
+        if result.attempt_id != attempt.attempt_id:
+            problems.append(
+                f"{key}: result attempt_id {result.attempt_id!r} does not match the "
+                f"recorded successful attempt {attempt.attempt_id!r}"
+            )
+        if not attempt.result_hash or result.result_hash != attempt.result_hash:
+            problems.append(
+                f"{key}: result hash {result.result_hash!r} does not match the "
+                f"recorded successful attempt hash {attempt.result_hash!r}"
             )
 
     if expect_complete:
@@ -752,7 +1370,7 @@ def merge_seed_results(
     frame = pd.DataFrame(rows)
     # Deterministic column order: identity columns, then targets in frozen order.
     identity = [
-        "design_id", "seed", "stage", "model", "vector_hash", "attempt_id",
+        "design_id", "seed", "stage", "model", "vector_hash", "target_order", "attempt_id",
         "result_hash", "code_sha256", "config_sha256", "parent_manifest_sha256",
     ]
     ordered = identity + [f"target:{name}" for name in targets.frozen_order]
@@ -855,6 +1473,7 @@ def recompute_candidate_scores(
     for name in targets.frozen_order:
         out[f"mean:{name}"] = means[name]
         out[f"var:{name}"] = sample_var[name]
+        out[f"residual:{name}"] = np.asarray(means[name]) - float(observed[name])
 
     if variance_alpha is not None:
         factor = nc.variance_bound_factor(k, float(variance_alpha))
@@ -885,6 +1504,172 @@ def recompute_candidate_scores(
 # Stage handoff
 # ==========================================================================
 
+_ARTIFACT_INDEX_SELF_PATHS = frozenset({"manifest.json", "artifacts.json"})
+
+
+def is_mutable_stage_runtime_path(relative_path: str | Path) -> bool:
+    """Whether a PARTIAL checkpoint may legitimately change this artifact.
+
+    These files are execution journals, durable per-unit results, worker
+    snapshots or reconstructable caches.  They remain authoritative inputs to
+    the next merge, but a PARTIAL stage cannot freeze their old bytes and also
+    remain resumable.  All other files already present at the checkpoint stay
+    hash-sealed across the resume.
+    """
+    path = Path(str(relative_path))
+    return (
+        (path.parts and path.parts[0] in {Ledger.ATTEMPTS_DIR, "results", "shards"})
+        or path.name.startswith("budget_audit_shard_")
+        or path.name in {
+            "execution_budget.json", "execution_dispatch.sqlite3",
+            ".dispatch.lock",
+        }
+        or path.name.startswith("execution_dispatch.sqlite3-")
+        or (path.name.startswith(".shard_") and path.name.endswith(".worker.lock"))
+    )
+
+
+def _belongs_in_stage_index(path: Path, base: Path) -> bool:
+    relative = path.relative_to(base)
+    # The report package is a reproducible presentation derivative, can be
+    # regenerated after sealing, and is never consumed by a child stage.
+    # Keeping it outside the scientific index lets reporting remain harmless
+    # to a later parent handoff while every source table stays sealed.
+    return (
+        path.is_file()
+        and str(relative) not in _ARTIFACT_INDEX_SELF_PATHS
+        and (not relative.parts or relative.parts[0] != "package")
+    )
+
+
+def _artifact_entries(base: Path) -> list[dict]:
+    """Build the exact non-circular inventory sealed by a stage manifest."""
+    return sorted(
+        (
+            {
+                "path": str(path.relative_to(base)),
+                "sha256": ccs.sha256_file(path),
+                "bytes": path.stat().st_size,
+            }
+            for path in base.rglob("*")
+            if _belongs_in_stage_index(path, base)
+        ),
+        key=lambda row: row["path"],
+    )
+
+
+def validate_artifact_index(
+    directory: str | Path,
+    *,
+    required_paths: Iterable[str] | None = None,
+    require_exact: bool = False,
+) -> dict:
+    """Validate the manifest seal, index structure, and indexed file hashes.
+
+    ``manifest.json`` binds the exact bytes of ``artifacts.json`` through
+    ``artifacts_sha256``.  The two metadata files are excluded from the index,
+    avoiding a circular hash.  Consumers must verify this seal *before*
+    trusting any file entries; otherwise an edited artifact can be silently
+    paired with a rewritten index.
+
+    When ``required_paths`` is supplied, only those entries' file contents are
+    checked after the seal.  This is useful for a PREPARED stage whose
+    append-only runtime outputs may legitimately grow during concurrent work.
+    A completed parent must use the default (all entries) together with
+    ``require_exact=True`` so unindexed additions also fail closed.
+    """
+    base = Path(directory)
+    manifest_path = base / "manifest.json"
+    index_path = base / "artifacts.json"
+    if not manifest_path.exists():
+        raise ContractError(f"stage has no manifest: {manifest_path}")
+    if not index_path.exists():
+        raise ContractError(f"stage has no artifact index: {index_path}")
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(f"stage manifest is not valid JSON: {manifest_path}: {exc}") from exc
+    expected_index_hash = str(manifest.get("artifacts_sha256") or "")
+    if not expected_index_hash:
+        raise ContractError(
+            "stage manifest does not seal artifacts.json with artifacts_sha256; "
+            "legacy/unsealed stages cannot authorize scientific reuse and must be regenerated"
+        )
+    actual_index_hash = ccs.sha256_file(index_path)
+    if actual_index_hash != expected_index_hash:
+        raise ContractError(
+            "artifact index changed after the stage manifest sealed it "
+            f"(manifest {expected_index_hash}, found {actual_index_hash})"
+        )
+    try:
+        index = json.loads(index_path.read_text())
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(f"artifact index is not valid JSON: {index_path}: {exc}") from exc
+    if index.get("schema") != ARTIFACT_INDEX_SCHEMA_VERSION:
+        raise ContractError(
+            f"artifact index schema is {index.get('schema')!r}, expected "
+            f"{ARTIFACT_INDEX_SCHEMA_VERSION!r}"
+        )
+    raw_entries = index.get("files")
+    if not isinstance(raw_entries, list):
+        raise ContractError("artifact index 'files' must be a list")
+    entries: dict[str, Mapping] = {}
+    for position, entry in enumerate(raw_entries):
+        if not isinstance(entry, Mapping):
+            raise ContractError(f"artifact index entry {position} is not an object")
+        relative = str(entry.get("path") or "")
+        candidate = Path(relative)
+        if (
+            not relative
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or relative in _ARTIFACT_INDEX_SELF_PATHS
+        ):
+            raise ContractError(f"unsafe/circular artifact index path {relative!r}")
+        if relative in entries:
+            raise ContractError(f"duplicate artifact index path {relative!r}")
+        if not str(entry.get("sha256") or ""):
+            raise ContractError(f"artifact index entry {relative!r} has no sha256")
+        entries[relative] = entry
+
+    requested = set(entries) if required_paths is None else {
+        str(path) for path in required_paths
+    }
+    absent = sorted(requested - set(entries))
+    if absent:
+        raise ContractError(f"required artifact(s) absent from sealed index: {absent}")
+    for relative in sorted(requested):
+        entry = entries[relative]
+        path = base / relative
+        if not path.is_file():
+            raise ContractError(f"artifact index references a missing file: {relative}")
+        actual_hash = ccs.sha256_file(path)
+        if actual_hash != str(entry["sha256"]):
+            raise ContractError(
+                f"artifact {relative} changed since the parent stage completed "
+                "or the current stage was sealed "
+                f"(index {entry['sha256']}, found {actual_hash})"
+            )
+        if "bytes" in entry and int(entry["bytes"]) != path.stat().st_size:
+            raise ContractError(
+                f"artifact {relative} size changed since the stage was sealed"
+            )
+
+    if require_exact:
+        actual_paths = {
+            str(path.relative_to(base))
+            for path in base.rglob("*")
+            if _belongs_in_stage_index(path, base)
+        }
+        missing = sorted(set(entries) - actual_paths)
+        unindexed = sorted(actual_paths - set(entries))
+        if missing or unindexed:
+            raise ContractError(
+                "sealed artifact inventory is not exact: "
+                f"missing={missing}, unindexed={unindexed}"
+            )
+    return {"manifest": manifest, "index": index, "entries": entries}
+
 def write_stage_manifest(
     directory: str | Path,
     *,
@@ -894,13 +1679,23 @@ def write_stage_manifest(
     ledger: Ledger,
     contract: Mapping,
     parent_manifest: Mapping | None,
+    parent_manifest_sha256: str | None = None,
     extra: Mapping | None = None,
     overwrite_completed: bool = False,
 ) -> dict:
-    """Write the completion manifest and artifact index for one stage."""
+    """Write a non-circular artifact index and a manifest that seals it."""
     if status not in nc.ALL_STATUSES:
         raise ContractError(f"unknown stage status {status!r}")
     base = Path(directory)
+    manifest_target = base / "manifest.json"
+    if manifest_target.exists() and not overwrite_completed:
+        # Preflight before replacing artifacts.json.  Otherwise an intended
+        # immutable-manifest refusal would itself break the old manifest's
+        # artifact-index seal.
+        raise ContractError(
+            f"refusing to overwrite existing artifact {manifest_target}; completed "
+            "artifacts are immutable and a resume may never replace one"
+        )
     manifest = {
         "schema": LEDGER_SCHEMA_VERSION,
         "stage": stage,
@@ -914,39 +1709,37 @@ def write_stage_manifest(
         "consumed_attempts": ledger.consumed_attempts(),
         "ledger_frozen_sha256": ledger.frozen_sha256,
         "parent_manifest_sha256": (
-            ccs.sha256_json(nc.json_safe(parent_manifest)) if parent_manifest else None
+            ccs.sha256_json(nc.json_safe(parent_manifest)) if parent_manifest
+            else (str(parent_manifest_sha256) if parent_manifest_sha256 else None)
         ),
         "parent_stage": nc.STAGE_PARENT.get(stage),
         "contract": nc.json_safe(contract),
         "parentable": status in nc.PARENTABLE_STATUSES,
         "environment": {
+            "python_implementation": platform.python_implementation(),
             "python": platform.python_version(),
             "numpy": np.__version__,
             "pandas": pd.__version__,
+            "scipy": importlib.metadata.version("scipy"),
             "platform": platform.platform(),
+            "machine": platform.machine(),
         },
     }
     if extra:
         manifest["extra"] = nc.json_safe(extra)
-    manifest_path = atomic_write_json(
-        base / "manifest.json", manifest, overwrite_completed=overwrite_completed
-    )
-    index = sorted(
-        (
-            {
-                "path": str(p.relative_to(base)),
-                "sha256": ccs.sha256_file(p),
-                "bytes": p.stat().st_size,
-            }
-            for p in base.rglob("*")
-            if p.is_file() and p.name != "artifacts.json"
-        ),
-        key=lambda row: row["path"],
-    )
-    atomic_write_json(
+    index = _artifact_entries(base)
+    index_path = atomic_write_json(
         base / "artifacts.json",
-        {"generated_utc": manifest["generated_utc"], "files": index},
+        {
+            "schema": ARTIFACT_INDEX_SCHEMA_VERSION,
+            "generated_utc": manifest["generated_utc"],
+            "files": index,
+        },
         overwrite_completed=True,
+    )
+    manifest["artifacts_sha256"] = ccs.sha256_file(index_path)
+    manifest_path = atomic_write_json(
+        manifest_target, manifest, overwrite_completed=overwrite_completed
     )
     return {"manifest": str(manifest_path), "manifest_payload": manifest}
 
@@ -958,7 +1751,7 @@ def validate_parent_stage(
     expected_model: str,
     targets: nc.TargetContract,
     seeds: nc.SeedRegistry,
-    child_stage: str,
+    child_stage: str | None,
 ) -> dict:
     """Validate a parent before any child design is produced (spec sec. 5).
 
@@ -971,9 +1764,16 @@ def validate_parent_stage(
     manifest_path = base / "manifest.json"
     if not manifest_path.exists():
         raise ContractError(f"parent stage has no completion manifest: {manifest_path}")
-    manifest = json.loads(manifest_path.read_text())
+    # Verify the manifest -> artifact-index seal before trusting even the
+    # manifest's stage/status claims, then verify the exact completed inventory.
+    sealed = validate_artifact_index(base, require_exact=True)
+    manifest = sealed["manifest"]
 
-    required_parent = nc.STAGE_PARENT.get(child_stage)
+    # ``None`` validates a complete immutable stage as an external scientific
+    # source without pretending it is the immediately preceding stage in the
+    # caller's own stage order.  M1 discovery uses this for its M0-confirmation
+    # embedding source; ordinary within-model handoffs always pass a stage.
+    required_parent = nc.STAGE_PARENT.get(child_stage) if child_stage is not None else None
     if required_parent is not None and manifest.get("stage") != required_parent:
         raise ContractError(
             f"stage {child_stage!r} requires parent {required_parent!r}, "
@@ -999,21 +1799,6 @@ def validate_parent_stage(
             f"parent stage reports {manifest.get('n_incomplete')} incomplete work units "
             "but claims to be complete"
         )
-
-    index_path = base / "artifacts.json"
-    if not index_path.exists():
-        raise ContractError(f"parent stage has no artifact index: {index_path}")
-    index = json.loads(index_path.read_text())
-    for entry in index.get("files", []):
-        path = base / entry["path"]
-        if not path.exists():
-            raise ContractError(f"artifact index references a missing file: {entry['path']}")
-        actual = ccs.sha256_file(path)
-        if actual != entry["sha256"]:
-            raise ContractError(
-                f"artifact {entry['path']} changed since the parent stage completed "
-                f"(index {entry['sha256']}, found {actual})"
-            )
 
     contract = manifest.get("contract") or {}
     parent_order = tuple(contract.get("target_order") or ())
@@ -1061,6 +1846,12 @@ def handoff_audit(
     )
     rows = []
     problems: list[str] = []
+    missing_quotas = sorted(set(families) - set(quotas))
+    if missing_quotas:
+        problems.append(
+            "observed kernel family/families have no explicit quota: "
+            f"{missing_quotas}. A missing quota may not default to zero"
+        )
     for kernel in families:
         n_proposed = int(proposed.get(kernel, 0))
         n_rejected = int(rejected.get(kernel, 0))
@@ -1069,6 +1860,8 @@ def handoff_audit(
         n_promoted = int(promoted.get(kernel, 0))
         n_confirmed = int(confirmed.get(kernel, 0))
         quota = int(quotas.get(kernel, 0))
+        if quota < 0:
+            problems.append(f"kernel {kernel!r}: quota must be non-negative, got {quota}")
         if kernel in quotas and n_dispatched != quota:
             problems.append(
                 f"kernel {kernel!r}: dispatched {n_dispatched} but quota is {quota}"
@@ -1179,11 +1972,13 @@ def plan_resume(
     completed = ledger.completed_keys()
     incomplete = ledger.incomplete_units()
     remaining_attempts = max(0, int(max_attempts) - consumed)
-    remaining_trajectories = max(0, int(max_trajectories) - consumed)
-
-    relaunchable = tuple(
-        (unit.design_id, int(unit.seed)) for unit in incomplete
+    consumed_trajectories = ledger.consumed_result_keys()
+    successful_result_keys = ledger.successful_result_keys()
+    remaining_trajectories = max(
+        0, int(max_trajectories) - len(consumed_trajectories)
     )
+
+    relaunchable = tuple((unit.design_id, int(unit.seed)) for unit in incomplete)
     if not incomplete:
         return ResumeDecision(
             status=nc.STATUS_COMPLETE,
@@ -1196,8 +1991,13 @@ def plan_resume(
             parentable=True,
             reason="every frozen work unit has exactly one successful result",
         )
-    budget_left = min(remaining_attempts, remaining_trajectories)
-    if budget_left <= 0:
+    free_links = [
+        unit for unit in incomplete if unit.result_key in successful_result_keys
+    ]
+    if not free_links and (remaining_attempts <= 0 or (
+        remaining_trajectories <= 0
+        and not any(unit.result_key in consumed_trajectories for unit in incomplete)
+    )):
         return ResumeDecision(
             status=nc.STATUS_PARTIAL,
             n_incomplete=len(incomplete),
@@ -1212,6 +2012,31 @@ def plan_resume(
                 "the stage is PARTIAL and cannot become a parent"
             ),
         )
+    # A retry of an already-consumed result key needs attempt budget but no new
+    # trajectory budget.  New result keys are selected as complete groups, so
+    # every linked work unit is retained and raw WorkUnit ordering cannot split
+    # a de-duplicated scientific result.
+    selected_result_keys: set[str] = set()
+    new_result_keys: set[str] = set()
+    selected_units: list[tuple[str, int]] = []
+    for unit in incomplete:
+        if unit.result_key not in selected_result_keys:
+            paid_selected = len(selected_result_keys - successful_result_keys)
+            if (
+                unit.result_key not in successful_result_keys
+                and paid_selected >= remaining_attempts
+            ):
+                continue
+            if (
+                unit.result_key not in consumed_trajectories
+                and len(new_result_keys) >= remaining_trajectories
+            ):
+                continue
+            selected_result_keys.add(unit.result_key)
+            if unit.result_key not in consumed_trajectories:
+                new_result_keys.add(unit.result_key)
+        if unit.result_key in selected_result_keys:
+            selected_units.append((unit.design_id, int(unit.seed)))
     return ResumeDecision(
         status=nc.STATUS_PARTIAL,
         n_incomplete=len(incomplete),
@@ -1219,7 +2044,7 @@ def plan_resume(
         consumed_attempts=consumed,
         remaining_attempts=remaining_attempts,
         remaining_trajectories=remaining_trajectories,
-        relaunchable=relaunchable[:budget_left],
+        relaunchable=tuple(selected_units),
         parentable=False,
         reason=(
             f"{len(incomplete)} incomplete work unit(s) may be relaunched under the same "

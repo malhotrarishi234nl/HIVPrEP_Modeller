@@ -52,7 +52,9 @@ def test_same_step_progression_then_diagnosis_is_separable(grouped):
     # A recognition proxy would use 7+8, NOT 12+8, avoiding double-counting 5.
     assert a['aids_progression_while_diagnosed'] + b['hiv_diagnoses_in_aids_stage'] == 15
     assert p.sum() == 15
-    assert len(e.draw_calls) == (5 if grouped else 4)
+    # A neutral MSM multiplier is now the exact legacy all-orientations draw;
+    # enabling the identity profile must not add an allocation or RNG stream.
+    assert len(e.draw_calls) == 4
     assert e._step_diagnosis(2000)['aids_observation']['hiv_diagnoses_in_aids_stage'] == 0
 
 

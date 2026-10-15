@@ -28,7 +28,9 @@ from typing import Any, Dict, List, Optional, Tuple
 VALID_TIERS: frozenset = frozenset({"fixed", "estimated", "uncertain"})
 
 # Valid distribution types for HTA config v2 (separate vocabulary from PSA tier system)
-VALID_HTA_DIST_TYPES: frozenset = frozenset({"fixed", "beta", "gamma", "lognormal", "normal"})
+VALID_HTA_DIST_TYPES: frozenset = frozenset(
+    {"fixed", "beta", "gamma", "lognormal", "normal", "linked"}
+)
 
 KNOWN_DISTRIBUTION_TYPES: frozenset = frozenset(
     {"Beta", "Gamma", "LogNormal", "Uniform", "Normal"}
@@ -495,6 +497,11 @@ def validate_hta_config(config: dict) -> None:
                             f"when perspective.patient_time_costs.enabled is true"
                         )
 
+    # Links are cross-parameter constraints, so they cannot be validated by
+    # _validate_distribution_block() in isolation.  Validate them only after
+    # the full, sampler-ordered parameter registry is available.
+    _validate_hta_distribution_links(config, violations)
+
     # ── Raise if any violations found ─────────────────────────────────────────
     if violations:
         raise ValueError(
@@ -566,6 +573,14 @@ def _validate_distribution_block(dist: Any, path: str, violations: List[str]) ->
     if dist_type == "fixed":
         return  # No additional fields required
 
+    if dist_type == "linked":
+        source_path = dist.get("source_path")
+        if not isinstance(source_path, str) or not source_path.strip():
+            violations.append(
+                f"{path}: Linked distribution missing required non-empty 'source_path' field"
+            )
+        return
+
     if dist_type == "beta":
         alpha = dist.get("alpha")
         beta = dist.get("beta")
@@ -589,6 +604,234 @@ def _validate_distribution_block(dist: Any, path: str, violations: List[str]) ->
             violations.append(f"{path}: Gamma distribution missing required 'se' field")
         elif not (isinstance(se, (int, float)) and se > 0):
             violations.append(f"{path}: Gamma distribution 'se' must be > 0, got {se!r}")
+
+
+def _iter_hta_parameter_entries(config: dict):
+    """Yield ``(canonical_path, entry)`` in the order used by HTASampler."""
+    utilities = config.get("utilities", {})
+    utilities = utilities if isinstance(utilities, dict) else {}
+    for name, entry in utilities.items():
+        if isinstance(entry, dict) and not name.startswith("_"):
+            yield f"utilities.{name}", entry
+
+    decrements = config.get("utility_decrements", {})
+    decrements = decrements if isinstance(decrements, dict) else {}
+    for name, entry in decrements.items():
+        if isinstance(entry, dict) and not name.startswith("_"):
+            yield f"utility_decrements.{name}", entry
+
+    disease = config.get("disease_costs", {})
+    disease = disease if isinstance(disease, dict) else {}
+    for name, entry in disease.items():
+        if isinstance(entry, dict) and not name.startswith("_"):
+            yield f"disease_costs.{name}", entry
+
+    prevention = config.get("prevention_costs", {})
+    prevention = prevention if isinstance(prevention, dict) else {}
+    shared = prevention.get("shared", [])
+    shared = shared if isinstance(shared, list) else []
+    for item in shared:
+        if isinstance(item, dict):
+            yield f"prevention_costs.shared.{item.get('id', '')}", item
+
+    arm_specific = prevention.get("arm_specific", {})
+    arm_specific = arm_specific if isinstance(arm_specific, dict) else {}
+    for arm_name, arm_items in arm_specific.items():
+        if not isinstance(arm_items, dict):
+            continue
+        for item_name, entry in arm_items.items():
+            if isinstance(entry, dict) and not item_name.startswith("_"):
+                yield f"prevention_costs.arm_specific.{arm_name}.{item_name}", entry
+
+    adverse_events = config.get("adverse_events", {})
+    adverse_events = adverse_events if isinstance(adverse_events, dict) else {}
+    items = adverse_events.get("items", [])
+    items = items if isinstance(items, list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id", "")
+        for sub_key in ("prevalence", "cost", "utility_decrement"):
+            entry = item.get(sub_key)
+            if isinstance(entry, dict):
+                yield f"adverse_events.items.{item_id}.{sub_key}", entry
+
+    perspective = config.get("perspective", {})
+    perspective = perspective if isinstance(perspective, dict) else {}
+    productivity = perspective.get("productivity_loss", {})
+    productivity = productivity if isinstance(productivity, dict) else {}
+    average_wage = productivity.get("average_hourly_wage")
+    if isinstance(average_wage, dict):
+        yield "perspective.productivity_loss.average_hourly_wage", average_wage
+
+    loss_rates = productivity.get("loss_rate_by_stage", {})
+    loss_rates = loss_rates if isinstance(loss_rates, dict) else {}
+    for stage_name, entry in loss_rates.items():
+        if isinstance(entry, dict) and not stage_name.startswith("_"):
+            yield f"perspective.productivity_loss.loss_rate_by_stage.{stage_name}", entry
+
+
+def _hta_entry_sample_bounds(entry: dict) -> Tuple[float, float]:
+    """Return the bounds enforced by HTASampler for a Beta/Gamma entry."""
+    dist_type = entry.get("distribution", {}).get("type")
+    bounds = entry.get("bounds", {})
+    if not isinstance(bounds, dict):
+        raise ValueError("bounds must be a dict")
+
+    if dist_type == "beta":
+        negative = (
+            isinstance(entry.get("value"), (int, float))
+            and not isinstance(entry.get("value"), bool)
+            and entry["value"] < 0
+        )
+        lower = bounds.get("lower")
+        upper = bounds.get("upper")
+        if not negative:
+            lower = 0.0 if lower is None else lower
+            upper = 1.0 if upper is None else upper
+        else:
+            lower = 0.0 if lower is None else lower
+            upper = 1.0 if upper is None else upper
+            if _is_finite_number(lower) and _is_finite_number(upper):
+                if lower >= 0 and upper >= 0:
+                    lower, upper = -max(lower, upper), -min(lower, upper)
+                else:
+                    lower, upper = min(lower, upper), max(lower, upper)
+    elif dist_type == "gamma":
+        lower = bounds.get("lower", 0.0)
+        mean = entry.get("distribution", {}).get("mean")
+        upper = bounds.get("upper", mean * 5.0 if _is_finite_number(mean) else None)
+    else:
+        raise ValueError(f"distribution type {dist_type!r} is not an active HTA sampler source")
+
+    if not _is_finite_number(lower) or not _is_finite_number(upper):
+        raise ValueError("sample bounds must be finite numbers")
+    lower, upper = float(lower), float(upper)
+    if lower > upper:
+        raise ValueError(f"sample bounds are reversed ({lower} > {upper})")
+    return lower, upper
+
+
+def _linked_target_bounds(entry: dict) -> Tuple[float, float]:
+    """Return declared link bounds, using infinities only when a side is omitted."""
+    bounds = entry.get("bounds", {})
+    if not isinstance(bounds, dict):
+        raise ValueError("bounds must be a dict")
+    lower = bounds.get("lower", float("-inf"))
+    upper = bounds.get("upper", float("inf"))
+    if not _is_number(lower) or not _is_number(upper):
+        raise ValueError("linked target bounds must be numeric")
+    lower, upper = float(lower), float(upper)
+    if lower > upper:
+        raise ValueError(f"linked target bounds are reversed ({lower} > {upper})")
+    return lower, upper
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_finite_number(value: Any) -> bool:
+    if not _is_number(value):
+        return False
+    return value == value and value not in (float("inf"), float("-inf"))
+
+
+def _validate_hta_distribution_links(config: dict, violations: List[str]) -> None:
+    """Validate linked HTA distributions against the sampler's actual registry.
+
+    Links intentionally form no graph: a target may copy one earlier, directly
+    sampled Beta/Gamma parameter.  Link-to-link chains are rejected because
+    they obscure provenance and make cycles/order dependence possible.
+    """
+    ordered = list(_iter_hta_parameter_entries(config))
+    entries = {path: entry for path, entry in ordered}
+    positions = {path: index for index, (path, _entry) in enumerate(ordered)}
+    links = {
+        path: entry.get("distribution", {}).get("source_path")
+        for path, entry in ordered
+        if entry.get("distribution", {}).get("type") == "linked"
+    }
+
+    # Report cycles explicitly; the earlier-source rule would also reject every
+    # cycle, but this diagnostic makes the configuration defect unambiguous.
+    for start in links:
+        seen = []
+        current = start
+        while current in links:
+            if current in seen:
+                cycle = seen[seen.index(current):] + [current]
+                violations.append(
+                    f"{start}.distribution: cyclic linked distribution: "
+                    + " -> ".join(cycle)
+                )
+                break
+            seen.append(current)
+            source = links[current]
+            if not isinstance(source, str):
+                break
+            current = source
+
+    for target_path, target_entry in ordered:
+        dist = target_entry.get("distribution", {})
+        if dist.get("type") != "linked":
+            continue
+        path = f"{target_path}.distribution"
+        source_path = dist.get("source_path")
+        if not isinstance(source_path, str) or not source_path.strip():
+            # The local distribution validator already reports this for the
+            # main sections; retain coverage for every sampler-discovered path.
+            if not any(path in violation for violation in violations):
+                violations.append(f"{path}: linked distribution requires non-empty source_path")
+            continue
+        source_path = source_path.strip()
+
+        if source_path == target_path:
+            violations.append(f"{path}: linked distribution cannot reference itself")
+            continue
+        source_entry = entries.get(source_path)
+        if source_entry is None:
+            violations.append(
+                f"{path}: source_path {source_path!r} does not name an HTA parameter"
+            )
+            continue
+
+        source_type = source_entry.get("distribution", {}).get("type", "fixed")
+        if source_type == "linked":
+            violations.append(
+                f"{path}: nested linked distributions are not allowed; "
+                f"source {source_path!r} is linked"
+            )
+        elif source_type == "fixed":
+            violations.append(
+                f"{path}: source {source_path!r} is fixed, not a stochastic draw"
+            )
+        elif source_type not in {"beta", "gamma"}:
+            violations.append(
+                f"{path}: source {source_path!r} uses unsupported sampler distribution "
+                f"{source_type!r}"
+            )
+
+        if positions[source_path] >= positions[target_path]:
+            violations.append(
+                f"{path}: source {source_path!r} must be an earlier HTA parameter"
+            )
+
+        if source_type not in {"beta", "gamma"}:
+            continue
+        try:
+            source_lower, source_upper = _hta_entry_sample_bounds(source_entry)
+            target_lower, target_upper = _linked_target_bounds(target_entry)
+        except ValueError as exc:
+            violations.append(f"{path}: {exc}")
+            continue
+        if source_lower < target_lower or source_upper > target_upper:
+            violations.append(
+                f"{path}: source {source_path!r} sampled bounds "
+                f"[{source_lower}, {source_upper}] exceed linked target bounds "
+                f"[{target_lower}, {target_upper}]; align the declared bounds rather "
+                "than silently clipping a shared uncertain quantity"
+            )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

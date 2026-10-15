@@ -218,6 +218,8 @@ def neighbour_evidence_for_anchor(
         kernel = str(row["kernel_id"])
         if kernel not in nc.KERNEL_FAMILIES:
             raise ContractError(f"proposal {row['design_id']} has unknown kernel {kernel!r}")
+        if kernel == nc.KERNEL_ANCHOR:
+            continue
         design_id = str(row["design_id"])
         state = evidence.get(design_id)
         if state is None:
@@ -765,7 +767,14 @@ def correlated_output_diagnostic(
         rows: list[np.ndarray] = []
         for design_id in sorted(selected_designs):
             block = frame[frame["design_id"].astype(str) == design_id]
-            block = block[block["seed"].astype(int).isin(list(selected_seeds))]
+            # Concatenating one block per draw preserves bootstrap
+            # multiplicity; ``isin``/``set`` would silently turn a bootstrap
+            # into subsampling without replacement.
+            pieces = [
+                block[block["seed"].astype(int) == int(seed)]
+                for seed in selected_seeds
+            ]
+            block = pd.concat(pieces, ignore_index=True) if pieces else block.iloc[0:0]
             if len(block) < 2:
                 continue
             values = block[columns].to_numpy(dtype=float)
@@ -817,7 +826,7 @@ def correlated_output_diagnostic(
     boot_cosines: list[float] = []
     for _ in range(max(0, int(n_bootstrap))):
         drawn = [int(seed_blocks[i]) for i in rng.integers(0, len(seed_blocks), len(seed_blocks))]
-        resampled = centred(design_ids, sorted(set(drawn)))
+        resampled = centred(design_ids, drawn)
         if resampled.shape[0] < 2:
             continue
         boot_rank, _, boot_vectors = _effective_rank(
@@ -946,7 +955,13 @@ def _rank_correlation_with_i_max(
         if design_id not in lookup:
             continue
         block = frame[frame["design_id"].astype(str) == design_id]
-        mean = block[list(columns)].to_numpy(dtype=float).mean(axis=0)
+        residual_columns = [f"residual:{c.split(':', 1)[1]}" for c in columns]
+        score_row = scores[scores["design_id"].astype(str) == design_id]
+        if score_row.empty or any(c not in score_row.columns for c in residual_columns):
+            # Raw output means relative to zero are not residuals and have no
+            # valid interpretation as a goodness-of-fit score.
+            return None
+        mean = score_row.iloc[0][residual_columns].to_numpy(dtype=float)
         pointwise.append(lookup[design_id])
         correlated.append(float(mean @ inverse @ mean))
     if len(pointwise) < 3:

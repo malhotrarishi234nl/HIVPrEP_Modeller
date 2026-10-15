@@ -6,8 +6,8 @@ finding either closed or explicitly documented before M1 is used for
 production results.  It was previously the only untriaged rounding site in the
 A-12 inventory, and it is the M1 mechanism itself.
 
-**What the function does.** It partitions the undiagnosed tensor into six
-disjoint pools -- non-MSM and MSM, each by acute / chronic / AIDS -- and
+**What the function does.** It partitions the undiagnosed tensor into four
+disjoint rate blocks -- non-MSM and MSM, each by non-AIDS / AIDS -- and
 allocates each pool separately through the shared aggregate-preserving
 allocator ``stochastic_allocation.deterministic_allocate_events``.
 
@@ -21,10 +21,10 @@ measures the bound and the tests below are the justification:
 
 * **total diagnoses are conserved exactly** -- the partition is disjoint and
   exhaustive, so no person is diagnosed twice and none is lost;
-* the fragmentation changes the *stage split* by at most **one person per
-  population per step**, and cannot change the total;
-* the split is required by the output contract: the stage-resolved counters
-  are model outputs, so the allocation has to be resolved by stage.
+* acute and chronic are allocated together, eliminating the former +/-1
+  fragmentation of total diagnoses;
+* the returned event tensor remains stage-resolved, so all published stage
+  counters remain available without a second allocation.
 
 These tests drive the **real** method with a minimal stand-in object rather
 than reimplementing its partition, so they cannot drift from the code they
@@ -57,13 +57,11 @@ MSM_IDX = 1
 AIDS_IDX = 3
 YEARS_PER_STEP = 0.25
 
-#: The six pools the method is expected to produce, in its own order.
+#: The four distinct rate blocks the method is expected to produce.
 EXPECTED_POOLS = (
-    "stage_structured_diagnosis_non_msm_acute",
-    "stage_structured_diagnosis_non_msm_chronic",
+    "stage_structured_diagnosis_non_msm_non_aids",
     "stage_structured_diagnosis_non_msm_aids",
-    "stage_structured_diagnosis_msm_acute",
-    "stage_structured_diagnosis_msm_chronic",
+    "stage_structured_diagnosis_msm_non_aids",
     "stage_structured_diagnosis_msm_aids",
 )
 
@@ -135,16 +133,16 @@ def _run(population: np.ndarray, *, rho=1.0, symptom=0.3, annual_rate=0.4):
 
 
 # ==========================================================================
-# The partition: six pools, disjoint and exhaustive
+# The partition: four rate blocks, disjoint and exhaustive
 # ==========================================================================
 
-def test_exactly_six_pools_are_allocated_and_they_are_the_declared_ones():
+def test_exactly_four_rate_blocks_are_allocated_and_they_are_the_declared_ones():
     counts = {(o, s): 40 for o in (0, 1) for s in (0, 1, 2)}
     _result, recorder, _engine_obj = _run(_undiagnosed_population(counts))
     assert [name for name, _, _ in recorder.calls] == list(EXPECTED_POOLS)
 
 
-def test_the_six_pools_are_pairwise_disjoint_and_cover_every_undiagnosed_cell():
+def test_the_four_pools_are_pairwise_disjoint_and_cover_every_undiagnosed_cell():
     """Conservation is structural, not an accident of the chosen numbers."""
     counts = {(o, s): 37 + 5 * s for o in (0, 1) for s in (0, 1, 2)}
     population = _undiagnosed_population(counts)
@@ -159,22 +157,16 @@ def test_the_six_pools_are_pairwise_disjoint_and_cover_every_undiagnosed_cell():
     np.testing.assert_array_equal(stacked.sum(axis=0), undiagnosed)
 
 
-def test_the_four_distinct_rate_blocks_are_what_the_six_pools_span():
-    """The finding itself: acute and chronic share a step probability."""
+def test_the_declared_rate_blocks_have_the_expected_probabilities():
     counts = {(o, s): 50 for o in (0, 1) for s in (0, 1, 2)}
     _result, recorder, _engine_obj = _run(_undiagnosed_population(counts))
     probabilities = {name: p for name, _, p in recorder.calls}
     for population in ("non_msm", "msm"):
-        acute = probabilities[f"stage_structured_diagnosis_{population}_acute"]
-        chronic = probabilities[f"stage_structured_diagnosis_{population}_chronic"]
+        non_aids = probabilities[f"stage_structured_diagnosis_{population}_non_aids"]
         aids = probabilities[f"stage_structured_diagnosis_{population}_aids"]
-        assert acute == chronic, (
-            "acute and chronic share one rate block, so splitting them is a "
-            "fragmentation of that block rather than stratification by rate"
-        )
-        assert aids > acute, "the AIDS pool carries the additional symptom hazard"
+        assert aids > non_aids, "the AIDS pool carries the additional symptom hazard"
     assert len(set(probabilities.values())) == 2, (
-        "with no MSM multiplier the six pools span two distinct probabilities; "
+        "with no MSM multiplier the four blocks span two distinct probabilities; "
         "with a multiplier they span four"
     )
 
@@ -192,8 +184,8 @@ def test_an_msm_multiplier_separates_the_populations_into_four_rate_blocks():
     probabilities = {name: p for name, _, p in recorder.calls}
     assert len(set(probabilities.values())) == 4
     assert (
-        probabilities["stage_structured_diagnosis_msm_acute"]
-        > probabilities["stage_structured_diagnosis_non_msm_acute"]
+        probabilities["stage_structured_diagnosis_msm_non_aids"]
+        > probabilities["stage_structured_diagnosis_non_msm_non_aids"]
     )
 
 
@@ -267,9 +259,9 @@ def test_an_empty_undiagnosed_tensor_diagnoses_nobody():
     result, recorder, _engine_obj = _run(population)
     assert int(result["total"]) == 0
     assert int(result["msm"]) == 0
-    # All six pools are still visited: a zero pool is "no one eligible", which
+    # All four pools are still visited: a zero pool is "no one eligible", which
     # is a different statement from "the pool was never considered".
-    assert len(recorder.calls) == 6
+    assert len(recorder.calls) == 4
 
 
 def test_a_zero_hazard_diagnoses_nobody_and_a_unit_hazard_diagnoses_everybody():
@@ -303,7 +295,7 @@ def test_the_aids_pool_is_the_only_one_the_symptom_probability_moves():
     left = {name: p for name, _, p in without.calls}
     right = {name: p for name, _, p in with_symptom.calls}
     for name in EXPECTED_POOLS:
-        if name.endswith("_aids"):
+        if name.endswith("_aids") and not name.endswith("_non_aids"):
             assert right[name] > left[name], name
         else:
             assert right[name] == left[name], (
@@ -336,17 +328,10 @@ def _combined_non_aids_allocation(population: np.ndarray, orient: int, p: float)
     # test below).
     (1, 4), (5, 5),
 ])
-def test_splitting_the_shared_rate_block_costs_at_most_one_person_per_population(
+def test_shared_rate_block_is_allocated_once_per_population(
     acute, chronic
 ):
-    """The quantified A-12 differential for DX-04.
-
-    Allocating acute and chronic separately can differ from allocating their
-    shared rate block once.  Each pool's largest-remainder rounding is off by
-    less than one person, so two pools can differ by at most one -- and the
-    AIDS pool is a genuinely distinct rate block, so it is not part of the
-    comparison.
-    """
+    """DX-04 no longer fragments acute and chronic allocations."""
     counts = {(0, 0): acute, (0, 1): chronic, (0, 2): 0, (1, 0): acute, (1, 1): chronic,
               (1, 2): 0}
     population = _undiagnosed_population(counts)
@@ -359,31 +344,17 @@ def test_splitting_the_shared_rate_block_costs_at_most_one_person_per_population
     )
     for orient in (0, MSM_IDX):
         label = "msm" if orient == MSM_IDX else "non_msm"
-        split = sum(
-            int(deterministic_allocate_events(
-                recorder.pools[f"stage_structured_diagnosis_{label}_{stage}"],
-                probability,
-            ).sum())
-            for stage in ("acute", "chronic")
-        )
+        allocated = int(deterministic_allocate_events(
+            recorder.pools[f"stage_structured_diagnosis_{label}_non_aids"], probability
+        ).sum())
         combined = _combined_non_aids_allocation(reference, orient, probability)
-        assert abs(split - combined) <= 1, (
-            f"{label}: splitting the shared non-AIDS rate block moved "
-            f"{abs(split - combined)} people, beyond the one-person bound"
-        )
+        assert allocated == combined
     # Whatever the stage split, the total is still bounded by what was held.
     assert int(result["total"]) <= int(reference[:, :, :, 1:, 0, :, :].sum())
 
 
-def test_the_fragmentation_is_real_and_both_signs_occur():
-    """Non-vacuity gate for the bound above.
-
-    A bound nobody reaches proves nothing.  If splitting the shared rate block
-    never changed the answer, the one-person differential recorded in the A-12
-    inventory would be an overstatement and the tests above would be passing
-    for the wrong reason.  This sweeps a small grid and requires the
-    differential to take **both** signs, while never exceeding one person.
-    """
+def test_the_former_fragmentation_differential_is_always_zero():
+    """Sweep the former failure cases and require a zero differential."""
     probability = stage_step_probability(
         0.4, routine_hazard_scale=1.0, aids_symptom_annual_probability=0.0,
         years_per_step=YEARS_PER_STEP, aids_stage=False,
@@ -398,30 +369,14 @@ def test_the_fragmentation_is_real_and_both_signs_occur():
             _result, recorder, _engine_obj = _run(
                 population, annual_rate=0.4, symptom=0.0
             )
-            split = sum(
-                int(deterministic_allocate_events(
-                    recorder.pools[f"stage_structured_diagnosis_non_msm_{stage}"],
-                    probability,
-                ).sum())
-                for stage in ("acute", "chronic")
-            )
-            observed.add(split - _combined_non_aids_allocation(reference, 0, probability))
-    assert observed <= {-1, 0, 1}, (
-        f"the differential exceeded one person: {sorted(observed)}"
-    )
-    assert {-1, 1} <= observed, (
-        "splitting the shared rate block never changed the allocation in this sweep, "
-        "so the recorded one-person differential is untested here"
-    )
+            allocated = int(deterministic_allocate_events(
+                recorder.pools["stage_structured_diagnosis_non_msm_non_aids"], probability
+            ).sum())
+            observed.add(allocated - _combined_non_aids_allocation(reference, 0, probability))
+    assert observed == {0}
 
 
-def test_the_fragmentation_can_never_change_the_total():
-    """The split moves people between stages; it cannot move the total.
-
-    This is what makes the finding a bounded reporting-granularity issue rather
-    than a bias in diagnoses, and it is why the A-12 recommendation offers
-    acceptance as a legitimate option.
-    """
+def test_the_repaired_partition_conserves_population_and_stage_counters():
     for acute, chronic, aids in ((1, 4, 3), (5, 5, 5), (0, 9, 1), (29, 1, 7)):
         counts = {(0, 0): acute, (0, 1): chronic, (0, 2): aids,
                   (1, 0): acute, (1, 1): chronic, (1, 2): aids}
@@ -442,13 +397,7 @@ def test_the_fragmentation_can_never_change_the_total():
 
 
 def test_the_shared_allocator_itself_is_not_fragmentation_sensitive():
-    """The per-pool allocator is sound; only the extra split is the issue.
-
-    This is the distinction the A-12 classification turns on: ``DX-04`` is
-    ``rate_stratified_aggregate`` with one documented extra split, not a
-    ``cellwise`` site.  Spreading one pool across more cells must not change
-    its allocation.
-    """
+    """DX-04 uses the aggregate allocator, not per-cell rounding."""
     compact = np.array([2], dtype=np.int64)
     fragmented = np.array([1, 1], dtype=np.int64)
     probability = 0.4
@@ -458,14 +407,8 @@ def test_the_shared_allocator_itself_is_not_fragmentation_sensitive():
     assert int(deterministic_allocate_events(fragmented, probability).sum()) == 1
 
 
-def test_the_stage_split_is_required_by_the_output_contract():
-    """Why the fragmentation is retained rather than merged away.
-
-    The stage-resolved diagnosis counters are model *outputs*, so the
-    allocation has to be resolved by stage.  Merging the pools would mean
-    splitting a merged total by pool weights -- a different estimator, and
-    therefore a modelling decision rather than a refactor.
-    """
+def test_stage_outputs_remain_available_after_merging_the_rate_block():
+    """One allocation still returns a stage-resolved event tensor."""
     counts = {(0, 0): 30, (0, 1): 60, (0, 2): 10, (1, 0): 30, (1, 1): 60, (1, 2): 10}
     result, _recorder, _engine_obj = _run(_undiagnosed_population(counts))
     observation = result["aids_observation"]
@@ -482,6 +425,39 @@ def test_the_stage_split_is_required_by_the_output_contract():
     assert observation["hiv_diagnoses_in_chronic_stage"] > 0
 
 
+def test_cumulative_dx04_totals_match_the_combined_rate_block_reference():
+    """The repair remains exact over a multi-step active-M1 trajectory."""
+    counts = {(0, 0): 137, (0, 1): 263, (0, 2): 91,
+              (1, 0): 149, (1, 1): 251, (1, 2): 103}
+    population = _undiagnosed_population(counts)
+    cumulative = 0
+    reference_cumulative = 0
+    for step in range(24):
+        before = population.copy()
+        result, recorder, engine = _run(
+            population, annual_rate=0.4, symptom=0.3, rho=0.8
+        )
+        population = engine.state.population
+        cumulative += int(result["total"])
+        for population_name, orient in (("non_msm", 0), ("msm", MSM_IDX)):
+            for block, aids_stage in (("non_aids", False), ("aids", True)):
+                probability = stage_step_probability(
+                    0.4,
+                    routine_hazard_scale=0.8,
+                    aids_symptom_annual_probability=0.3,
+                    years_per_step=YEARS_PER_STEP,
+                    aids_stage=aids_stage,
+                )
+                pool = recorder.pools[
+                    f"stage_structured_diagnosis_{population_name}_{block}"
+                ]
+                reference_cumulative += int(
+                    deterministic_allocate_events(pool, probability).sum()
+                )
+        assert int(population.sum()) == int(before.sum()), step
+    assert cumulative == reference_cumulative
+
+
 def test_the_site_is_triaged_in_the_a12_inventory():
     """The audit gate must no longer report this function as untriaged."""
     from tools.run_a12_deterministic_allocation_audit import (  # noqa: PLC0415
@@ -491,8 +467,8 @@ def test_the_site_is_triaged_in_the_a12_inventory():
     row = next(r for r in INVENTORY if r["site_id"] == "DX-04")
     assert row["function"] == "SimulationEngineV3._step_stage_structured_diagnosis"
     assert row["classification"] == "rate_stratified_aggregate"
-    assert row["fragmentation_sensitive"] is True
-    assert row["between_arm_event_differential_people"] == 1
+    assert row["fragmentation_sensitive"] is False
+    assert row["between_arm_event_differential_people"] is None
     assert "stage-resolved" in row["mechanism"] or "OUTPUTS" in row["mechanism"]
     assert row["recommendation"]
     # And the scan that previously failed now disposes of the function.

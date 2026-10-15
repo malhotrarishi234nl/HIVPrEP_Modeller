@@ -95,7 +95,11 @@ def test_disabled_identity_and_identity_with_boundary_take_the_legacy_draws(year
         engine._step_diagnosis(year)
         observed.append(calls)
     assert all(calls == observed[0] for calls in observed)
-    assert [name for name, _ in observed[0]] == ["diagnosis_non_msm", "diagnosis_msm"]
+    expected = (
+        ["diagnosis_all_orientations"] if year < 1996.0
+        else ["diagnosis_non_msm", "diagnosis_msm"]
+    )
+    assert [name for name, _ in observed[0]] == expected
 
 
 def test_identity_profile_is_identity_regardless_of_boundary():
@@ -118,8 +122,8 @@ def test_symptom_uplift_is_zero_before_boundary_and_active_at_boundary():
     before, at = _rates(1984.75, profile), _rates(1985.0, profile)
     for population in ("msm", "non_msm"):
         stem = f"stage_structured_diagnosis_{population}"
-        assert before[f"{stem}_aids"] == before[f"{stem}_chronic"]
-        assert at[f"{stem}_aids"] > at[f"{stem}_chronic"]
+        assert before[f"{stem}_aids"] == before[f"{stem}_non_aids"]
+        assert at[f"{stem}_aids"] > at[f"{stem}_non_aids"]
     assert profile.symptom_probability_at(1984.999) == 0.0
     assert profile.symptom_probability_at(1985.0) == 0.35
     assert StageStructuredDiagnosis(True, 1.0, 0.35, None).symptom_probability_at(1970) == 0.35
@@ -153,13 +157,12 @@ def test_msm_multiplier_scales_routine_hazard_only():
     hazard = lambda p: -math.log1p(-p) / dt  # noqa: E731
     for population in ("msm", "non_msm"):
         stem = f"stage_structured_diagnosis_{population}"
-        uplift = hazard(rates[f"{stem}_aids"]) - hazard(rates[f"{stem}_chronic"])
+        uplift = hazard(rates[f"{stem}_aids"]) - hazard(rates[f"{stem}_non_aids"])
         assert uplift == pytest.approx(-math.log1p(-symptom), rel=1e-12)
-        assert rates[f"{stem}_acute"] == rates[f"{stem}_chronic"]
     # routine: MSM uses clip(0.2 * 2.0) = 0.4, non-MSM 0.2
-    assert hazard(rates["stage_structured_diagnosis_msm_chronic"]) == \
+    assert hazard(rates["stage_structured_diagnosis_msm_non_aids"]) == \
         pytest.approx(-math.log1p(-0.4), rel=1e-12)
-    assert hazard(rates["stage_structured_diagnosis_non_msm_chronic"]) == \
+    assert hazard(rates["stage_structured_diagnosis_non_msm_non_aids"]) == \
         pytest.approx(-math.log1p(-0.2), rel=1e-12)
 
 

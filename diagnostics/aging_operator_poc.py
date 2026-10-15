@@ -41,10 +41,10 @@ from config_reader import ConfigReader
 from config_utils import extract_value
 
 
-HMD_POP_PATH = ROOT / "Validation " / "HMD_NL_Pop.txt"
+HMD_POP_PATH = ROOT.parent / "data" / "raw" / "validation" / "HMD_NL_Pop.txt"
 HMD_DEATH_PATH = ROOT / "Validation " / "HMD_NL_Death.txt"
 HMD_BIRTH_PATH = ROOT / "Validation " / "HMD_NL_Birth.txt"
-DEFAULT_CONFIG = ROOT / "1980_test.json"
+DEFAULT_CONFIG = ROOT / "configs" / "1980_test.json"
 DEFAULT_OUT_DIR = ROOT / "outputs" / "diagnostics" / "aging_operator_poc"
 SEXES = ("female", "male")
 

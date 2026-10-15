@@ -1,7 +1,7 @@
 {
   "generated_by": "tools/run_a12_deterministic_allocation_audit.py (A-12 review addition)",
   "purpose": "Frozen call-site fingerprint. A new rounding call inside an already-triaged function would otherwise inherit that function's disposition silently. Regenerate ONLY after classifying the new call in INVENTORY or NON_ALLOCATION_FUNCTIONS.",
-  "n_call_sites": 269,
+  "n_call_sites": 271,
   "n_distinct": 252,
   "fingerprints": [
     {
@@ -1118,13 +1118,13 @@
       "module": "run_v3.py",
       "function": "_step_diagnosis",
       "source": "int(np.sum(diagnosed))",
-      "count": 2
+      "count": 3
     },
     {
       "module": "run_v3.py",
       "function": "_step_diagnosis",
       "source": "int(np.sum(diagnosed[:,msm_idx,:,:,:,:]))",
-      "count": 1
+      "count": 2
     },
     {
       "module": "run_v3.py",

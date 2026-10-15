@@ -263,12 +263,18 @@ def load_wb_migration(path: str) -> Dict[int, float]:
 
 def default_hmd_path(v11_root: str) -> str:
     import os
-    return os.path.join(v11_root, "Validation ", "HMD_NL_Pop.txt")
+    return os.path.join(
+        os.path.dirname(os.path.abspath(v11_root)),
+        "data", "raw", "validation", "HMD_NL_Pop.txt",
+    )
 
 
 def default_wb_path(v11_root: str) -> str:
     import os
-    return os.path.join(v11_root, "Validation ", "Migration_Net.csv")
+    return os.path.join(
+        os.path.dirname(os.path.abspath(v11_root)),
+        "data", "raw", "validation", "Migration_Net.csv",
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

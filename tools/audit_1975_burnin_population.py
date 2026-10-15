@@ -44,9 +44,9 @@ from run_v3 import SimulationEngineV3
 
 SIM_END_YEAR = 2026
 
-HMD_POP_FILE = ROOT / "Validation " / "HMD_NL_Pop.txt"
+HMD_POP_FILE = ROOT.parent / "data" / "raw" / "validation" / "HMD_NL_Pop.txt"
 HMD_VITAL_FILE = ROOT / "Validation " / "HMD_NL_VitalStats_1970_2023.csv"
-MIGRATION_FILE = ROOT / "Validation " / "Migration_Net.csv"
+MIGRATION_FILE = ROOT.parent / "data" / "raw" / "validation" / "Migration_Net.csv"
 
 AGE_BINS = [
     (0, 4), (5, 9), (10, 14), (15, 19), (20, 24), (25, 29), (30, 34),

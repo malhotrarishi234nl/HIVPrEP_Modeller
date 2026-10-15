@@ -1733,6 +1733,27 @@ class SimulationEngineV3:
 
             undiagnosed = self.state.population[:, :, :, 1:, 0, :, :]
 
+            # A neutral multiplier must be an identity, including allocation
+            # and RNG-stream identity. Splitting the same-rate population into
+            # MSM/non-MSM pools changes aggregate rounding in deterministic
+            # mode and needlessly changes stochastic draws.
+            if multiplier == 1.0:
+                diagnosed = self._draw_events_for(
+                    "diagnosis_all_orientations", undiagnosed, base_step_rate
+                )
+                self.state.population[:, :, :, 1:, 0, :, :] -= diagnosed
+                self.state.population[:, :, :, 1:, 1, :, :] += diagnosed
+                msm_diagnoses = int(np.sum(
+                    diagnosed[:, msm_idx, :, :, :, :]
+                )) if msm_idx is not None else 0
+                return {
+                    "total": int(np.sum(diagnosed)),
+                    "msm": msm_diagnoses,
+                    "aids_observation": diagnosis_observation_counts(
+                        diagnosed, self.groups.hiv_to_idx["AIDS"], msm_idx
+                    ),
+                }
+
             # Non-MSM orientations: use base rate
             non_msm_undiag = undiagnosed.copy()
             non_msm_undiag[:, msm_idx, :, :, :, :] = 0
@@ -1800,19 +1821,25 @@ class SimulationEngineV3:
         symptom_probability = profile.symptom_probability_at(current_year)
         undiagnosed = self.state.population[:, :, :, 1:, 0, :, :]
         diagnosed = np.zeros_like(undiagnosed)
-        stages = ("acute", "chronic", "aids")
         for population in ("non_msm", "msm"):
             if population == "msm" and msm_idx is None:
                 continue
-            for stage_offset, stage in enumerate(stages):
+            # Acute and chronic share one rate and therefore one allocation
+            # block. Allocating them separately changes the total by +/-1 per
+            # population per step. The returned tensor remains stage-resolved,
+            # so counters do not require fragmenting the rate block.
+            for stage, stage_offsets in (("non_aids", (0, 1)), ("aids", (2,))):
                 pool = np.zeros_like(undiagnosed)
                 if population == "msm":
-                    pool[:, msm_idx, :, stage_offset, :, :] = \
-                        undiagnosed[:, msm_idx, :, stage_offset, :, :]
+                    for stage_offset in stage_offsets:
+                        pool[:, msm_idx, :, stage_offset, :, :] = \
+                            undiagnosed[:, msm_idx, :, stage_offset, :, :]
                 else:
-                    pool[:, :, :, stage_offset, :, :] = undiagnosed[:, :, :, stage_offset, :, :]
-                    if msm_idx is not None:
-                        pool[:, msm_idx, :, stage_offset, :, :] = 0
+                    for stage_offset in stage_offsets:
+                        pool[:, :, :, stage_offset, :, :] = \
+                            undiagnosed[:, :, :, stage_offset, :, :]
+                        if msm_idx is not None:
+                            pool[:, msm_idx, :, stage_offset, :, :] = 0
                 step_probability = stage_step_probability(
                     effective[population],
                     routine_hazard_scale=profile.routine_hazard_scale,

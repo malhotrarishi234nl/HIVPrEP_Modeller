@@ -17,7 +17,11 @@ outputs/
 data/raw/
 data/model-outputs/
 *.log
-logs/
+logs/*
+!logs/stage_structured_diagnosis_focused_calibration_20260922/
+logs/stage_structured_diagnosis_focused_calibration_20260922/*
+!logs/stage_structured_diagnosis_focused_calibration_20260922/validate_only.json
+!logs/stage_structured_diagnosis_focused_calibration_20260922/validate_only_cap75.json
 sbi-logs/
 
 # OS / editor cruft

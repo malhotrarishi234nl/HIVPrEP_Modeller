@@ -1,0 +1,33 @@
+{
+  "schema": "robust_nroy_m1_anchor_confirmation/1.0.0",
+  "status": "INCOMPLETE",
+  "production_eligible": false,
+  "generated_utc": null,
+  "command": null,
+  "passed": null,
+  "model": "M1",
+  "plan_sha256": null,
+  "anchors_path": null,
+  "anchors_sha256": null,
+  "scientific_code_sha256": null,
+  "scientific_config_sha256": null,
+  "scientific_runtime": {},
+  "base_config_sha256": null,
+  "target_register_sha256": null,
+  "target_order": [],
+  "p_parameter": null,
+  "confirmation_seeds": [],
+  "candidates": [
+    {
+      "candidate_id": null,
+      "vector_hash": null,
+      "p_value": null,
+      "n_replicates": null,
+      "nominal_i_max": null,
+      "nominal_pass": null,
+      "per_seed_joint_vector_hashes": [],
+      "seed_result_artifact_sha256": null
+    }
+  ],
+  "notes": "Every row must be a complete joint M1 vector with p > 0 confirmed on the exact reserved 20-seed block."
+}

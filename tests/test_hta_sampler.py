@@ -68,6 +68,99 @@ def test_discover_utility_params(sampler):
     assert not missing, f"Missing expected utility params: {missing}"
 
 
+def test_aids_on_art_uses_the_same_psa_draw_as_chronic_on_art(sampler):
+    """The derived utility is linked, never sampled as an independent belief."""
+    draws = sampler.generate_draws(128, seed=20261014)
+    np.testing.assert_array_equal(
+        draws["utilities.aids_on_art"].to_numpy(),
+        draws["utilities.hiv_chronic_on_art"].to_numpy(),
+    )
+
+
+def test_linked_parameter_respects_its_declared_bounds(sampler):
+    draws = sampler.generate_draws(4000, seed=20261014)
+    linked = draws["utilities.aids_on_art"]
+    assert linked.between(0.85, 1.0, inclusive="both").all()
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ("utilities.missing", "missing"),
+        ("utilities.susceptible", "fixed"),
+        ("utilities.hiv_chronic_on_art.value", "nested field"),
+        ("utilities.aids_on_art", "cannot reference itself"),
+        ("utilities.aids_off_art", "forward"),
+    ],
+)
+def test_invalid_link_sources_fail_closed(hta_config, psa_config, source, message):
+    from hta_sampler import HTASampler
+
+    bad_config = copy.deepcopy(hta_config)
+    bad_config["utilities"]["aids_on_art"]["distribution"]["source_path"] = source
+    with pytest.raises(ValueError, match=message):
+        HTASampler(bad_config, psa_config)
+
+
+def test_link_to_explicitly_excluded_source_fails_closed(hta_config, psa_config):
+    from hta_sampler import HTASampler
+
+    excluded = copy.deepcopy(psa_config)
+    excluded["hta_sampling"]["exclude_parameters"]["value"] = [
+        "utilities.hiv_chronic_on_art"
+    ]
+    with pytest.raises(ValueError, match="exclude_parameters"):
+        HTASampler(hta_config, excluded)
+
+
+def test_link_to_placeholder_filtered_source_fails_closed(hta_config, psa_config):
+    from hta_sampler import HTASampler
+
+    bad_config = copy.deepcopy(hta_config)
+    bad_config["utilities"]["hiv_chronic_on_art"][
+        "distribution_status"
+    ] = "placeholder"
+    filtered = copy.deepcopy(psa_config)
+    filtered["hta_sampling"]["exclude_placeholders"]["value"] = True
+    with pytest.raises(ValueError, match="exclude_placeholders"):
+        HTASampler(bad_config, filtered)
+
+
+def test_nested_link_fails_closed(hta_config, psa_config):
+    from hta_sampler import HTASampler
+
+    bad_config = copy.deepcopy(hta_config)
+    chronic = bad_config["utilities"]["hiv_chronic_on_art"]
+    chronic["bounds"] = {"lower": 0.7, "upper": 0.87}
+    chronic["distribution"] = {
+        "type": "linked",
+        "source_path": "utilities.hiv_acute",
+    }
+    with pytest.raises(ValueError, match="nested link"):
+        HTASampler(bad_config, psa_config)
+
+
+def test_incompatible_link_bounds_fail_instead_of_clipping(hta_config, psa_config):
+    from hta_sampler import HTASampler
+
+    bad_config = copy.deepcopy(hta_config)
+    bad_config["utilities"]["aids_on_art"]["bounds"]["upper"] = 0.98
+    with pytest.raises(ValueError, match="align the bounds rather than silently clipping"):
+        HTASampler(bad_config, psa_config)
+
+
+def test_runtime_link_bound_guard_refuses_out_of_range_draws(hta_config, psa_config):
+    """Defence in depth: even registry tampering cannot turn the link into a clip."""
+    from hta_sampler import HTASampler
+
+    sampler = HTASampler(hta_config, psa_config)
+    link_index = sampler.param_paths.index("utilities.aids_on_art")
+    path, frozen, _bounds, entry = sampler._param_specs[link_index]
+    sampler._param_specs[link_index] = (path, frozen, (0.85, 0.98), entry)
+    with pytest.raises(ValueError, match="refusing to clip"):
+        sampler.generate_draws(4000, seed=20261014)
+
+
 def test_discover_cost_params(sampler):
     """
     HTASampler should discover at least 5 cost parameters with Gamma distributions

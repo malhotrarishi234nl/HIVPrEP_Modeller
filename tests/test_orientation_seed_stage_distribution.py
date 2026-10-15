@@ -37,7 +37,7 @@ from run_lhs_calibration import (
 
 def _base_config():
     """Minimal config sufficient for inject_params / validation tests."""
-    cfg_path = ROOT / "1980_test.json"
+    cfg_path = ROOT / "configs" / "1980_test.json"
     with open(cfg_path, encoding="utf-8") as f:
         return json.load(f)
 
