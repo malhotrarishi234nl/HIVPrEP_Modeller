@@ -1,0 +1,13 @@
+{
+  "schema": "robust_nroy_pilot_scientific_approval/1.0.0",
+  "status": "INCOMPLETE",
+  "approved": false,
+  "raw_measurement_sha256": null,
+  "timed_vectors_by_model": {
+    "M0": [],
+    "M1": []
+  },
+  "scientific_rationale": "",
+  "approved_by": null,
+  "approved_utc": null
+}

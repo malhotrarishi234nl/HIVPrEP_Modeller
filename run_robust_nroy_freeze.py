@@ -107,8 +107,10 @@ M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
 M1_INDEPENDENT_ANCHORS_FILENAME = "m1_independent_anchors.csv"
 FROZEN_ACCEPTANCE_IDENTITY_SCHEMA = "robust_nroy_frozen_acceptance_identity/1.0.0"
 FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
-MEASURED_PILOT_SCHEMA = "robust_nroy_measured_pilot/2.0.0"
-RAW_PILOT_SCHEMA = "robust_nroy_raw_pilot_measurements/1.1.0"
+MEASURED_PILOT_SCHEMA = "robust_nroy_measured_pilot/2.1.0"
+RAW_PILOT_SCHEMA = "robust_nroy_raw_pilot_measurements/1.2.0"
+PILOT_SELECTION_PROTOCOL_SCHEMA = "robust_nroy_pilot_vector_selection_protocol/1.0.0"
+PILOT_SCIENTIFIC_APPROVAL_SCHEMA = "robust_nroy_pilot_scientific_approval/1.0.0"
 PILOT_PARAMETER_SPACE_IDENTITY_SCHEMA = (
     "robust_nroy_pilot_parameter_space_identity/1.0.0"
 )
@@ -279,6 +281,99 @@ def _pilot_parameter_space_sha256(model: nc.ModelSpace) -> str:
     })
 
 
+def _load_pilot_companion(
+    owner: Mapping,
+    owner_path: Path,
+    *,
+    path_field: str,
+    sha_field: str,
+    label: str,
+    problems: list[str],
+) -> tuple[Path, Mapping] | None:
+    """Load one exact hash-bound pilot authority artifact."""
+    path = _referenced_evidence_file(owner_path, owner.get(path_field))
+    if path is None or not path.is_file():
+        problems.append(f"the measured-pilot {label} is missing")
+        return None
+    recorded_sha = owner.get(sha_field)
+    if not _is_sha256(recorded_sha) or recorded_sha != ccs.sha256_file(path):
+        problems.append(f"the measured-pilot {label} hash is stale")
+        return None
+    try:
+        payload = _load_strict_json(path)
+    except (OSError, json.JSONDecodeError, ContractError) as exc:
+        problems.append(f"the measured-pilot {label} is not strict JSON: {exc}")
+        return None
+    if not isinstance(payload, Mapping):
+        problems.append(f"the measured-pilot {label} is not a JSON object")
+        return None
+    return path, payload
+
+
+def _pilot_vector_records(
+    value: object,
+    *,
+    model_spaces: Mapping[str, nc.ModelSpace],
+    label: str,
+    problems: list[str],
+) -> dict[str, list[dict[str, object]]] | None:
+    """Validate and normalize exact model/vector identities for review."""
+    if not isinstance(value, Mapping) or set(value) != set(nc.MODELS):
+        problems.append(f"the measured-pilot {label} must contain exact M0 and M1 vectors")
+        return None
+    result: dict[str, list[dict[str, object]]] = {}
+    valid = True
+    for model in nc.MODELS:
+        records = value.get(model)
+        if not isinstance(records, list) or not records:
+            problems.append(f"the measured-pilot {label} has no {model} vectors")
+            valid = False
+            continue
+        normalized: list[dict[str, object]] = []
+        seen_hashes: set[str] = set()
+        for record in records:
+            if not isinstance(record, Mapping) or set(record) != {
+                "parameter_vector", "parameter_vector_sha256"
+            }:
+                valid = False
+                continue
+            vector = record.get("parameter_vector")
+            vector_sha = record.get("parameter_vector_sha256")
+            model_space = model_spaces[model]
+            if not isinstance(vector, Mapping) or set(vector) != set(model_space.names) \
+                    or not _is_sha256(vector_sha) \
+                    or any(not _is_finite_json_number(item) for item in vector.values()):
+                valid = False
+                continue
+            try:
+                actual_sha = nc.vector_hash(vector, names=model_space.names)
+                values = model_space.space.as_vector(vector)
+                invalid_reasons = ccs.invalid_reasons(model_space.space, values)
+            except (ContractError, KeyError, TypeError, ValueError):
+                valid = False
+                continue
+            if actual_sha != vector_sha or invalid_reasons or vector_sha in seen_hashes:
+                valid = False
+                continue
+            seen_hashes.add(str(vector_sha))
+            normalized.append({
+                "parameter_vector": {
+                    name: vector[name] for name in model_space.names
+                },
+                "parameter_vector_sha256": str(vector_sha),
+            })
+        result[model] = sorted(
+            normalized, key=lambda record: str(record["parameter_vector_sha256"])
+        )
+    if not valid or any(len(result.get(model, ())) != len(value[model]) for model in nc.MODELS):
+        problems.append(
+            f"the measured-pilot {label} requires unique, exact, admissible "
+            "model-specific vector identities"
+        )
+        return None
+    return result
+
+
 def _pilot_measurement_facts(
     pilot: Mapping,
     pilot_path: Path,
@@ -358,6 +453,10 @@ def _pilot_measurement_facts(
             model: _pilot_parameter_space_sha256(model_spaces[model])
             for model in nc.MODELS
         }
+        base_config_path = Path(str(plan.require("models.base_config")))
+        if not base_config_path.is_absolute():
+            base_config_path = ROOT / base_config_path
+        expected_base_config_sha = ccs.sha256_file(base_config_path)
     except Exception as exc:  # noqa: BLE001 - identity cannot be inferred on failure
         problems.append(
             f"the measured-pilot scientific config identities could not be resolved: "
@@ -369,11 +468,97 @@ def _pilot_measurement_facts(
             "the measured-pilot raw measurement is not bound to the exact signed "
             "M0/M1 parameter spaces"
         )
+
+    selection_loaded = _load_pilot_companion(
+        pilot,
+        pilot_path,
+        path_field="selection_protocol_path",
+        sha_field="selection_protocol_sha256",
+        label="pre-pilot vector-selection protocol",
+        problems=problems,
+    )
+    selection_vectors: dict[str, list[dict[str, object]]] | None = None
+    authorized_at: datetime | None = None
+    if selection_loaded is not None:
+        selection_path, selection = selection_loaded
+        selection_required = {
+            "schema", "status", "plan_sha256", "scientific_code_sha256",
+            "base_config_sha256", "scientific_config_sha256_by_model",
+            "parameter_space_sha256_by_model", "selected_vectors_by_model",
+            "scientific_rationale", "pilot_authorized", "authorized_by",
+            "authorized_utc",
+        }
+        if set(selection) != selection_required:
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol has an "
+                "invalid typed shape"
+            )
+        if selection.get("schema") != PILOT_SELECTION_PROTOCOL_SCHEMA:
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol has no "
+                f"current schema ({PILOT_SELECTION_PROTOCOL_SCHEMA})"
+            )
+        if selection.get("status") != "AUTHORIZED" \
+                or selection.get("pilot_authorized") is not True:
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol is not authorized"
+            )
+        expected_bindings = {
+            "plan_sha256": plan.plan_sha256,
+            "scientific_code_sha256": _code_sha256(),
+            "base_config_sha256": expected_base_config_sha,
+            "scientific_config_sha256_by_model": expected_config_sha,
+            "parameter_space_sha256_by_model": expected_space_sha,
+        }
+        if any(selection.get(key) != value for key, value in expected_bindings.items()):
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol has stale "
+                "plan, code, config, or parameter-space bindings"
+            )
+        if not isinstance(selection.get("scientific_rationale"), str) \
+                or not selection["scientific_rationale"].strip():
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol lacks a "
+                "scientific rationale"
+            )
+        if not isinstance(selection.get("authorized_by"), str) \
+                or not selection["authorized_by"].strip():
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol lacks authorized_by"
+            )
+        authorized_at = _utc_datetime(selection.get("authorized_utc"))
+        if authorized_at is None:
+            problems.append(
+                "the measured-pilot pre-pilot vector-selection protocol has an invalid "
+                "or naive authorized_utc"
+            )
+        selection_vectors = _pilot_vector_records(
+            selection.get("selected_vectors_by_model"),
+            model_spaces=model_spaces,
+            label="pre-pilot vector-selection protocol",
+            problems=problems,
+        )
+        raw_selection_path = _referenced_evidence_file(
+            raw_path, raw.get("selection_protocol_path")
+        )
+        if raw_selection_path is None or raw_selection_path.resolve() != selection_path.resolve() \
+                or raw.get("selection_protocol_sha256") != pilot.get(
+                    "selection_protocol_sha256"
+                ):
+            problems.append(
+                "the measured-pilot raw measurement does not bind the exact authorized "
+                "vector-selection protocol"
+            )
     parsed_rows: dict[str, list[dict[str, object]]] = {
         model: [] for model in nc.MODELS
     }
     trajectory_ids: list[str] = []
     vector_seed_identities: set[tuple[str, int]] = set()
+    raw_vectors_by_model: dict[str, dict[str, dict[str, object]]] = {
+        model: {} for model in nc.MODELS
+    }
+    raw_started_at: list[datetime] = []
+    raw_completed_at: list[datetime] = []
     malformed = False
     failed = False
     duplicate_vector_seed = False
@@ -401,6 +586,8 @@ def _pilot_measurement_facts(
         if vector_identity_valid:
             try:
                 vector_identity_valid = (
+                    set(vector) == set(model_spaces[model].names)
+                    and
                     all(_is_finite_json_number(value) for value in vector.values())
                     and nc.vector_hash(vector, names=model_spaces[model].names) == vector_sha
                 )
@@ -425,6 +612,10 @@ def _pilot_measurement_facts(
             failed = True
         seconds = row.get("elapsed_seconds")
         memory = row.get("peak_memory_bytes")
+        started_at = _utc_datetime(row.get("started_utc"))
+        completed_at = _utc_datetime(row.get("completed_utc"))
+        if started_at is None or completed_at is None or completed_at < started_at:
+            row_malformed = True
         if not _is_finite_json_number(seconds) or float(seconds) <= 0.0:
             row_malformed = True
         if _native_positive_int(memory) is None:
@@ -440,6 +631,14 @@ def _pilot_measurement_facts(
             if identity in vector_seed_identities:
                 duplicate_vector_seed = True
             vector_seed_identities.add(identity)
+            raw_vectors_by_model[str(model)][str(vector_sha)] = {
+                "parameter_vector": {
+                    name: vector[name] for name in model_spaces[str(model)].names
+                },
+                "parameter_vector_sha256": str(vector_sha),
+            }
+            raw_started_at.append(started_at)
+            raw_completed_at.append(completed_at)
             parsed_rows[str(model)].append({
                 "trajectory_id": str(trajectory_id),
                 "seed": seed,
@@ -460,7 +659,7 @@ def _pilot_measurement_facts(
             "uint32 signed seed, complete finite parameter vector with matching SHA256, "
             "matching scientific-config "
             "SHA256, SUCCESS status, positive finite elapsed_seconds and positive integer "
-            "peak_memory_bytes"
+            "peak_memory_bytes, plus valid UTC started_utc/completed_utc chronology"
         )
         return None
     if failed:
@@ -474,6 +673,96 @@ def _pilot_measurement_facts(
             "the measured-pilot raw measurement repeats a vector/seed trajectory"
         )
         return None
+
+    normalized_raw_vectors = {
+        model: sorted(
+            raw_vectors_by_model[model].values(),
+            key=lambda record: str(record["parameter_vector_sha256"]),
+        )
+        for model in nc.MODELS
+    }
+    if selection_vectors != normalized_raw_vectors:
+        problems.append(
+            "the measured-pilot timed vectors differ from the exact pre-pilot "
+            "vector-selection protocol"
+        )
+    if authorized_at is not None and raw_started_at + raw_completed_at \
+            and any(authorized_at >= timestamp
+                    for timestamp in raw_started_at + raw_completed_at):
+        problems.append(
+            "the measured-pilot authorization does not strictly precede every raw "
+            "measurement timestamp"
+        )
+
+    approval_loaded = _load_pilot_companion(
+        pilot,
+        pilot_path,
+        path_field="scientific_approval_path",
+        sha_field="scientific_approval_sha256",
+        label="post-pilot scientific approval",
+        problems=problems,
+    )
+    if approval_loaded is not None:
+        _, approval = approval_loaded
+        approval_required = {
+            "schema", "status", "approved", "raw_measurement_sha256",
+            "timed_vectors_by_model", "scientific_rationale", "approved_by",
+            "approved_utc",
+        }
+        if set(approval) != approval_required:
+            problems.append(
+                "the measured-pilot post-pilot scientific approval has an invalid "
+                "typed shape"
+            )
+        if approval.get("schema") != PILOT_SCIENTIFIC_APPROVAL_SCHEMA:
+            problems.append(
+                "the measured-pilot post-pilot scientific approval has no current "
+                f"schema ({PILOT_SCIENTIFIC_APPROVAL_SCHEMA})"
+            )
+        if approval.get("status") != "APPROVED" or approval.get("approved") is not True:
+            problems.append(
+                "the measured-pilot post-pilot scientific approval is not approved"
+            )
+        if approval.get("raw_measurement_sha256") != recorded_raw_sha:
+            problems.append(
+                "the measured-pilot post-pilot scientific approval has a stale raw "
+                "measurement hash"
+            )
+        approved_vectors = _pilot_vector_records(
+            approval.get("timed_vectors_by_model"),
+            model_spaces=model_spaces,
+            label="post-pilot scientific approval",
+            problems=problems,
+        )
+        if approved_vectors != normalized_raw_vectors:
+            problems.append(
+                "the measured-pilot post-pilot scientific approval does not cover the "
+                "exact timed vectors"
+            )
+        if not isinstance(approval.get("scientific_rationale"), str) \
+                or not approval["scientific_rationale"].strip():
+            problems.append(
+                "the measured-pilot post-pilot scientific approval lacks a scientific "
+                "rationale"
+            )
+        if not isinstance(approval.get("approved_by"), str) \
+                or not approval["approved_by"].strip():
+            problems.append(
+                "the measured-pilot post-pilot scientific approval lacks approved_by"
+            )
+        approved_at = _utc_datetime(approval.get("approved_utc"))
+        if approved_at is None:
+            problems.append(
+                "the measured-pilot post-pilot scientific approval has an invalid or "
+                "naive approved_utc"
+            )
+        elif raw_started_at + raw_completed_at and any(
+            approved_at <= timestamp for timestamp in raw_started_at + raw_completed_at
+        ):
+            problems.append(
+                "the measured-pilot scientific approval does not strictly follow every "
+                "raw measurement timestamp"
+            )
 
     facts: dict[str, object] = {
         "models": {},
@@ -821,6 +1110,13 @@ def _valid_utc_timestamp(value: object) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+
+
+def _utc_datetime(value: object) -> datetime | None:
+    """Return one timezone-aware UTC instant, rejecting naive or non-UTC text."""
+    if not _valid_utc_timestamp(value):
+        return None
+    return datetime.fromisoformat(str(value)[:-1] + "+00:00")
 
 
 def _valid_iso_date(value: object) -> bool:

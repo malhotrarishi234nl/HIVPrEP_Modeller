@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_measured_pilot/2.0.0",
+  "schema": "robust_nroy_measured_pilot/2.1.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "generated_utc": null,
@@ -49,5 +49,9 @@
   },
   "raw_measurement_path": null,
   "raw_measurement_sha256": null,
-  "notes": "Run only after explicit pilot authorization. Every summary value is recomputed from the hash-bound raw rows; do not estimate or hand-author timings."
+  "selection_protocol_path": null,
+  "selection_protocol_sha256": null,
+  "scientific_approval_path": null,
+  "scientific_approval_sha256": null,
+  "notes": "Run only after the exact vector-selection protocol is scientifically authorized. Every summary value is recomputed from the hash-bound raw rows. Production readiness also requires a post-pilot scientific approval bound to those exact raw bytes and timed vectors."
 }

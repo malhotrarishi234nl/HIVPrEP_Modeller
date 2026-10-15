@@ -46,18 +46,23 @@ engine-running gate.
   confirmation, and proposal blocks are supplied, and the audit proves no
   internal or prior-source overlap.
 - [ ] Identity-gate run separately authorized, executed through the production route, and passed.
+- [ ] Before any timing starts, a scientific reviewer authorizes a hash-bound
+  `robust_nroy_pilot_vector_selection_protocol/1.0.0` with the exact M0/M1
+  vectors, rationale, signer/time, and current plan/code/config/space bindings.
 - [ ] Measured-pilot run separately authorized and completed on the declared
-  machine profile; a scientific reviewer approved the predeclared vector-
-  selection rationale and exact timed vectors after Option B recalibration.
-- [ ] `robust_nroy_measured_pilot/2.0.0` recomputed from its hash-bound
-  `robust_nroy_raw_pilot_measurements/1.1.0` rows, with unique successful
+  machine profile; afterward, a scientific reviewer approves the exact raw
+  measurement hash and exact timed vectors in
+  `robust_nroy_pilot_scientific_approval/1.0.0`.
+- [ ] `robust_nroy_measured_pilot/2.1.0` recomputed from its hash-bound
+  `robust_nroy_raw_pilot_measurements/1.2.0` rows, with unique successful
   trajectory ids, exact uint32 signed-block seeds, unique vector/seed
   identities even across model labels, complete finite vectors whose hashes
   recompute in the model-specific coordinate order and whose coordinates lie
   inside the exact hash-bound signed M0/M1 spaces, positive finite elapsed
   measurements, exact M0/M1 scientific
-  config hashes, and exact machine/scheduler identity. Strict JSON validation
-  rejects duplicate keys and non-finite tokens.
+  config hashes, exact machine/scheduler identity, and valid start/completion
+  UTC timestamps strictly between authorization and scientific approval.
+  Strict JSON validation rejects duplicate keys and non-finite tokens.
 - [ ] `robust_nroy_priced_budget/2.0.0` generated from that measured pilot and
   a hash-bound typed current pricing source. All six M0/M1 simulator-stage
   rows exactly match the signed per-stage caps, and the validator recomputes

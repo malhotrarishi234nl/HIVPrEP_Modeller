@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_raw_pilot_measurements/1.1.0",
+  "schema": "robust_nroy_raw_pilot_measurements/1.2.0",
   "status": "INCOMPLETE",
   "plan_sha256": null,
   "scientific_code_sha256": null,
@@ -14,6 +14,8 @@
     "billable_resources": null,
     "resource_unit": null
   },
+  "selection_protocol_path": null,
+  "selection_protocol_sha256": null,
   "rows": [],
   "row_contract": {
     "trajectory_id": "unique non-empty string",
@@ -24,7 +26,9 @@
     "scientific_config_sha256": "exact model-specific scientific config SHA256",
     "status": "SUCCESS",
     "elapsed_seconds": "positive finite native JSON number",
-    "peak_memory_bytes": "positive native JSON integer"
+    "peak_memory_bytes": "positive native JSON integer",
+    "started_utc": "timezone-aware ISO-8601 UTC timestamp ending Z and strictly after protocol authorization",
+    "completed_utc": "timezone-aware ISO-8601 UTC timestamp ending Z, not before started_utc, and strictly before scientific approval"
   },
-  "notes": "A real authorized pilot must declare a positive uint32 billable_resources count, bind the exact ordered M0/M1 spaces used for admissibility, write one raw row per timed trajectory, cover every signed discovery seed exactly once for M0 and M1, and never reuse a vector/seed identity, including under a different model label. Bounds do not establish timing representativeness; the scientific reviewer must separately approve the predeclared vector-selection rationale and exact timed vectors after Option B recalibration. This empty template is not evidence and cannot pass validation."
+  "notes": "A real authorized pilot must hash-bind the pre-pilot vector-selection protocol, declare a positive uint32 billable_resources count, bind the exact ordered M0/M1 spaces used for admissibility, write one raw row per timed trajectory, cover every signed discovery seed exactly once for M0 and M1, and never reuse a vector/seed identity, including under a different model label. This empty template is not evidence and cannot pass validation."
 }

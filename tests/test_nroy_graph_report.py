@@ -784,6 +784,33 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         model: nc.vector_hash(pilot_vector[model], names=model_spaces[model].names)
         for model in nc.MODELS
     }
+    reviewed_vectors = {
+        model: [{
+            "parameter_vector": pilot_vector[model],
+            "parameter_vector_sha256": vector_sha[model],
+        }]
+        for model in nc.MODELS
+    }
+    selection_protocol = tmp_path / "pilot_vector_selection_protocol.json"
+    selection_protocol.write_text(json.dumps({
+        "schema": runner.PILOT_SELECTION_PROTOCOL_SCHEMA,
+        "status": "AUTHORIZED",
+        "plan_sha256": plan.plan_sha256,
+        "scientific_code_sha256": runner._code_sha256(),
+        "base_config_sha256": ccs.sha256_file(base),
+        "scientific_config_sha256_by_model": config_sha,
+        "parameter_space_sha256_by_model": {
+            model: runner._pilot_parameter_space_sha256(model_spaces[model])
+            for model in nc.MODELS
+        },
+        "selected_vectors_by_model": reviewed_vectors,
+        "scientific_rationale": (
+            "Verification fixture: one admissible midpoint per exact model space."
+        ),
+        "pilot_authorized": True,
+        "authorized_by": "verification scientific reviewer",
+        "authorized_utc": "2026-10-15T00:00:00Z",
+    }))
     raw_rows = [
         {
             "trajectory_id": f"{model}-pilot-{seed}",
@@ -795,6 +822,8 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
             "status": "SUCCESS",
             "elapsed_seconds": model_elapsed[model],
             "peak_memory_bytes": 1024 if model == nc.MODEL_M0 else 2048,
+            "started_utc": "2026-10-15T00:01:00Z",
+            "completed_utc": "2026-10-15T00:01:30Z",
         }
         for model in nc.MODELS
         for seed in plan.seeds.discovery
@@ -812,7 +841,22 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         },
         "machine_profile": machine,
         "scheduler_request": scheduler,
+        "selection_protocol_path": str(selection_protocol),
+        "selection_protocol_sha256": ccs.sha256_file(selection_protocol),
         "rows": raw_rows,
+    }))
+    scientific_approval = tmp_path / "pilot_scientific_approval.json"
+    scientific_approval.write_text(json.dumps({
+        "schema": runner.PILOT_SCIENTIFIC_APPROVAL_SCHEMA,
+        "status": "APPROVED",
+        "approved": True,
+        "raw_measurement_sha256": ccs.sha256_file(raw_measurement),
+        "timed_vectors_by_model": reviewed_vectors,
+        "scientific_rationale": (
+            "Verification fixture: exact timed vectors are suitable for the test price basis."
+        ),
+        "approved_by": "verification scientific reviewer",
+        "approved_utc": "2026-10-15T00:02:00Z",
     }))
     model_summaries = {
         model: {
@@ -838,7 +882,7 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "schema": runner.MEASURED_PILOT_SCHEMA,
         "status": "FINAL",
         "production_eligible": True,
-        "generated_utc": "2026-10-15T00:00:00Z",
+        "generated_utc": "2026-10-15T00:03:00Z",
         "command": "verification pilot fixture",
         "passed": True,
         "plan_sha256": plan.plan_sha256,
@@ -855,6 +899,10 @@ def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dic
         "model_summaries": model_summaries,
         "raw_measurement_path": str(raw_measurement),
         "raw_measurement_sha256": ccs.sha256_file(raw_measurement),
+        "selection_protocol_path": str(selection_protocol),
+        "selection_protocol_sha256": ccs.sha256_file(selection_protocol),
+        "scientific_approval_path": str(scientific_approval),
+        "scientific_approval_sha256": ccs.sha256_file(scientific_approval),
     }
     paths["measured_pilot"].write_text(json.dumps(pilot))
 
@@ -1165,6 +1213,235 @@ def _mutate_raw_pilot(paths, mutation) -> None:
     paths["priced_budget"].write_text(json.dumps(priced))
 
 
+def _mutate_pilot_scientific_chain(
+        paths, *, selection_mutation=None, raw_mutation=None,
+        approval_mutation=None) -> None:
+    """Mutate authority artifacts while refreshing every enclosing hash."""
+    pilot_path = paths["measured_pilot"]
+    pilot = json.loads(pilot_path.read_text())
+    selection_path = Path(pilot["selection_protocol_path"])
+    selection = json.loads(selection_path.read_text())
+    if selection_mutation is not None:
+        selection_mutation(selection)
+    selection_path.write_text(json.dumps(selection))
+    pilot["selection_protocol_sha256"] = ccs.sha256_file(selection_path)
+
+    raw_path = Path(pilot["raw_measurement_path"])
+    raw = json.loads(raw_path.read_text())
+    raw["selection_protocol_sha256"] = pilot["selection_protocol_sha256"]
+    if raw_mutation is not None:
+        raw_mutation(raw)
+    raw_path.write_text(json.dumps(raw))
+    pilot["raw_measurement_sha256"] = ccs.sha256_file(raw_path)
+
+    approval_path = Path(pilot["scientific_approval_path"])
+    approval = json.loads(approval_path.read_text())
+    approval["raw_measurement_sha256"] = pilot["raw_measurement_sha256"]
+    if approval_mutation is not None:
+        approval_mutation(approval)
+    approval_path.write_text(json.dumps(approval))
+    pilot["scientific_approval_sha256"] = ccs.sha256_file(approval_path)
+    pilot_path.write_text(json.dumps(pilot))
+
+    priced = json.loads(paths["priced_budget"].read_text())
+    priced["measured_pilot_sha256"] = ccs.sha256_file(pilot_path)
+    paths["priced_budget"].write_text(json.dumps(priced))
+
+
+@pytest.mark.parametrize(
+    ("field", "expected_problem"),
+    (
+        ("selection_protocol_path", "pre-pilot vector-selection protocol is missing"),
+        ("scientific_approval_path", "post-pilot scientific approval is missing"),
+    ),
+)
+def test_measured_pilot_requires_pre_and_post_scientific_authority(
+        tmp_path, field, expected_problem):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    pilot = json.loads(paths["measured_pilot"].read_text())
+    pilot.pop(field)
+    paths["measured_pilot"].write_text(json.dumps(pilot))
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_stale_selection_protocol_hash(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    pilot = json.loads(paths["measured_pilot"].read_text())
+    pilot["selection_protocol_sha256"] = "0" * 64
+    paths["measured_pilot"].write_text(json.dumps(pilot))
+    assert any(
+        "pre-pilot vector-selection protocol hash is stale" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_post_approval_with_stale_raw_hash(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_pilot_scientific_chain(
+        paths,
+        approval_mutation=lambda approval: approval.update(
+            raw_measurement_sha256="0" * 64
+        ),
+    )
+    assert any(
+        "post-pilot scientific approval has a stale raw measurement hash" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_resealed_vector_change_after_authorization(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    replacement = fx.valid_interior_vectors(
+        runner._model_spaces(plan)[nc.MODEL_M0], 1, seed=8765
+    )[0]
+
+    def replace_authorized_vector(selection):
+        record = selection["selected_vectors_by_model"][nc.MODEL_M0][0]
+        record["parameter_vector"] = replacement
+        record["parameter_vector_sha256"] = nc.vector_hash(
+            replacement,
+            names=runner._model_spaces(plan)[nc.MODEL_M0].names,
+        )
+
+    _mutate_pilot_scientific_chain(
+        paths, selection_mutation=replace_authorized_vector
+    )
+    assert any(
+        "timed vectors differ from the exact pre-pilot" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_resealed_stale_selection_binding(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_pilot_scientific_chain(
+        paths,
+        selection_mutation=lambda selection: selection.update(
+            parameter_space_sha256_by_model={
+                **selection["parameter_space_sha256_by_model"],
+                nc.MODEL_M0: "0" * 64,
+            }
+        ),
+    )
+    assert any(
+        "stale plan, code, config, or parameter-space bindings" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_post_approval_for_different_timed_vectors(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    model = runner._model_spaces(plan)[nc.MODEL_M0]
+    replacement = fx.valid_interior_vectors(model, 1, seed=9876)[0]
+
+    def replace_approved_vector(approval):
+        record = approval["timed_vectors_by_model"][nc.MODEL_M0][0]
+        record["parameter_vector"] = replacement
+        record["parameter_vector_sha256"] = nc.vector_hash(
+            replacement, names=model.names
+        )
+
+    _mutate_pilot_scientific_chain(
+        paths, approval_mutation=replace_approved_vector
+    )
+    assert any(
+        "scientific approval does not cover the exact timed vectors" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_measured_pilot_rejects_naive_raw_measurement_timestamp(tmp_path):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_pilot_scientific_chain(
+        paths,
+        raw_mutation=lambda raw: raw["rows"][0].update(
+            started_utc="2026-10-15T00:01:00"
+        ),
+    )
+    assert any(
+        "valid UTC started_utc/completed_utc chronology" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+@pytest.mark.parametrize(
+    ("selection_mutation", "approval_mutation", "expected_problem"),
+    (
+        (
+            lambda selection: selection.update(
+                authorized_utc="2026-10-15T00:00:00"
+            ),
+            None,
+            "invalid or naive authorized_utc",
+        ),
+        (
+            None,
+            lambda approval: approval.update(
+                approved_utc="2026-10-15T00:02:00"
+            ),
+            "invalid or naive approved_utc",
+        ),
+    ),
+)
+def test_measured_pilot_rejects_naive_scientific_review_timestamps(
+        tmp_path, selection_mutation, approval_mutation, expected_problem):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_pilot_scientific_chain(
+        paths,
+        selection_mutation=selection_mutation,
+        approval_mutation=approval_mutation,
+    )
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+@pytest.mark.parametrize(
+    ("selection_mutation", "approval_mutation", "expected_problem"),
+    (
+        (
+            lambda selection: selection.update(
+                authorized_utc="2026-10-15T00:01:00Z"
+            ),
+            None,
+            "authorization does not strictly precede every raw measurement timestamp",
+        ),
+        (
+            None,
+            lambda approval: approval.update(
+                approved_utc="2026-10-15T00:01:30Z"
+            ),
+            "scientific approval does not strictly follow every raw measurement timestamp",
+        ),
+    ),
+)
+def test_measured_pilot_rejects_inverted_scientific_review_chronology(
+        tmp_path, selection_mutation, approval_mutation, expected_problem):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    _mutate_pilot_scientific_chain(
+        paths,
+        selection_mutation=selection_mutation,
+        approval_mutation=approval_mutation,
+    )
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
 def test_measured_pilot_rejects_hash_consistent_tampered_raw_timing(tmp_path):
     plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
     paths = _write_final_production_evidence(tmp_path, plan)
@@ -1361,6 +1638,8 @@ def _inject_duplicate_schema_key(path: Path) -> None:
         ("measured_pilot", "production prerequisite 'measured_pilot' is not strict JSON"),
         ("priced_budget", "production prerequisite 'priced_budget' is not strict JSON"),
         ("raw_measurement", "raw measurement is not strict JSON"),
+        ("selection_protocol", "vector-selection protocol is not strict JSON"),
+        ("scientific_approval", "scientific approval is not strict JSON"),
         ("pricing_source", "pricing source is not strict JSON"),
     ),
 )
@@ -1374,11 +1653,38 @@ def test_new_pilot_and_pricing_artifacts_reject_duplicate_json_keys(
         "measured_pilot": paths["measured_pilot"],
         "priced_budget": paths["priced_budget"],
         "raw_measurement": Path(pilot["raw_measurement_path"]),
+        "selection_protocol": Path(pilot["selection_protocol_path"]),
+        "scientific_approval": Path(pilot["scientific_approval_path"]),
         "pricing_source": Path(priced["pricing_source"]),
     }
     _inject_duplicate_schema_key(targets[artifact])
     if artifact == "raw_measurement":
         pilot["raw_measurement_sha256"] = ccs.sha256_file(targets[artifact])
+        approval_path = Path(pilot["scientific_approval_path"])
+        approval = json.loads(approval_path.read_text())
+        approval["raw_measurement_sha256"] = pilot["raw_measurement_sha256"]
+        approval_path.write_text(json.dumps(approval))
+        pilot["scientific_approval_sha256"] = ccs.sha256_file(approval_path)
+        paths["measured_pilot"].write_text(json.dumps(pilot))
+        priced["measured_pilot_sha256"] = ccs.sha256_file(paths["measured_pilot"])
+        paths["priced_budget"].write_text(json.dumps(priced))
+    elif artifact == "selection_protocol":
+        pilot["selection_protocol_sha256"] = ccs.sha256_file(targets[artifact])
+        raw_path = Path(pilot["raw_measurement_path"])
+        raw = json.loads(raw_path.read_text())
+        raw["selection_protocol_sha256"] = pilot["selection_protocol_sha256"]
+        raw_path.write_text(json.dumps(raw))
+        pilot["raw_measurement_sha256"] = ccs.sha256_file(raw_path)
+        approval_path = Path(pilot["scientific_approval_path"])
+        approval = json.loads(approval_path.read_text())
+        approval["raw_measurement_sha256"] = pilot["raw_measurement_sha256"]
+        approval_path.write_text(json.dumps(approval))
+        pilot["scientific_approval_sha256"] = ccs.sha256_file(approval_path)
+        paths["measured_pilot"].write_text(json.dumps(pilot))
+        priced["measured_pilot_sha256"] = ccs.sha256_file(paths["measured_pilot"])
+        paths["priced_budget"].write_text(json.dumps(priced))
+    elif artifact == "scientific_approval":
+        pilot["scientific_approval_sha256"] = ccs.sha256_file(targets[artifact])
         paths["measured_pilot"].write_text(json.dumps(pilot))
         priced["measured_pilot_sha256"] = ccs.sha256_file(paths["measured_pilot"])
         paths["priced_budget"].write_text(json.dumps(priced))

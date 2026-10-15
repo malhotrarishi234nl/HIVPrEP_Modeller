@@ -150,8 +150,8 @@ path. They cannot substitute another otherwise-valid certificate at prepare time
 Pilot and pricing generation remain intentionally unimplemented as automatic
 “passed” commands: pilot measurements require authorization and real hardware,
 and pricing requires current account data and approval. The validator does not
-trust authored timing or cost totals. `robust_nroy_measured_pilot/2.0.0` must
-hash-bind a strict `robust_nroy_raw_pilot_measurements/1.1.0` JSON artifact;
+trust authored timing or cost totals. `robust_nroy_measured_pilot/2.1.0` must
+hash-bind a strict `robust_nroy_raw_pilot_measurements/1.2.0` JSON artifact;
 duplicate keys and non-standard `NaN`/`Infinity` tokens are rejected. Its rows
 have globally unique trajectory ids, `SUCCESS` status, positive finite elapsed
 seconds and positive integer peak memory under the exact declared machine and
@@ -175,10 +175,15 @@ timing distribution.
 Bounds establish admissibility, not timing representativeness. No generic
 vector-selection rule is invented here: the defensible rule depends on the
 authorized pilot objective and the newly calibrated Option B population. Before
-closing the measured-pilot checklist item, the scientific reviewer must approve
-the predeclared selection rationale and the exact timed vectors. The resulting
-budget remains conditional on those vectors; a mechanical PASS alone does not
-establish that they span worst-case runtime behavior.
+timing starts, a strict, hash-bound
+`robust_nroy_pilot_vector_selection_protocol/1.0.0` must authorize the exact
+full M0/M1 vectors and rationale under the current plan/code/config/space
+identities. Every raw row records UTC start/completion times after that
+authorization. After all timing completes, a distinct hash-bound
+`robust_nroy_pilot_scientific_approval/1.0.0` must approve the exact raw hash
+and exact timed vectors. The resulting budget remains conditional on those
+vectors; a mechanical PASS alone does not establish that they span worst-case
+runtime behavior.
 
 `robust_nroy_priced_budget/2.0.0` must also hash-bind a typed
 `robust_nroy_pricing_source/1.0.0` for that machine profile. The source records

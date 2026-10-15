@@ -1,0 +1,23 @@
+{
+  "schema": "robust_nroy_pilot_vector_selection_protocol/1.0.0",
+  "status": "INCOMPLETE",
+  "plan_sha256": null,
+  "scientific_code_sha256": null,
+  "base_config_sha256": null,
+  "scientific_config_sha256_by_model": {
+    "M0": null,
+    "M1": null
+  },
+  "parameter_space_sha256_by_model": {
+    "M0": null,
+    "M1": null
+  },
+  "selected_vectors_by_model": {
+    "M0": [],
+    "M1": []
+  },
+  "scientific_rationale": "",
+  "pilot_authorized": false,
+  "authorized_by": null,
+  "authorized_utc": null
+}
