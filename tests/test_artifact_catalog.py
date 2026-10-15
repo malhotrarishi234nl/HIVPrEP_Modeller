@@ -53,8 +53,8 @@ def test_catalog_summary_and_unique_scope(catalog: dict[str, object]) -> None:
     counts = Counter(record["classification"] for record in records)
     assert set(counts) <= ALLOWED_CLASSES
     assert dict(sorted(counts.items())) == catalog["classification_counts"]
-    assert catalog["remaining_review_count"] == counts["REVIEW_REQUIRED"] == 98
-    assert catalog["terminally_classified_count"] == len(records) - 98
+    assert catalog["remaining_review_count"] == counts["REVIEW_REQUIRED"] == 9
+    assert catalog["terminally_classified_count"] == len(records) - 9 == 123
 
 
 def test_every_record_is_safe_and_reviewable(catalog: dict[str, object]) -> None:
@@ -100,19 +100,41 @@ def test_all_explicit_overrides_are_present_and_applied(
         assert by_path[path]["evidence_source"] == override["evidence_source"]
 
 
-def test_stale_readiness_lineages_are_explicitly_incompatible(
+def test_historical_rows_never_claim_current_compatibility_or_validation(
     catalog: dict[str, object],
 ) -> None:
-    stale = [
+    historical = [
         record
         for record in catalog["records"]
         if record["classification"] == "HISTORICAL_RETAINED"
     ]
-    assert len(stale) == 12
-    assert all(record["current_code_compatibility"] == "INCOMPATIBLE" for record in stale)
+    assert len(historical) == 78
     assert all(
-        record["scientific_status"] == "HISTORICAL_ONLY_RETIRED_FROM_CURRENT_CLAIMS"
-        for record in stale
+        record["current_code_compatibility"] in {"INCOMPATIBLE", "UNKNOWN", "NOT_APPLICABLE"}
+        for record in historical
+    )
+    assert all(record["scientific_status"] != "CURRENT_VALIDATED" for record in historical)
+
+
+def test_terminal_rows_have_evidence_and_required_relationships(
+    catalog: dict[str, object],
+) -> None:
+    terminal = [
+        record
+        for record in catalog["records"]
+        if record["classification"] != "REVIEW_REQUIRED"
+    ]
+    assert len(terminal) == 123
+    assert all(record["evidence_source"].strip() for record in terminal)
+    assert all(
+        record["superseded_by"].strip()
+        for record in terminal
+        if record["classification"] == "SUPERSEDED"
+    )
+    assert all(
+        record["canonical_path"].strip()
+        for record in terminal
+        if record["classification"] == "DERIVED_PRESENTATION"
     )
 
 

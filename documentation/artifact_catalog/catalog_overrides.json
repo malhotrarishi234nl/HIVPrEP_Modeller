@@ -252,6 +252,647 @@
       "current_code_compatibility": "NOT_APPLICABLE",
       "classification_reason": "The directory is a tested policy-preparation package containing plans/configs, not scientific run results.",
       "evidence_source": "tests/test_overnight_matrix_harness.py;outputs/suites/prep_policy_suite_20260929_prepared/plan.json"
+    },
+    "outputs/calibration/a17_residual_placement_20260912_173211": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the completed residual-placement evidence but explicitly says every result computed before 2026-09-14 is stale and must not be cited without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a18_jensen_mechanism_20260912_205053": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play retains this completed Jensen-mechanism evidence while explicitly retiring every pre-2026-09-14 result from current citation without a rerun.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a18_remedy_probes_20260912_211631": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play identifies this as the retained remedy-probe run, but its blanket post-change warning makes the pre-2026-09-14 result historical only.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a19_divisor_controlled_rounding_20260912_183159": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained divisor/rounding evidence and explicitly retires all pre-2026-09-14 results from current use without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a20_process_decomposition_20260912_220842": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "Within the same A-20 process-decomposition family, the state-of-play names the later 221520 directory as the evidence location; both predate the code changes that made pre-2026-09-14 results stale.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/a20_process_decomposition_20260912_221520"
+    },
+    "outputs/calibration/a20_process_decomposition_20260912_221520": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained A-20 process-decomposition evidence but explicitly retires every pre-2026-09-14 result from current citation without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a20_process_decomposition_analysis_20260912_231933": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play explicitly selects this consolidated-table attempt over the two incomplete predecessors, while its global warning makes the pre-2026-09-14 result historical only.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a20_step2_localisation_20260912_230327": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this completed localisation evidence but explicitly retires all pre-2026-09-14 results from current citation without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a21_rare_stratum_starvation_20260913_001500": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play records this as completed rare-stratum evidence and also says every pre-2026-09-14 result is stale after the subsequent production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a22_background_mortality_grouping_20260913_225630": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained A-22 run but explicitly retires all pre-2026-09-14 results from current citation without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a23_hiv_mortality_anomaly_20260913_235530": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play retains this explained-anomaly evidence but explicitly says results computed before 2026-09-14 are stale after later production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/a5a_epidemiological_seed_variability_20260911_042330": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play selects this over the pre-CRN predecessors but separately declares all pre-2026-09-14 numerical results stale after the production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/abc_smc_v13_23_snpe_bootstrap": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_RESCORING_INPUT_NOT_PRODUCTION_CALIBRATION",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The history-matching build specification replaces ABC-SMC/SNPE for production and identifies this old 4,000-row sweep only as the rescorable historical input.",
+      "evidence_source": "HISTORY_MATCHING_BUILD_SPEC.md"
+    },
+    "outputs/calibration/art_split_decomposition_20260916": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_DIAGNOSTIC_NOT_PRODUCTION_CALIBRATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The run report and findings identify this as a bounded diagnostic decomposition feeding the later joint-fit review, not a calibrated ensemble or current production result.",
+      "evidence_source": "documentation/reports/calibration/ART_SPLIT_DECOMPOSITION_RUN_2026-09-16.md;outputs/calibration/art_split_decomposition_20260916/FINDINGS.md"
+    },
+    "outputs/calibration/b8_deterministic_target_level_comparison_20260911_031534": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 032028 directory as the B-8 evidence location; both runs predate the code changes that made their results stale.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/calibration/b8_deterministic_target_level_comparison_20260911_032028"
+    },
+    "outputs/calibration/b8_deterministic_target_level_comparison_20260911_032028": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play identifies this as the retained B-8 comparison but explicitly retires all pre-2026-09-14 numerical results from current use without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/coupled_20260918_confirmation": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_NEGATIVE_CONFIRMATION_NOT_A_BASELINE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The complete confirmation is hash-linked to the frozen search; independent recomputation reports zero primary passes and expressly refuses treating any candidate as a calibrated ensemble member or HTA baseline.",
+      "evidence_source": "outputs/calibration/coupled_20260918_review_full/verification.json;outputs/calibration/coupled_20260918_review_full/VERIFIED_RESULTS.md"
+    },
+    "outputs/calibration/coupled_20260918_review": {
+      "classification": "DERIVED_PRESENTATION",
+      "scientific_status": "DERIVED_VERIFICATION_NOT_STANDALONE_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "Its verification file identifies the completed search and exact source-manifest hash; this directory is a derived read-only recomputation, not an independent model result.",
+      "evidence_source": "outputs/calibration/coupled_20260918_review/verification.json",
+      "canonical_path": "outputs/calibration/coupled_20260918_search"
+    },
+    "outputs/calibration/coupled_20260918_review_full": {
+      "classification": "DERIVED_PRESENTATION",
+      "scientific_status": "DERIVED_VERIFICATION_NOT_STANDALONE_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "Its verification file hash-checks the frozen search and confirmation and recomputes their negative result; retain it with those scientific parents rather than as a standalone result.",
+      "evidence_source": "outputs/calibration/coupled_20260918_review_full/verification.json",
+      "canonical_path": "outputs/calibration/coupled_20260918_confirmation"
+    },
+    "outputs/calibration/coupled_20260918_search": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_NEGATIVE_SEARCH_NOT_A_BASELINE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The search manifest is complete and the independent review verifies all 2,560 trajectories, but finds zero primary passes and explicitly states that no candidate is a calibrated ensemble member or HTA baseline.",
+      "evidence_source": "outputs/calibration/coupled_20260918_search/manifest.json;outputs/calibration/coupled_20260918_review/VERIFIED_RESULTS.md"
+    },
+    "outputs/calibration/coupled_20260918_smoke": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The manifest declares stage=smoke and status=SMOKE_PASSED; the runbook says this checks harness/production identity and says nothing about model fit.",
+      "evidence_source": "outputs/calibration/coupled_20260918_smoke/manifest.json;COUPLED_SEARCH_RUNBOOK.md"
+    },
+    "outputs/calibration/coupled_20260918_synthetic": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "SYNTHETIC_ENGINEERING_BENCHMARK_NOT_HIV_EVIDENCE",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The runbook identifies this as a no-simulator synthetic optimisation benchmark and explicitly says it does not establish HIV-model feasibility.",
+      "evidence_source": "COUPLED_SEARCH_RUNBOOK.md;outputs/calibration/coupled_20260918_synthetic/SYNTHETIC_BENCHMARK.md"
+    },
+    "outputs/calibration/coupled_forecast_windows_20260921_smoke": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The manifest records a passed smoke stage for the forecast-window lineage that the readiness audit later proved stale and incompatible with current code.",
+      "evidence_source": "outputs/calibration/coupled_forecast_windows_20260921_smoke/manifest.json;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/coupled_unordered_orientation_20260921_search": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_UNTERMINATED_SEARCH",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The frozen top-level manifest still declares stage=search and status=RUNNING, so no terminal search result is supported.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_20260921_search/manifest.json"
+    },
+    "outputs/calibration/coupled_unordered_orientation_20260921_smoke": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The manifest declares stage=smoke and status=SMOKE_PASSED; this is engineering-gate evidence for an unterminated search, not a scientific result.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_20260921_smoke/manifest.json"
+    },
+    "outputs/calibration/coupled_unordered_orientation_activity_20260921_confirmation": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CALIBRATION_EXPERIMENT_NOT_CURRENT_PRODUCTION_EVIDENCE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The manifest records a complete frozen confirmation, but no current-code validation or production adoption is recorded; retain the bounded experiment without promoting it.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_activity_20260921_confirmation/manifest.json"
+    },
+    "outputs/calibration/coupled_unordered_orientation_activity_20260921_search": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CALIBRATION_EXPERIMENT_NOT_CURRENT_PRODUCTION_EVIDENCE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The manifest records a complete frozen search, but the repository contains no current-code compatibility evidence or production adoption; preserve it as a bounded historical experiment.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_activity_20260921_search/manifest.json"
+    },
+    "outputs/calibration/coupled_unordered_orientation_activity_20260921_smoke": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The manifest declares stage=smoke and status=SMOKE_PASSED; retain this only as engineering-gate history for the associated experiment.",
+      "evidence_source": "outputs/calibration/coupled_unordered_orientation_activity_20260921_smoke/manifest.json"
+    },
+    "outputs/calibration/diagnosis_triangulation_orchestration_20260922_smoke": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The directory contains only the orchestration smoke result and two smoke configurations and is cited solely by the runner; it is not the completed scientific orchestration artifact.",
+      "evidence_source": "run_diagnosis_triangulation_orchestration.py;outputs/calibration/diagnosis_triangulation_orchestration_20260922_smoke/smoke_result.json"
+    },
+    "outputs/calibration/historical_transmission_diagnostic_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_NEGATIVE_DIAGNOSTIC_NOT_A_BASELINE",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The completed decision report freezes this local sensitivity experiment, rejects promotion of every tested profile, and says it is neither a fitted comparison nor an accepted calibration ensemble.",
+      "evidence_source": "documentation/reports/calibration/HISTORICAL_TRANSMISSION_RESULT_2026-09-17.md;outputs/calibration/historical_transmission_diagnostic_20260917/manifest.json"
+    },
+    "outputs/calibration/historical_transmission_review_20260917": {
+      "classification": "DERIVED_PRESENTATION",
+      "scientific_status": "DERIVED_VERIFICATION_NOT_STANDALONE_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The result report identifies this as an independent hash verification and recomputation of the diagnostic parent; it contains no independent simulation result.",
+      "evidence_source": "documentation/reports/calibration/HISTORICAL_TRANSMISSION_RESULT_2026-09-17.md;outputs/calibration/historical_transmission_review_20260917/verification.json",
+      "canonical_path": "outputs/calibration/historical_transmission_diagnostic_20260917"
+    },
+    "outputs/calibration/historical_transmission_smoke_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The track specification and manifest identify this as the neutral smoke gate, not the 50-run diagnostic result.",
+      "evidence_source": "documentation/reports/calibration/HISTORICAL_TRANSMISSION_TRACK_2026-09-17.md;outputs/calibration/historical_transmission_smoke_20260917/manifest.json"
+    },
+    "outputs/calibration/historical_transmission_writer_check_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_WRITER_CHECK_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The track specification identifies this small artifact as a writer check with its own check result and manifest, separate from the scientific diagnostic.",
+      "evidence_source": "documentation/reports/calibration/HISTORICAL_TRANSMISSION_TRACK_2026-09-17.md;outputs/calibration/historical_transmission_writer_check_20260917/manifest.json"
+    },
+    "outputs/calibration/historical_transmission_writer_cli_check_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_WRITER_CHECK_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The manifest and check result show a CLI writer check, not the declared scientific diagnostic; retain only as operational history.",
+      "evidence_source": "outputs/calibration/historical_transmission_writer_cli_check_20260917/manifest.json;outputs/calibration/historical_transmission_writer_cli_check_20260917/CHECK_RESULT.json"
+    },
+    "outputs/calibration/hm_baseline_learning_20260915": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_LEARNING_WAVE_NOT_FINAL_ENSEMBLE",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The run report explicitly labels the wave a learning run rather than the final production ensemble; its 1975 backbone is also not the selected 1980 Option-B production route.",
+      "evidence_source": "documentation/reports/calibration/HM_BASELINE_LEARNING_RUN_2026-09-15.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/calibration/hm_confirmation_wave2_designs_25_342": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CONFIRMATION_NOT_FINAL_ENSEMBLE",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The confirmation is bound to the historical 1975 focused-continuation source; the current production route instead requires a newly calibrated 1980 Option-B model.",
+      "evidence_source": "outputs/calibration/hm_confirmation_wave2_designs_25_342/manifest.json;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/calibration/hm_focused_confirmation_600_621_20260917": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CONFIRMATION_NOT_FINAL_ENSEMBLE",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The complete confirmation is tied by source-manifest hash to the historical focused 1975 lineage; it cannot establish the newly selected 1980 Option-B production calibration.",
+      "evidence_source": "outputs/calibration/hm_focused_confirmation_600_621_20260917/manifest.json;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/calibration/hm_focused_continuation_20260915": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_LEARNING_WAVE_NOT_FINAL_ENSEMBLE",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This continuation belongs to the historical 1975 learning route; the production-backbone decision now requires a fresh calibration of the 1980 Option-B candidate.",
+      "evidence_source": "documentation/reports/calibration/HM_FOCUSED_CONTINUATION_RUN_2026-09-15.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/calibration/hm_joint_fit_conflict_20260917": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_WITHDRAWN_ANALYSIS",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The tracked joint-fit report explicitly withdraws the rev-0 recommendation after correcting three analysis errors and directs readers to the revised analysis.",
+      "evidence_source": "documentation/reports/calibration/HM_JOINT_FIT_CONFLICT_2026-09-17.md",
+      "superseded_by": "outputs/calibration/hm_joint_fit_conflict_20260917_rev1"
+    },
+    "outputs/calibration/hm_joint_fit_conflict_20260917_rev1": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_REVISED_DIAGNOSTIC_NOT_PRODUCTION_CALIBRATION",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This is the corrected rev-1 diagnostic retained by the direction memo, but it analyses the superseded 1975 focused lineage rather than the selected 1980 production route.",
+      "evidence_source": "documentation/reports/calibration/HM_JOINT_FIT_CONFLICT_2026-09-17.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/calibration/hm_msm_aids_diagnostic_20260916": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_DIAGNOSTIC_NOT_PRODUCTION_CALIBRATION",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The run report defines this as a focused diagnostic feeding later analyses; its 1975 lineage is not the newly selected 1980 Option-B production calibration.",
+      "evidence_source": "documentation/reports/calibration/HM_MSM_AIDS_DIAGNOSTIC_RUN_2026-09-16.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/calibration/hm_msm_aids_diagnostic_20260916_analysis": {
+      "classification": "DERIVED_PRESENTATION",
+      "scientific_status": "DERIVED_ANALYSIS_NOT_STANDALONE_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The directory contains the analysis products consumed by later warm-start and joint-fit tools and is explicitly derived from the named diagnostic run.",
+      "evidence_source": "tools/analyze_msm_aids_diagnostic_20260916.py;tools/build_focused_warm_start_20260916.py",
+      "canonical_path": "outputs/calibration/hm_msm_aids_diagnostic_20260916"
+    },
+    "outputs/calibration/hm_prototype_20260910": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PROTOTYPE_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play retains this only as the history-matching prototype evidence and explicitly declares all pre-2026-09-14 results stale after production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/calibration/hm_target_construct_variance_audit_20260915": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_TARGET_CONSTRUCT_AUDIT_NOT_PRODUCTION_CALIBRATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The artifact is a bounded audit of target constructs and variance budgets, not a production calibration or current fitted model; retain its report and tables as diagnostic history.",
+      "evidence_source": "outputs/calibration/hm_target_construct_variance_audit_20260915/AUDIT_REPORT.md;tools/audit_hm_target_construct_variance.py"
+    },
+    "outputs/calibration/post2019_diagnosis_disruption_audit_20260921_retry": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_REJECTED_SENSITIVITY_NOT_BASELINE",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The complete strict audit reports every tested disruption profile as FAIL and explicitly prohibits promotion to calibration or HTA baseline; it also derives from the stale forecast-search lineage.",
+      "evidence_source": "outputs/calibration/post2019_diagnosis_disruption_audit_20260921_retry/POST2019_DIAGNOSIS_DISRUPTION_AUDIT.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/HISTORICAL_ARTIFACT_DISPOSITION.md"
+    },
+    "outputs/calibration/snpe_v13_23_abcseeded": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_ZERO_POSTERIOR_SAMPLES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "Its round summary records zero accepted samples in every round, and the production-method specification removes SNPE after repeated zero-sample attempts.",
+      "evidence_source": "outputs/calibration/snpe_v13_23_abcseeded/snpe_round_summary_20260822_214307.csv;HISTORY_MATCHING_BUILD_SPEC.md"
+    },
+    "outputs/calibration/snpe_v13_23_postfix": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_ZERO_POSTERIOR_SAMPLES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "Its round summary records zero accepted samples in every round, and the production-method specification removes SNPE after repeated zero-sample attempts.",
+      "evidence_source": "outputs/calibration/snpe_v13_23_postfix/snpe_round_summary_20260822_184855.csv;HISTORY_MATCHING_BUILD_SPEC.md"
+    },
+    "outputs/calibration/stage_structured_diagnosis_audit_20260922": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_MECHANISM_AUDIT_NOT_PRODUCTION_CALIBRATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The complete mechanism audit is explicitly an input to the later focused calibration and triangulation design; it is not itself a fitted production model.",
+      "evidence_source": "TASK_BRIEF_STAGE_STRUCTURED_DIAGNOSIS_AUDIT_2026-09-22.md;TASK_BRIEF_STAGE_STRUCTURED_DIAGNOSIS_FOCUSED_CALIBRATION_2026-09-22.md;outputs/calibration/stage_structured_diagnosis_audit_20260922/manifest.json"
+    },
+    "outputs/calibration/stage_structured_diagnosis_audit_20260922_smoke": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "ENGINEERING_SMOKE_ONLY_NOT_SCIENTIFIC_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The runner names this as its smoke output and the directory contains only smoke-result material, not the completed 257-file scientific audit.",
+      "evidence_source": "run_stage_structured_diagnosis_audit.py;outputs/calibration/stage_structured_diagnosis_audit_20260922_smoke/smoke.json"
+    },
+    "outputs/calibration/stage_structured_diagnosis_focused_calibration_20260922": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "HISTORICAL_RUN_SUPERSEDED_FOR_NEW_RUNS",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The tracked user-run guide explicitly says these completed focused-calibration commands are superseded for new runs and directs users to the diagnosis-triangulation orchestration.",
+      "evidence_source": "USER_RUN_COMMANDS.md",
+      "superseded_by": "outputs/calibration/diagnosis_triangulation_orchestration_20260922"
+    },
+    "outputs/calibration/target_reachability_audit_20260906": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PRECHANGE_DIAGNOSTIC",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play's blanket code-lineage warning makes this pre-2026-09-14 reachability audit historical only; it remains retained as context for the later calibration-method decision.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md;HISTORY_MATCHING_BUILD_SPEC.md"
+    },
+    "outputs/hta_results/a10_lena_ae_sensitivity_20260910_024659": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The later 025004 directory is the same A-10 analysis family and is the one retained by the tracked handoff/checklist; the earlier attempt also predates the code changes that made its results stale.",
+      "evidence_source": "PHASE2_AGENT_HANDOFF_2026-09-09.md;PHASE2_DEVELOPMENT_CHECKLIST.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a10_lena_ae_sensitivity_20260910_025004"
+    },
+    "outputs/hta_results/a10_lena_ae_sensitivity_20260910_025004": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This is the A-10 attempt cited by the tracked handoff/checklist, but the state-of-play explicitly retires every pre-2026-09-14 numerical result after subsequent production changes.",
+      "evidence_source": "PHASE2_AGENT_HANDOFF_2026-09-09.md;PHASE2_DEVELOPMENT_CHECKLIST.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a11_causal_flow_20260910_044500": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This retained A-11 diagnostic predates the 2026-09-14 production changes; the state-of-play explicitly prohibits current citation of such results without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a11_factorial_20260910_043000": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The factorial output predates the 2026-09-14 production changes; the state-of-play explicitly retires all such numerical results from current citation without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a11_task0_thesis_config_current_code_20260910_041947": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "Despite its original name, this output predates the 2026-09-14 production changes and the state-of-play explicitly makes every such result stale.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a12_deterministic_allocation_audit_20260910_080000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 103000 directory as the A-12 evidence location; this earlier same-family attempt is retained only as superseded pre-change history.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000"
+    },
+    "outputs/hta_results/a12_deterministic_allocation_audit_20260910_083000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 103000 directory as the A-12 evidence location; this earlier same-family attempt is retained only as superseded pre-change history.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000"
+    },
+    "outputs/hta_results/a12_deterministic_allocation_audit_20260910_090000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 103000 directory as the A-12 evidence location; this earlier same-family attempt is retained only as superseded pre-change history.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000"
+    },
+    "outputs/hta_results/a12_deterministic_allocation_audit_20260910_093000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 103000 directory as the A-12 evidence location; this earlier same-family attempt is retained only as superseded pre-change history.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000"
+    },
+    "outputs/hta_results/a12_deterministic_allocation_audit_20260910_100000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 103000 directory as the A-12 evidence location; this earlier same-family attempt is retained only as superseded pre-change history.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000"
+    },
+    "outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play explicitly names this as the A-12 evidence location, while also declaring every pre-2026-09-14 result stale after later production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a13_hiv_mortality_trace_20260910_223000": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 230000 directory as the A-13 evidence location and explains that the original conclusion is no longer current; this earlier same-family attempt is superseded.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a13_hiv_mortality_trace_20260910_230000"
+    },
+    "outputs/hta_results/a13_hiv_mortality_trace_20260910_224500": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 230000 directory as the A-13 evidence location and explains that the original conclusion is no longer current; this earlier same-family attempt is superseded.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a13_hiv_mortality_trace_20260910_230000"
+    },
+    "outputs/hta_results/a13_hiv_mortality_trace_20260910_230000": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_REFUTED_PRECHANGE_DIAGNOSTIC",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained A-13 evidence but says its own conclusion is dead under later code and that all pre-2026-09-14 results are stale.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a14_allocation_granularity_sweep_20260911_011500": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This allocation diagnostic predates the 2026-09-14 production changes; the state-of-play explicitly prohibits current citation of such results without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a15_a9_allocation_hypothesis_20260911_034351": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play retains this A-15 evidence while documenting that its reference artifacts are stale and all pre-2026-09-14 results require rerunning before current citation.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a16_stochastic_headline_20260911_030744": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_HEADLINE_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained A-16 attempt but records that later code breaks its corroboration and makes the pre-2026-09-14 headline stale.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a16_stochastic_headline_20260914_100232_post_c1": {
+      "classification": "FAILED_OR_INCOMPLETE",
+      "scientific_status": "DO_NOT_CITE_ABORTED_BEFORE_REPORT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The later A-30 diagnostic proves this A-16 run aborted in its reproduction gate after writing only the per-seed CSV and never produced its required summaries or report.",
+      "evidence_source": "outputs/hta_results/a30_dqaly_decomposition_20260914_190815/REPORT.md"
+    },
+    "outputs/hta_results/a1_qaly_variance_decomposition_20260910_011536": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The later 012537 directory is the same A-1 analysis family and is the one cited by the tracked handoff/checklist; this earlier attempt is superseded and stale.",
+      "evidence_source": "PHASE2_AGENT_HANDOFF_2026-09-09.md;PHASE2_DEVELOPMENT_CHECKLIST.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a1_qaly_variance_decomposition_20260910_012537"
+    },
+    "outputs/hta_results/a1_qaly_variance_decomposition_20260910_012537": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This is the A-1 output cited by the tracked handoff/checklist, but the state-of-play explicitly retires all pre-2026-09-14 numerical results after later production changes.",
+      "evidence_source": "PHASE2_AGENT_HANDOFF_2026-09-09.md;PHASE2_DEVELOPMENT_CHECKLIST.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a24_entry_pathway_crn_drift_20260914_010031": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_DIAGNOSTIC_EVIDENCE_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The state-of-play retains this as a key diagnostic finding, while subsequent A-28 and later production changes mean it cannot by itself certify current code or a production calibration.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md;outputs/hta_results/a24_entry_pathway_crn_drift_20260914_010031/A24_ENTRY_PATHWAY_CRN_DRIFT.md"
+    },
+    "outputs/hta_results/a28_crn_coupling_fix_20260914_032810": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CODE_CHANGE_EVIDENCE_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The artifact records the A-28 implementation and contemporaneous checks; the later residual report says that run no longer reproduces from the then-working tree, so it is retained as change history rather than current validation.",
+      "evidence_source": "outputs/hta_results/a28_variance_residual_20260914_120000/A28_VARIANCE_RESIDUAL_DIAGNOSIS.md"
+    },
+    "outputs/hta_results/a28_variance_residual_20260914_120000": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_DIAGNOSTIC_EVIDENCE_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "Its report explicitly labels the artifact diagnosis/addendum only, records a completed reproduction run, and refuses any calibration, rebaseline, or production change.",
+      "evidence_source": "outputs/hta_results/a28_variance_residual_20260914_120000/A28_VARIANCE_RESIDUAL_DIAGNOSIS.md"
+    },
+    "outputs/hta_results/a29_transmission_block_grouping_20260914_144732": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CODE_CHANGE_EVIDENCE_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The report preserves the contemporaneous six-level diagnostic and implementation decision under its recorded dirty code state; it does not validate the later production calibration route.",
+      "evidence_source": "outputs/hta_results/a29_transmission_block_grouping_20260914_144732/REPORT.md;outputs/hta_results/a29_transmission_block_grouping_20260914_144732/manifest.json"
+    },
+    "outputs/hta_results/a2_estimator_decomposition_20260913_235517": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained A-2 evidence while explicitly declaring all pre-2026-09-14 numerical results stale after subsequent production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a30_dqaly_decomposition_20260914_190815": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_DIAGNOSTIC_REFRESH_NOT_PRODUCTION_RESULT",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The report explicitly labels this a diagnostic refresh/addendum, states that no production input was changed and no calibration was run, and preserves its exact recorded-code decomposition evidence.",
+      "evidence_source": "outputs/hta_results/a30_dqaly_decomposition_20260914_190815/REPORT.md"
+    },
+    "outputs/hta_results/a4_common_random_numbers_20260910_163122": {
+      "classification": "SUPERSEDED",
+      "scientific_status": "DO_NOT_CITE_SUPERSEDED_STALE_RUN",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names the later 170048 directory as the A-4 evidence location; this earlier same-family attempt is superseded and both predate the production changes that made the numerical results stale.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md",
+      "superseded_by": "outputs/hta_results/a4_common_random_numbers_20260910_170048"
+    },
+    "outputs/hta_results/a4_common_random_numbers_20260910_170048": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as the retained A-4 evidence but explicitly retires all pre-2026-09-14 numerical results from current use without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a7_decision_comparison_decomposition_20260910_141500": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This A-7 decomposition predates the 2026-09-14 production changes; the state-of-play explicitly prohibits current citation of such results without rerunning.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/a8_qaly_per_infection_20260914_005530": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_DIAGNOSTIC_EVIDENCE_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The state-of-play retains this as the A-8 diagnostic evidence, but later production changes and the new calibration route mean its recorded-code result is not current production validation.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md;outputs/hta_results/a8_qaly_per_infection_20260914_005530/A8_QALY_PER_INFECTION.md"
+    },
+    "outputs/hta_results/a9_switch_grid_post_code_changes_20260914_114949": {
+      "classification": "PREPARED_NOT_RUN",
+      "scientific_status": "PRE_RUN_PROVENANCE_ONLY_NO_SCIENTIFIC_RESULTS",
+      "current_code_compatibility": "NOT_APPLICABLE",
+      "classification_reason": "The directory contains only the pre-run git diff and status snapshot, with no run manifest, output table, or report; retain it as launch/provenance material rather than scientific evidence.",
+      "evidence_source": "outputs/hta_results/a9_switch_grid_post_code_changes_20260914_114949/provenance/git_diff_before.patch;outputs/hta_results/a9_switch_grid_post_code_changes_20260914_114949/provenance/git_status_short_before.txt"
+    },
+    "outputs/hta_results/a9_switch_grid_process_decomposition_20260913_231232": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_INCONSISTENT_LOCALISATION_DIAGNOSTIC",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "Its manifest declares complete_inconsistent_localisation and the state-of-play records A-9 as localised but unrepaired; it remains a historical finding, not a current scenario result.",
+      "evidence_source": "outputs/hta_results/a9_switch_grid_process_decomposition_20260913_231232/manifest.json;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/c1_exogenous_non_msm_20260914_061217": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CODE_CHANGE_EVIDENCE_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This directory preserves the contemporaneous C-1 implementation, tests and stochastic confirmation; later production-backbone and calibration decisions prevent it from serving as current fitted-model evidence.",
+      "evidence_source": "outputs/hta_results/c1_exogenous_non_msm_20260914_061217/C1_EXOGENOUS_NON_MSM.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md"
+    },
+    "outputs/hta_results/c4prep_silent_default_audit_20260914_042723": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_CODE_AUDIT_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The artifact records the C-4/A-25 silent-default audit and contemporaneous code changes; it is retained as provenance and diagnostic history, not as a current calibrated result.",
+      "evidence_source": "outputs/hta_results/c4prep_silent_default_audit_20260914_042723/C4_RECOMMENDATION.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/d14_synthesis_memo_20260911_040934": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ONLY_STALE_AFTER_20260914_CODE_CHANGES",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The state-of-play names this as retained D-14 evidence but explicitly retires every pre-2026-09-14 numerical result after later production changes.",
+      "evidence_source": "documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/non_msm_decision_relevance_probe_20260906": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PRECHANGE_DIAGNOSTIC",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "This early decision-relevance probe predates the 2026-09-14 production changes and the later exogenous non-MSM implementation; retain it only as historical diagnostic context.",
+      "evidence_source": "PHASE2_STRATEGY_BRIEF_2026-09-06.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/probe_diagnostics_20260906": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PRECHANGE_DIAGNOSTIC",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "These early probe diagnostics predate the 2026-09-14 production changes and are retained only as context for the subsequent variance/history-matching work.",
+      "evidence_source": "PHASE2_STRATEGY_BRIEF_2026-09-06.md;documentation/reports/project/STATE_OF_PLAY_2026-09-11.md"
+    },
+    "outputs/hta_results/ridge_identifiability_20260914_134151": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_STRUCTURAL_DIAGNOSTIC_NOT_CURRENT_VALIDATION",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The report explicitly describes a structural diagnostic with no calibration and no modification of tracked code or existing artifacts; retain it as recorded-code evidence, not current production validation.",
+      "evidence_source": "outputs/hta_results/ridge_identifiability_20260914_134151/REPORT.md"
     }
   }
 }

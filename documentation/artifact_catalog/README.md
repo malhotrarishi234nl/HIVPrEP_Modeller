@@ -15,19 +15,78 @@ directories are named by at least one tracked repository file. Loose files
 directly inside the three roots are listed separately in the JSON summary so
 they remain visible even though the row-level scope is directories.
 
-Of the 132 directories, 34 have a terminal evidence-backed disposition and 98
+Of the 132 directories, 123 have a terminal evidence-backed disposition and 9
 remain `REVIEW_REQUIRED`. The terminal counts are:
 
-- 12 `HISTORICAL_RETAINED`
-- 11 `SUPERSEDED`
-- 8 `PREPARED_NOT_RUN`
-- 3 `FAILED_OR_INCOMPLETE`
+- 78 `HISTORICAL_RETAINED`
+- 25 `SUPERSEDED`
+- 9 `PREPARED_NOT_RUN`
+- 7 `FAILED_OR_INCOMPLETE`
+- 4 `DERIVED_PRESENTATION`
 
-No directory is currently classified `CURRENT_VALIDATED`,
-`DERIVED_PRESENTATION`, or `DISPOSABLE_DUPLICATE`. That is deliberate: the
-available evidence did not establish those stronger claims within this scope.
-Known conference backup duplicates live under `outputs/backups`, outside the
-three roots cataloged here, and are not silently imported into this catalog.
+No directory is currently classified `CURRENT_VALIDATED` or
+`DISPOSABLE_DUPLICATE`. That is deliberate: the available evidence did not
+establish those stronger claims within this scope. Known conference backup
+duplicates live under `outputs/backups`, outside the three roots cataloged
+here, and are not silently imported into this catalog.
+
+## Terminal-classification pass
+
+The 2026-10-15 terminal pass reviewed all 98 formerly open rows against their
+manifests, status/report files, manifest hashes, tracked references, and named
+successors. It applied four conservative rules:
+
+1. The project state-of-play explicitly says every result computed before
+   2026-09-14 is stale after the A-28/A-25/C-4/C-1 changes. Those artifacts are
+   retained as historical evidence, or marked superseded only when the same
+   report names a later evidence directory.
+2. A `COMPLETE`, `VALID`, or `REPORTED_COMPLETE` manifest is not scientific
+   acceptance. Completed diagnostic/search artifacts are historical when their
+   own reports say they are not a production baseline, when the production
+   route has changed, or when an independently verified search found no primary
+   pass. No such row was promoted to `CURRENT_VALIDATED`.
+3. `RUNNING`, aborted, zero-sample, and explicitly incomplete artifacts are
+   `FAILED_OR_INCOMPLETE`. Passed smoke, writer, and synthetic checks are
+   retained as engineering history and explicitly excluded from scientific
+   claims.
+4. Read-only recomputations with a hash-identified scientific parent are
+   `DERIVED_PRESENTATION`. This label preserves them with the named parent and
+   does not make the derived summary independent scientific evidence.
+
+No files under `outputs/` were moved, deleted, rewritten, or resealed during
+this pass.
+
+## Nine owner decisions still required
+
+The following rows stay `REVIEW_REQUIRED` because they may still feed a live
+thesis, conference, target-contract, or parameter claim. Their manifests and
+citations establish presence, not the owner decision or current scientific
+acceptance needed to retire or promote them.
+
+1. Current diagnosis/conference chain (three rows):
+   `outputs/calibration/diagnosis_triangulation_orchestration_20260922`,
+   `outputs/calibration/stage_diagnosis_candidate_baseline_review_20260922`, and
+   `outputs/calibration/followup_knot_and_late_dx_20260929`. Decide which, if
+   any, remains the canonical live claim source. A live source needs an explicit
+   current-code/current-config validation route; a retired source can be marked
+   historical or superseded by the named canonical successor.
+2. Active evidence/assumption inputs (five rows):
+   `outputs/calibration/rivm_aids_vintage_audit_20260916`,
+   `outputs/hta_results/ae_adherence_corridor_20260914_225729`,
+   `outputs/hta_results/aids_at_diagnosis_20260914_183434`,
+   `outputs/hta_results/b1_b2_calibration_space_20260914`, and
+   `outputs/hta_results/rivm_prep_targets_20260914_134653`. For each, record
+   whether its evidence/assumption is adopted in the current target or economic
+   contract and has received the required scientific review; otherwise retire
+   it as historical. Citation by a config or report is not approval.
+3. Variance input (one row):
+   `outputs/hta_results/a5_ensemble_variance_20260914_150556`. Decide whether
+   its recorded variance estimate remains an approved input under the selected
+   1980 Option-B recalibration, must be rerun for that backbone, or is retired
+   as historical. Until then it must not be relabeled current or removed.
+
+These nine decisions do not authorize destructive cleanup. Every open row keeps
+the `preserve_in_place;no_cleanup_until_terminal_review` retention rule.
 
 ## Classification policy
 
