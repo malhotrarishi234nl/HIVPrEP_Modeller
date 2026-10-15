@@ -37,6 +37,11 @@ Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
   separate readiness gates and the unresolved robust-NROY decisions.
 - **Historical results:** preserved for their recorded code snapshots. They are
   not automatically current-code evidence.
+- **Repository housekeeping:** the 2026-10-16 cleanup is complete at commit
+  `8ff275a77ea33da2361f8159726e88ef1d9f5122`. The canonical source checkout is
+  about 35 MB with 584 tracked files and a 71-entry config registry. Bulk
+  scientific artifacts are preserved in the sibling artifact vault rather
+  than retained as extracted working-tree output.
 
 Start with:
 
@@ -50,8 +55,12 @@ Start with:
 8. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
 9. [scientific artifact storage and restoration](documentation/guides/ARTIFACT_STORAGE_20261016.md)
 10. [configuration guide](configs/README.md)
+11. local workspace directory map and storage rules at sibling path
+    `../README.md` (when using the full local workspace)
 
-Older root-level task briefs and runbooks are retained for provenance. A dated
+Historical task briefs and runbooks are retained under `documentation/archive/`
+for provenance. A small number remain at the repository root only because
+tracked code, tests, or scientific records cite their exact paths. A dated
 document is not current authority unless the documentation index says so.
 
 ## Intended collaborator use
@@ -119,7 +128,7 @@ tools/            audits and evidence builders
 run_v3.py         simulator implementation
 run_robust_nroy_freeze.py
                   fail-closed robust-NROY preparation/execution interface
-outputs/          ignored local scientific artifacts; not present in a clone
+outputs/          ignored active run space; retained runs move to sibling vault
 ```
 
 Python modules remain at the root because their paths participate in imports
@@ -259,10 +268,18 @@ local-or-Slurm execution profile matching the live environment.
 
 ## Results and artifacts
 
-`outputs/` is ignored and may contain historical, incomplete, superseded, or
-current artifacts. Path presence is not evidence status. Use the artifact
-catalog and each artifact's manifest/checksums. Never reseal an old artifact
-against current code.
+`outputs/` is ignored active run space, not permanent storage. Path presence is
+not evidence status. Completed runs must be classified, and valuable runs must
+be archived and verified in `../hiv-prep-model-artifacts/` before their
+extracted working copies are removed. Use the vault's `ARTIFACT_INDEX.csv`,
+each artifact's manifest, and checksums. Never reseal an old artifact against
+current code.
+
+The workspace-level directory map at `../README.md` says where source, active
+outputs, retained artifacts, raw data, deliverables, and thesis prose belong.
+The detailed [artifact-storage guide](documentation/guides/ARTIFACT_STORAGE_20261016.md)
+defines the post-run archive and cleanup procedure. Do not create dated source
+copies as a substitute for either Git history or artifact preservation.
 
 The verified complete-history code bundle is
 `../hiv-prep-model-deliverables-20261015/hiv-prep-model-code-68112bb.bundle`

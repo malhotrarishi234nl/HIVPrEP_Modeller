@@ -31,6 +31,8 @@
   `../CONFIG_REGISTRY.csv` and `guides/CONFIGURATION_REGISTRY.md`
 - Current scientific artifact-vault location, verification and restoration:
   `guides/ARTIFACT_STORAGE_20261016.md`
+- Workspace-level directory authority, retention lifecycle, and anti-bloat
+  rules: `../../README.md`
 - External-input contract: `../data/README.md`
 
 ## Historical guidance
