@@ -4,8 +4,10 @@
   "production_eligible": false,
   "deterministic": true,
   "generated_utc": null,
-  "command": "python tools/audit_robust_nroy_seeds.py --scope <approved-scope.json> [--candidate-blocks <candidate-blocks.json>]",
+  "command": "python tools/audit_robust_nroy_seeds.py --scope <approved-scope.json> --candidate-blocks <candidate-blocks.json> --plan <signed-plan.json> --generated-utc <ISO-8601-UTC> --require-pass",
   "passed": null,
+  "plan_path": null,
+  "plan_sha256": null,
   "scope_manifest": {
     "path": null,
     "sha256": null,

@@ -107,11 +107,13 @@ def test_complete_approved_scope_and_disjoint_candidates_can_prove_gate(
     second = audit.build_audit(tmp_path, scope_path, candidate_path)
 
     assert first == second
-    assert first["passed"] is True
-    assert first["status"] == "PASS"
+    assert first["passed"] is False
+    assert first["status"] == "INCOMPLETE"
+    assert first["production_eligible"] is False
     assert first["disjointness"]["status"] == "PROVEN"
     assert first["overlaps"] == []
     assert first["generated_utc"] is None
+    assert "signed production plan was not supplied" in first["unresolved"]
 
 
 def test_overlap_is_computed_but_never_proven(tmp_path, monkeypatch):

@@ -2020,7 +2020,11 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
     original = json.loads(evidence_path.read_text())
     mutations = {
         "generic_pass_only": {"passed": True},
+        "nonfinal_status": {**original, "status": "INCOMPLETE"},
+        "not_production_eligible": {**original, "production_eligible": False},
         "wrong_plan": {**original, "plan_sha256": "0" * 64},
+        "wrong_runtime": {**original, "scientific_runtime": {}},
+        "wrong_base_config": {**original, "base_config_sha256": "0" * 64},
         "wrong_seeds": {**original, "confirmation_seeds": list(plan.seeds.discovery)},
         "wrong_vector": {
             **original,
@@ -2033,6 +2037,30 @@ def test_m1_anchor_confirmation_evidence_is_typed_and_reconciled(tmp_path):
             **original,
             "candidates": [
                 {**row, "n_replicates": plan.k_confirmation - 1}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "too_few_per_seed_hashes": {
+            **original,
+            "candidates": [
+                {**row, "per_seed_joint_vector_hashes": row["per_seed_joint_vector_hashes"][:-1]}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "wrong_per_seed_joint_vector": {
+            **original,
+            "candidates": [
+                {**row, "per_seed_joint_vector_hashes": ["f" * 64] * plan.k_confirmation}
+                if index == 0 else row
+                for index, row in enumerate(original["candidates"])
+            ],
+        },
+        "missing_seed_result_artifact_hash": {
+            **original,
+            "candidates": [
+                {**row, "seed_result_artifact_sha256": None}
                 if index == 0 else row
                 for index, row in enumerate(original["candidates"])
             ],

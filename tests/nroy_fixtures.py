@@ -26,6 +26,7 @@ import coupled_calibration_search as ccs  # noqa: E402
 import nroy_contract as nc  # noqa: E402
 import nroy_design as nd  # noqa: E402
 import nroy_execution as ne  # noqa: E402
+import nroy_identity_gate as nig  # noqa: E402
 
 PRODUCTION_PLAN = ROOT / "configs" / "robust_nroy_freeze_production.json"
 M0_CALIB_SPACE = ROOT / "configs" / "calib_space_v13_25_unordered_orientation_20260921.json"
@@ -265,16 +266,24 @@ def write_m1_anchor_evidence(
     plan = nc.FrozenPlan.load(plan_path, root=ROOT)
     model = runner._model_spaces(plan)[nc.MODEL_M1]
     anchors = runner._load_anchors(anchors_path, model)
+    base_config = Path(str(plan.require("models.base_config")))
+    if not base_config.is_absolute():
+        base_config = ROOT / base_config
     payload = {
         "schema": runner.M1_ANCHOR_EVIDENCE_SCHEMA,
+        "status": "FINAL",
+        "production_eligible": True,
         "passed": True,
         "generated_utc": "2026-10-14T00:00:00Z",
         "command": "verification-suite fabricated M1 confirmation fixture",
         "model": nc.MODEL_M1,
         "plan_sha256": plan.plan_sha256,
+        "anchors_path": str(anchors_path),
         "anchors_sha256": ccs.sha256_file(anchors_path),
         "scientific_code_sha256": runner._code_sha256(),
         "scientific_config_sha256": runner._scientific_config_sha256(plan, model),
+        "scientific_runtime": nig.scientific_runtime_fingerprint(),
+        "base_config_sha256": ccs.sha256_file(base_config),
         "target_register_sha256": plan.targets.register_sha256,
         "target_order": list(plan.targets.frozen_order),
         "p_parameter": str(plan.require("p_parameter.name")),
@@ -287,6 +296,14 @@ def write_m1_anchor_evidence(
                 "n_replicates": plan.k_confirmation,
                 "nominal_i_max": 0.0,
                 "nominal_pass": True,
+                "per_seed_joint_vector_hashes": [
+                    anchor.vector_hash for _seed in plan.seeds.confirmation
+                ],
+                "seed_result_artifact_sha256": ccs.sha256_json({
+                    "candidate_id": anchor.anchor_id,
+                    "confirmation_seeds": list(plan.seeds.confirmation),
+                    "fixture": True,
+                }),
             }
             for anchor in anchors
         ],

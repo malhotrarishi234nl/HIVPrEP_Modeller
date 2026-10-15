@@ -59,7 +59,11 @@ Verify that the committed artifact still matches the mounted evidence:
 ```
 
 After the owner has approved a complete scope and separately supplied candidate
-blocks, add `--candidate-blocks <candidate-seed-blocks.json> --require-pass`.
+blocks, add
+`--candidate-blocks <candidate-seed-blocks.json> --plan <signed-plan.json>
+--generated-utc <ISO-8601-UTC> --require-pass`. A production-eligible `FINAL`
+is generated only when those blocks exactly match the fully signed plan and the
+complete scan has no unresolved, ambiguous, unparseable, or overlap findings.
 The candidate document must have schema
 `robust_nroy_candidate_seed_blocks/1.0.0` and explicit integer arrays
 `discovery`, `confirmation`, plus one integer `proposal_rng`. The scanner never

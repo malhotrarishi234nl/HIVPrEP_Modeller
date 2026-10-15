@@ -28,9 +28,11 @@ import nroy_contract as nc  # noqa: E402
 import nroy_design as nd  # noqa: E402
 import nroy_execution as ne  # noqa: E402
 import nroy_graph as ng  # noqa: E402
+import nroy_identity_gate as nig  # noqa: E402
 import nroy_report as nrp  # noqa: E402
 import run_robust_nroy_freeze as runner  # noqa: E402
 from coupled_calibration_search import ContractError  # noqa: E402
+from tools import audit_robust_nroy_seeds as seed_audit_tool  # noqa: E402
 
 #: The only bridge pass rule the implementation provides; the plan signs it and
 #: nroy_graph.classify_edge checks it rather than assuming it.
@@ -636,6 +638,310 @@ def test_validate_subcommand_fails_closed_on_the_shipped_plan(capsys):
     assert "No production simulation may start" in out
     assert "separate signature gate" in out
     assert "sign_off.signed_by" in out
+
+
+def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dict[str, Path]:
+    base = Path(str(plan.require("models.base_config")))
+    if not base.is_absolute():
+        base = ROOT / base
+    m0_space = Path(str(plan.require("models.m0.calib_space")))
+    if not m0_space.is_absolute():
+        m0_space = ROOT / m0_space
+    target_register = Path(plan.targets.register_path)
+    if not target_register.is_absolute():
+        target_register = ROOT / target_register
+    runtime = nig.scientific_runtime_fingerprint()
+    paths = {
+        key: Path(value)
+        for key, value in plan.get("production_prerequisites").items()
+    }
+
+    registry_rows = {
+        "plan path": plan.plan_path,
+        "plan SHA-256": plan.plan_sha256,
+        "base-config path": str(base),
+        "base-config SHA-256": ccs.sha256_file(base),
+        "M0 calibration-space path": str(m0_space),
+        "M0 calibration-space SHA-256": ccs.sha256_file(m0_space),
+        "target-register path": str(target_register),
+        "target-register SHA-256": plan.targets.register_sha256,
+        "target order": json.dumps(list(plan.targets.frozen_order), separators=(",", ":")),
+        "scientific-code SHA-256": runner._code_sha256(),
+        "scientific runtime": json.dumps(runtime, sort_keys=True, separators=(",", ":")),
+        "discovery seeds": json.dumps(list(plan.seeds.discovery)),
+        "confirmation seeds": json.dumps(list(plan.seeds.confirmation)),
+        "generated UTC": "2026-10-15T00:00:00Z",
+        "producing command": "verification fixture",
+        "reviewer": "verification reviewer",
+        "review date": "2026-10-15",
+    }
+    paths["config_registry"].write_text(
+        "# Robust-NROY production configuration registry\n\nStatus: FINAL\n\n"
+        "| Binding | Value |\n|---|---|\n"
+        + "".join(f"| {key} | `{value}` |\n" for key, value in registry_rows.items())
+    )
+
+    raw_measurement = tmp_path / "pilot_raw_measurement.json"
+    raw_measurement.write_text(json.dumps({"trajectory_seconds": [1.0, 1.0]}))
+    machine = {"profile": "verification-machine", "workers": 1}
+    pilot = {
+        "schema": "robust_nroy_measured_pilot/1.0.0",
+        "status": "FINAL",
+        "production_eligible": True,
+        "generated_utc": "2026-10-15T00:00:00Z",
+        "command": "verification pilot fixture",
+        "passed": True,
+        "plan_sha256": plan.plan_sha256,
+        "base_config_path": str(base),
+        "base_config_sha256": ccs.sha256_file(base),
+        "m0_calibration_space_sha256": ccs.sha256_file(m0_space),
+        "target_register_sha256": plan.targets.register_sha256,
+        "target_order": list(plan.targets.frozen_order),
+        "discovery_seeds": list(plan.seeds.discovery),
+        "scientific_code_sha256": runner._code_sha256(),
+        "scientific_runtime": runtime,
+        "machine_profile": machine,
+        "scheduler_request": {"workers": 1, "wall_seconds": 60},
+        "n_trajectories": 2,
+        "trajectory_ids": ["pilot-1", "pilot-2"],
+        "wall_seconds": 2.0,
+        "seconds_per_trajectory": 1.0,
+        "peak_memory_bytes": 1024,
+        "raw_measurement_path": str(raw_measurement),
+        "raw_measurement_sha256": ccs.sha256_file(raw_measurement),
+    }
+    paths["measured_pilot"].write_text(json.dumps(pilot))
+
+    pricing_source = tmp_path / "pricing_source.json"
+    pricing_source.write_text(json.dumps({"credit_per_trajectory": 0.25}))
+    priced = {
+        "schema": "robust_nroy_priced_budget/1.0.0",
+        "status": "FINAL",
+        "production_eligible": True,
+        "generated_utc": "2026-10-15T00:00:00Z",
+        "command": "verification pricing fixture",
+        "approved": True,
+        "approved_by": "verification approver",
+        "approved_utc": "2026-10-15T00:00:00Z",
+        "plan_sha256": plan.plan_sha256,
+        "measured_pilot_path": str(paths["measured_pilot"]),
+        "measured_pilot_sha256": ccs.sha256_file(paths["measured_pilot"]),
+        "machine_profile": machine,
+        "pricing_source": str(pricing_source),
+        "pricing_source_sha256": ccs.sha256_file(pricing_source),
+        "currency_or_credit_unit": "test-credit",
+        "unit_price": 0.25,
+        "max_attempts": int(plan.require("budget.max_attempts")),
+        "max_trajectories": int(plan.require("budget.max_trajectories")),
+        "wall_time_cap_seconds": float(plan.require("budget.wall_time_cap_seconds")),
+        "expected_cost": 10.0,
+        "worst_case_cost": 20.0,
+        "calculation": "measured throughput times signed caps",
+    }
+    paths["priced_budget"].write_text(json.dumps(priced))
+
+    scope = tmp_path / "seed_scope.json"
+    scope.write_text(json.dumps({
+        "schema": seed_audit_tool.SCOPE_SCHEMA,
+        "owner_scope": {
+            "status": "APPROVED",
+            "approved_by": "verification owner",
+            "approved_utc": "2026-10-15T00:00:00Z",
+            "scope_statement": "Every verification source is covered.",
+        },
+        "source_coverage": {"status": "COMPLETE", "exclusions_reviewed": True},
+    }))
+    empty_checks = {
+        key: [] for key in (
+            "discovery_vs_confirmation", "proposal_vs_discovery",
+            "proposal_vs_confirmation", "discovery_vs_prior",
+            "confirmation_vs_prior", "proposal_vs_prior",
+        )
+    }
+    seed_audit = {
+        "schema": "robust_nroy_seed_audit/1.0.0",
+        "status": "FINAL",
+        "production_eligible": True,
+        "deterministic": True,
+        "generated_utc": "2026-10-15T00:00:00Z",
+        "command": "verification seed-audit fixture",
+        "passed": True,
+        "plan_path": plan.plan_path,
+        "plan_sha256": plan.plan_sha256,
+        "scope_manifest": {
+            "path": str(scope),
+            "sha256": ccs.sha256_file(scope),
+            "owner_scope_status": "APPROVED",
+            "source_coverage_status": "COMPLETE",
+        },
+        "source_inventory": {
+            "counts_by_kind": {"test": 1},
+            "inventory_sha256": ccs.sha256_json({"inventory": "test"}),
+            "scanned_content_index_sha256": ccs.sha256_json({"content": "test"}),
+            "scanned_files": 1,
+            "excluded_output_files": 0,
+        },
+        "parsed_prior_seeds": [],
+        "parsed_prior_seed_count": 0,
+        "ambiguous_references": {"count": 0, "examples": [], "examples_truncated": 0},
+        "unparseable_references": {"count": 0, "examples": [], "examples_truncated": 0},
+        "candidate_blocks": {
+            "status": "SUPPLIED",
+            "discovery": list(plan.seeds.discovery),
+            "confirmation": list(plan.seeds.confirmation),
+            "proposal_rng": plan.seeds.proposal_rng,
+            "sha256": seed_audit_tool.canonical_sha256({
+                "schema": seed_audit_tool.CANDIDATE_SCHEMA,
+                "discovery": list(plan.seeds.discovery),
+                "confirmation": list(plan.seeds.confirmation),
+                "proposal_rng": plan.seeds.proposal_rng,
+            }),
+        },
+        "disjointness": {"status": "PROVEN", "checks": empty_checks, "reason": None},
+        "overlaps": [],
+        "unresolved": [],
+        "limitations": [],
+    }
+    seed_audit["artifact_sha256"] = seed_audit_tool.canonical_sha256(seed_audit)
+    paths["seed_disjointness_audit"].write_text(json.dumps(seed_audit))
+    return paths
+
+
+def test_production_readiness_reconciles_every_evidence_template(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    _write_final_production_evidence(tmp_path, plan)
+    evidence_problems = [
+        problem for problem in runner._production_readiness_problems(plan)
+        if not problem.startswith("the production M1 config route failed:")
+    ]
+    assert evidence_problems == []
+
+
+@pytest.mark.parametrize(
+    ("artifact", "mutation", "expected_problem"),
+    (
+        ("measured_pilot", lambda value: value.update(production_eligible=False),
+         "not production-eligible"),
+        ("measured_pilot", lambda value: value.pop("scientific_runtime"), "scientific runtime"),
+        ("measured_pilot", lambda value: value.update(target_order=[]), "target order"),
+        ("measured_pilot", lambda value: value.update(raw_measurement_sha256="0" * 64),
+         "raw-measurement hash"),
+        ("priced_budget", lambda value: value.update(approved_by=""), "approved_by"),
+        ("priced_budget", lambda value: value.update(status="INCOMPLETE"), "status is not FINAL"),
+        ("priced_budget", lambda value: value.update(pricing_source_sha256="0" * 64),
+         "pricing-source hash"),
+        ("seed_disjointness_audit",
+         lambda value: value.update(production_eligible=False), "not production-eligible"),
+        ("seed_disjointness_audit",
+         lambda value: value["candidate_blocks"].update(confirmation=[]), "signed seed blocks"),
+        ("seed_disjointness_audit",
+         lambda value: value["scope_manifest"].update(source_coverage_status="UNRESOLVED"),
+         "source coverage"),
+    ),
+)
+def test_production_readiness_fails_on_load_bearing_evidence_drift(
+        tmp_path, artifact, mutation, expected_problem):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    payload = json.loads(paths[artifact].read_text())
+    mutation(payload)
+    paths[artifact].write_text(json.dumps(payload))
+    assert any(
+        expected_problem in problem for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_production_readiness_rejects_registry_field_omission(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    text = paths["config_registry"].read_text()
+    paths["config_registry"].write_text(
+        "\n".join(line for line in text.splitlines() if "scientific runtime" not in line)
+    )
+    assert any(
+        "scientific runtime" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_scanner_generated_final_seed_audit_is_accepted_without_hand_editing(
+        tmp_path, monkeypatch):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+
+    prior = tmp_path / "prior_seed_source.json"
+    prior.write_text(json.dumps({"seeds": {"simulation_seeds": [1, 2, 3]}}))
+    (tmp_path / "outputs").mkdir()
+    scope = tmp_path / "approved_seed_scope.json"
+    scope.write_text(json.dumps({
+        "schema": seed_audit_tool.SCOPE_SCHEMA,
+        "owner_scope": {
+            "status": "APPROVED",
+            "approved_by": "verification owner",
+            "approved_utc": "2026-10-15T00:00:00Z",
+            "scope_statement": "Every test seed source is covered.",
+        },
+        "source_coverage": {"status": "COMPLETE", "exclusions_reviewed": True},
+        "tracked_repository": {"pathspecs": ["prior_seed_source.json"]},
+        "outputs": {
+            "root": "outputs",
+            "json_basename_globs": ["*manifest*.json"],
+            "json_lines_basename_globs": ["*results*.jsonl"],
+            "text_extensions": [".md"],
+            "max_scanned_file_bytes": 1024 * 1024,
+        },
+        "evidence_example_limit": 20,
+        "parsed_seed_source_limit": 10,
+        "limitations": [],
+    }))
+    candidate_blocks = tmp_path / "candidate_seed_blocks.json"
+    candidate_blocks.write_text(json.dumps({
+        "schema": seed_audit_tool.CANDIDATE_SCHEMA,
+        "discovery": list(plan.seeds.discovery),
+        "confirmation": list(plan.seeds.confirmation),
+        "proposal_rng": plan.seeds.proposal_rng,
+    }))
+    monkeypatch.setattr(
+        seed_audit_tool, "git_tracked_paths", lambda _root, _pathspecs: [prior]
+    )
+    generated = seed_audit_tool.build_audit(
+        tmp_path,
+        scope,
+        candidate_blocks,
+        plan_path=plan_path,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert generated["status"] == "FINAL"
+    assert generated["production_eligible"] is True
+    assert generated["passed"] is True
+
+    mismatched_blocks = json.loads(candidate_blocks.read_text())
+    mismatched_blocks["confirmation"][0] += 1_000_000
+    mismatched_path = tmp_path / "mismatched_candidate_seed_blocks.json"
+    mismatched_path.write_text(json.dumps(mismatched_blocks))
+    mismatched = seed_audit_tool.build_audit(
+        tmp_path,
+        scope,
+        mismatched_path,
+        plan_path=plan_path,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert mismatched["status"] == "INCOMPLETE"
+    assert mismatched["production_eligible"] is False
+    assert mismatched["passed"] is False
+    assert any("do not exactly match" in item for item in mismatched["unresolved"])
+
+    paths["seed_disjointness_audit"].write_text(json.dumps(generated))
+
+    evidence_problems = [
+        problem for problem in runner._production_readiness_problems(plan)
+        if not problem.startswith("the production M1 config route failed:")
+    ]
+    assert evidence_problems == []
 
 
 def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evidence(

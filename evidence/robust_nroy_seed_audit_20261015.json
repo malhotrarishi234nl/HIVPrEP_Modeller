@@ -1,6 +1,6 @@
 {
   "ambiguous_references": {
-    "count": 75556,
+    "count": 75566,
     "examples": [
       {
         "detail": "textual seed reference requires owner interpretation: copied config, plus seed, M0/M1 selection, M1 `p`, and output directory via",
@@ -1253,9 +1253,9 @@
         "source": "documentation/reports/calibration/IMPLEMENTATION_NOTE_STAGE_STRUCTURED_DIAGNOSIS_FOCUSED_CALIBRATION_2026-09-22.md"
       }
     ],
-    "examples_truncated": 75306
+    "examples_truncated": 75316
   },
-  "artifact_sha256": "f2e9490b8917abbb07c980819cc73125fdf2f13967d201c7a6c87f6edeb170c3",
+  "artifact_sha256": "2afba763adeaaa43005e055ed212662bdf60277f928fe29c47ca269fc5e0ce75",
   "candidate_blocks": {
     "confirmation": [],
     "discovery": [],
@@ -17060,6 +17060,8 @@
     }
   ],
   "passed": false,
+  "plan_path": null,
+  "plan_sha256": null,
   "production_eligible": false,
   "schema": "robust_nroy_seed_audit/1.0.0",
   "scope_manifest": {
@@ -17079,12 +17081,12 @@
       "tracked:csv_text": 5,
       "tracked:excluded": 1,
       "tracked:json": 79,
-      "tracked:text": 65
+      "tracked:text": 66
     },
     "excluded_output_files": 71531,
-    "inventory_sha256": "417d0325ef4b7a60649e536b7b7dd6134b51a8ceeb3bfd5a9905a80ce5af82f1",
-    "scanned_content_index_sha256": "838a1e491e927c50e33907b2134d80ed46763d8f5cc6148f58fc24cf5f6f110f",
-    "scanned_files": 2899
+    "inventory_sha256": "dc3dfd286c445fc017d870a3de331187f33b9c5e7fcf677a98bdc3565fd5c4a6",
+    "scanned_content_index_sha256": "ed38814c561c885e774f28a07646e46aaa92a521eaead9b0ec240ebddb0d74b7",
+    "scanned_files": 2900
   },
   "status": "INCOMPLETE",
   "unparseable_references": {
@@ -17311,9 +17313,11 @@
   "unresolved": [
     "owner has not approved the complete seed-source scope",
     "source coverage remains declared UNRESOLVED",
-    "75556 ambiguous seed-like references require review",
+    "75566 ambiguous seed-like references require review",
     "43 selected or tracked references were unparseable",
     "71531 mounted-output files were inventoried but not content-scanned under the declared rules",
-    "candidate seed blocks were not supplied; disjointness is not evaluated"
+    "candidate seed blocks were not supplied; disjointness is not evaluated",
+    "signed production plan was not supplied",
+    "final audit generation timestamp is not a valid ISO-8601 UTC value"
   ]
 }

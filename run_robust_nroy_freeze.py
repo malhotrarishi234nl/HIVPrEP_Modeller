@@ -62,10 +62,12 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import sqlite3
 import sys
 import time
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -98,6 +100,90 @@ M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
 # ==========================================================================
 # validate
 # ==========================================================================
+
+def _is_sha256(value: object) -> bool:
+    text = str(value or "")
+    return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
+
+
+def _evidence_path(value: object) -> Path | None:
+    if not str(value or "").strip():
+        return None
+    path = Path(str(value))
+    return path if path.is_absolute() else ROOT / path
+
+
+def _paths_match(recorded: object, expected: Path) -> bool:
+    path = _evidence_path(recorded)
+    return path is not None and path.resolve() == expected.resolve()
+
+
+def _registry_bindings(text: str) -> tuple[str, dict[str, str], set[str]]:
+    """Read the deliberately simple two-column production registry table."""
+    status = ""
+    bindings: dict[str, str] = {}
+    duplicates: set[str] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.lower().startswith("status:"):
+            status = line.split(":", 1)[1].strip()
+            continue
+        if not (line.startswith("|") and line.endswith("|")):
+            continue
+        cells = [cell.strip() for cell in line[1:-1].split("|")]
+        if len(cells) != 2 or cells[0] in {"Binding", "---"}:
+            continue
+        name, value = cells
+        if value.startswith("`") and value.endswith("`") and len(value) >= 2:
+            value = value[1:-1].strip()
+        if name in bindings:
+            duplicates.add(name)
+        bindings[name] = value
+    return status, bindings, duplicates
+
+
+def _positive_finite(value: object) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) and number > 0.0 else None
+
+
+def _nonnegative_finite(value: object) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) and number >= 0.0 else None
+
+
+def _has_evidence_value(value: object) -> bool:
+    if isinstance(value, Mapping):
+        return bool(value)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return bool(value)
+    return bool(str(value or "").strip())
+
+
+def _valid_utc_timestamp(value: object) -> bool:
+    text = str(value or "")
+    if not text.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(text[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+
+
+def _valid_iso_date(value: object) -> bool:
+    try:
+        date.fromisoformat(str(value or ""))
+    except ValueError:
+        return False
+    return True
+
 
 def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
     """Validate every non-decision prerequisite without running the engine."""
@@ -155,14 +241,54 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             lowered = text.lower()
             if "placeholder" in lowered or "fixture only" in lowered:
                 problems.append("CONFIG_REGISTRY.md declares placeholder/fixture evidence")
-            required_tokens = {
+            status, bindings, duplicates = _registry_bindings(text)
+            if status != "FINAL":
+                problems.append("CONFIG_REGISTRY.md status is not FINAL")
+            if duplicates:
+                problems.append(
+                    f"CONFIG_REGISTRY.md repeats binding(s) {sorted(duplicates)}"
+                )
+            expected_paths = {
+                "plan path": Path(plan.plan_path),
+                "base-config path": base,
+                "M0 calibration-space path": m0_space,
+            }
+            target_register = _evidence_path(plan.targets.register_path)
+            if target_register is not None:
+                expected_paths["target-register path"] = target_register
+            for label, expected in expected_paths.items():
+                if not _paths_match(bindings.get(label), expected):
+                    problems.append(f"CONFIG_REGISTRY.md {label} does not match the signed plan")
+            expected_scalars = {
                 "plan SHA-256": plan.plan_sha256,
                 "base-config SHA-256": base_sha,
                 "M0 calibration-space SHA-256": m0_sha,
+                "target-register SHA-256": plan.targets.register_sha256,
+                "scientific-code SHA-256": _code_sha256(),
             }
-            for label, token in required_tokens.items():
-                if token and token not in text:
-                    problems.append(f"CONFIG_REGISTRY.md does not bind the {label}")
+            for label, expected in expected_scalars.items():
+                if bindings.get(label) != expected:
+                    problems.append(f"CONFIG_REGISTRY.md {label} does not match current evidence")
+            json_bindings: dict[str, object] = {
+                "target order": list(plan.targets.frozen_order),
+                "scientific runtime": nig.scientific_runtime_fingerprint(),
+                "discovery seeds": list(plan.seeds.discovery),
+                "confirmation seeds": list(plan.seeds.confirmation),
+            }
+            for label, expected in json_bindings.items():
+                try:
+                    actual = json.loads(bindings.get(label, ""))
+                except (TypeError, json.JSONDecodeError):
+                    actual = None
+                if actual != expected:
+                    problems.append(f"CONFIG_REGISTRY.md {label} does not match current evidence")
+            for label in ("producing command", "reviewer"):
+                if not str(bindings.get(label, "")).strip():
+                    problems.append(f"CONFIG_REGISTRY.md {label} is missing")
+            if not _valid_utc_timestamp(bindings.get("generated UTC")):
+                problems.append("CONFIG_REGISTRY.md generated UTC is missing or invalid")
+            if not _valid_iso_date(bindings.get("review date")):
+                problems.append("CONFIG_REGISTRY.md review date is missing or invalid")
 
     loaded: dict[str, Mapping] = {}
     for key in ("measured_pilot", "priced_budget", "seed_disjointness_audit"):
@@ -187,8 +313,17 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 f"production prerequisite {key!r} has no current evidence schema "
                 f"({required_schema})"
             )
-        if not str(payload.get("generated_utc", "")).strip():
-            problems.append(f"production prerequisite {key!r} has no generation timestamp")
+        expected_status = "FINAL"
+        if payload.get("status") != expected_status:
+            problems.append(
+                f"production prerequisite {key!r} status is not {expected_status}"
+            )
+        if payload.get("production_eligible") is not True:
+            problems.append(f"production prerequisite {key!r} is not production-eligible")
+        if not _valid_utc_timestamp(payload.get("generated_utc")):
+            problems.append(
+                f"production prerequisite {key!r} has no valid UTC generation timestamp"
+            )
         if not str(payload.get("command", "")).strip():
             problems.append(f"production prerequisite {key!r} records no producing command")
         verdict = payload.get("approved") if key == "priced_budget" else payload.get("passed")
@@ -199,20 +334,154 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         loaded[key] = payload
 
     audit = loaded.get("seed_disjointness_audit", {})
-    if audit and (
-        tuple(int(s) for s in audit.get("discovery", ())) != plan.seeds.discovery
-        or tuple(int(s) for s in audit.get("confirmation", ())) != plan.seeds.confirmation
-    ):
-        problems.append("the seed-disjointness audit does not cover the signed seed blocks")
     if audit:
+        recorded_artifact_sha = str(audit.get("artifact_sha256", ""))
+        audit_without_sha = dict(audit)
+        audit_without_sha.pop("artifact_sha256", None)
+        actual_artifact_sha = hashlib.sha256(json.dumps(
+            audit_without_sha, sort_keys=True, separators=(",", ":")
+        ).encode()).hexdigest()
+        if recorded_artifact_sha != actual_artifact_sha:
+            problems.append("the seed-disjointness audit artifact hash is missing or stale")
+        if not _paths_match(audit.get("plan_path"), Path(plan.plan_path)):
+            problems.append("the seed-disjointness audit records the wrong signed-plan path")
+        if audit.get("deterministic") is not True:
+            problems.append("the seed-disjointness audit is not declared deterministic")
+        scope = audit.get("scope_manifest")
+        if not isinstance(scope, Mapping):
+            problems.append("the seed-disjointness audit has no scope_manifest")
+        else:
+            scope_path = _evidence_path(scope.get("path"))
+            if scope_path is None or not scope_path.is_file():
+                problems.append("the seed-disjointness audit scope manifest is missing")
+            elif str(scope.get("sha256", "")) != ccs.sha256_file(scope_path):
+                problems.append("the seed-disjointness audit scope-manifest hash is stale")
+            else:
+                try:
+                    scope_payload = json.loads(scope_path.read_text())
+                except (OSError, json.JSONDecodeError):
+                    scope_payload = None
+                if not isinstance(scope_payload, Mapping) or scope_payload.get(
+                    "schema"
+                ) != "robust_nroy_seed_source_scope/1.0.0":
+                    problems.append("the seed-disjointness scope manifest has no current schema")
+                else:
+                    owner_scope = scope_payload.get("owner_scope")
+                    if not isinstance(owner_scope, Mapping) or owner_scope.get(
+                        "status"
+                    ) != "APPROVED" or not str(owner_scope.get("approved_by", "")).strip() \
+                            or not _valid_utc_timestamp(owner_scope.get("approved_utc")) \
+                            or not str(owner_scope.get("scope_statement", "")).strip():
+                        problems.append(
+                            "the seed-disjointness source scope lacks complete owner approval"
+                        )
+                    source_coverage = scope_payload.get("source_coverage")
+                    if not isinstance(source_coverage, Mapping) or source_coverage.get(
+                        "status"
+                    ) != "COMPLETE" or source_coverage.get("exclusions_reviewed") is not True:
+                        problems.append(
+                            "the seed-disjointness source scope lacks complete coverage review"
+                        )
+            if scope.get("owner_scope_status") != "APPROVED":
+                problems.append("the seed-disjointness audit scope is not owner-approved")
+            if scope.get("source_coverage_status") != "COMPLETE":
+                problems.append("the seed-disjointness audit source coverage is incomplete")
+        inventory = audit.get("source_inventory")
+        if not isinstance(inventory, Mapping):
+            problems.append("the seed-disjointness audit has no source inventory")
+        else:
+            if not isinstance(inventory.get("counts_by_kind"), Mapping) or not inventory.get(
+                "counts_by_kind"
+            ):
+                problems.append("the seed-disjointness audit has no source-inventory counts")
+            for field in ("inventory_sha256", "scanned_content_index_sha256"):
+                if not _is_sha256(inventory.get(field)):
+                    problems.append(f"the seed-disjointness audit has no valid {field}")
+            for field in ("scanned_files", "excluded_output_files"):
+                try:
+                    count = int(inventory.get(field, -1))
+                except (TypeError, ValueError):
+                    count = -1
+                if count < 0:
+                    problems.append(f"the seed-disjointness audit has invalid {field}")
+        parsed_prior = audit.get("parsed_prior_seeds")
+        if not isinstance(parsed_prior, list):
+            problems.append("the seed-disjointness audit has no parsed-prior-seed list")
+            parsed_prior = []
+        try:
+            parsed_count = int(audit.get("parsed_prior_seed_count", -1))
+        except (TypeError, ValueError):
+            parsed_count = -1
+        if parsed_count != len(parsed_prior):
+            problems.append("the seed-disjointness audit parsed-prior count is inconsistent")
+        prior_seeds: set[int] = set()
+        malformed_prior = False
+        for row in parsed_prior:
+            try:
+                seed = int(row["seed"] if isinstance(row, Mapping) else row)
+            except (KeyError, TypeError, ValueError):
+                malformed_prior = True
+                continue
+            if seed in prior_seeds:
+                malformed_prior = True
+            prior_seeds.add(seed)
+        if malformed_prior:
+            problems.append("the seed-disjointness audit parsed-prior list is malformed")
+        signed_seeds = set(plan.seeds.discovery) | set(plan.seeds.confirmation) | {
+            plan.seeds.proposal_rng
+        }
+        if prior_seeds & signed_seeds:
+            problems.append("the seed-disjointness audit signed blocks overlap prior seeds")
+        for field in ("ambiguous_references", "unparseable_references"):
+            evidence = audit.get(field)
+            if not isinstance(evidence, Mapping) or evidence.get("count") != 0 \
+                    or list(evidence.get("examples") or ()) \
+                    or evidence.get("examples_truncated") != 0:
+                problems.append(f"the seed-disjointness audit has unresolved {field}")
+        candidate_blocks = audit.get("candidate_blocks")
+        if not isinstance(candidate_blocks, Mapping):
+            problems.append("the seed-disjointness audit has no candidate_blocks")
+        else:
+            if candidate_blocks.get("status") != "SUPPLIED":
+                problems.append("the seed-disjointness audit candidate blocks are not supplied")
+            try:
+                discovery = tuple(int(seed) for seed in candidate_blocks.get("discovery", ()))
+                confirmation = tuple(
+                    int(seed) for seed in candidate_blocks.get("confirmation", ())
+                )
+                proposal_rng = int(candidate_blocks.get("proposal_rng"))
+            except (TypeError, ValueError):
+                discovery, confirmation, proposal_rng = (), (), -1
+            if discovery != plan.seeds.discovery or confirmation != plan.seeds.confirmation \
+                    or proposal_rng != plan.seeds.proposal_rng:
+                problems.append("the seed-disjointness audit does not cover the signed seed blocks")
+            expected_candidate_sha = hashlib.sha256(json.dumps({
+                "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
+                "discovery": list(plan.seeds.discovery),
+                "confirmation": list(plan.seeds.confirmation),
+                "proposal_rng": plan.seeds.proposal_rng,
+            }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if candidate_blocks.get("sha256") != expected_candidate_sha:
+                problems.append("the seed-disjointness candidate-block hash is not exact")
+        disjointness = audit.get("disjointness")
+        if not isinstance(disjointness, Mapping) or disjointness.get("status") != "PROVEN":
+            problems.append("the seed-disjointness audit does not prove disjointness")
+        else:
+            checks = disjointness.get("checks")
+            required_checks = {
+                "discovery_vs_confirmation", "proposal_vs_discovery",
+                "proposal_vs_confirmation", "discovery_vs_prior",
+                "confirmation_vs_prior", "proposal_vs_prior",
+            }
+            if not isinstance(checks, Mapping) or set(checks) != required_checks \
+                    or any(list(values or ()) for values in checks.values()):
+                problems.append("the seed-disjointness audit records a non-empty overlap check")
         if list(audit.get("overlaps", [])):
             problems.append("the seed-disjointness audit records overlapping seeds")
-        if not isinstance(audit.get("compared_seed_sources"), list) or not audit.get(
-            "compared_seed_sources"
-        ):
-            problems.append(
-                "the seed-disjointness audit does not identify the prior seed sources it checked"
-            )
+        if list(audit.get("unresolved", [])):
+            problems.append("the seed-disjointness audit records unresolved findings")
+        if not isinstance(audit.get("limitations"), list):
+            problems.append("the seed-disjointness audit has no limitations list")
     priced = loaded.get("priced_budget", {})
     if priced:
         expected_budget = {
@@ -228,18 +497,43 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             if actual != float(expected):
                 problems.append(f"the priced-budget artifact does not cover signed {key}")
         pilot_path = paths.get("measured_pilot")
-        if pilot_path is not None and str(priced.get("measured_pilot_sha256", "")) != \
-                ccs.sha256_file(pilot_path):
-            problems.append("the priced-budget artifact is not bound to the measured pilot")
-        if not str(priced.get("machine_profile", "")).strip():
+        if pilot_path is not None:
+            if not _paths_match(priced.get("measured_pilot_path"), pilot_path):
+                problems.append("the priced-budget artifact records the wrong measured-pilot path")
+            if str(priced.get("measured_pilot_sha256", "")) != ccs.sha256_file(pilot_path):
+                problems.append("the priced-budget artifact is not bound to the measured pilot")
+        pilot = loaded.get("measured_pilot", {})
+        if not _has_evidence_value(priced.get("machine_profile")):
             problems.append("the priced-budget artifact records no priced machine profile")
+        elif pilot and priced.get("machine_profile") != pilot.get("machine_profile"):
+            problems.append("the priced-budget machine profile differs from the measured pilot")
+        if not str(priced.get("approved_by", "")).strip():
+            problems.append("the priced-budget artifact has no approved_by")
+        if not _valid_utc_timestamp(priced.get("approved_utc")):
+            problems.append("the priced-budget artifact has no valid approved_utc")
+        pricing_source = _evidence_path(priced.get("pricing_source"))
+        if pricing_source is None or not pricing_source.is_file():
+            problems.append("the priced-budget pricing source is missing")
+        elif str(priced.get("pricing_source_sha256", "")) != ccs.sha256_file(pricing_source):
+            problems.append("the priced-budget pricing-source hash is stale")
+        if not str(priced.get("currency_or_credit_unit", "")).strip():
+            problems.append("the priced-budget artifact records no currency or credit unit")
+        unit_price = _nonnegative_finite(priced.get("unit_price"))
+        expected_cost = _nonnegative_finite(priced.get("expected_cost"))
+        worst_cost = _nonnegative_finite(priced.get("worst_case_cost"))
+        if unit_price is None:
+            problems.append("the priced-budget artifact has no valid unit price")
+        if expected_cost is None:
+            problems.append("the priced-budget artifact has no valid expected cost")
+        if worst_cost is None:
+            problems.append("the priced-budget artifact has no valid worst-case cost")
+        elif expected_cost is not None and worst_cost < expected_cost:
+            problems.append("the priced-budget worst-case cost is below the expected cost")
+        if not _has_evidence_value(priced.get("calculation")):
+            problems.append("the priced-budget artifact records no calculation")
     pilot = loaded.get("measured_pilot", {})
     if pilot:
-        try:
-            seconds = float(pilot.get("seconds_per_trajectory", 0.0))
-        except (TypeError, ValueError):
-            seconds = 0.0
-        if not seconds > 0.0:
+        if _positive_finite(pilot.get("seconds_per_trajectory")) is None:
             problems.append("the measured-pilot artifact has no positive timing measurement")
         try:
             n_measured = int(pilot.get("n_trajectories", 0))
@@ -247,10 +541,46 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             n_measured = 0
         if n_measured < 2:
             problems.append("the measured-pilot artifact must time at least two trajectories")
+        trajectory_ids = pilot.get("trajectory_ids")
+        if not isinstance(trajectory_ids, list) or len(trajectory_ids) != n_measured \
+                or len({str(item) for item in trajectory_ids}) != len(trajectory_ids) \
+                or any(not str(item).strip() for item in trajectory_ids):
+            problems.append("the measured-pilot trajectory ids do not match n_trajectories")
+        if _positive_finite(pilot.get("wall_seconds")) is None:
+            problems.append("the measured-pilot artifact has no positive wall time")
+        if _positive_finite(pilot.get("peak_memory_bytes")) is None:
+            problems.append("the measured-pilot artifact has no positive peak-memory measurement")
+        if not _paths_match(pilot.get("base_config_path"), base):
+            problems.append("the measured-pilot artifact records the wrong base-config path")
         if str(pilot.get("base_config_sha256", "")) != base_sha:
             problems.append("the measured-pilot artifact is not bound to the base config")
-        if str(pilot.get("code_sha256", "")) != _code_sha256():
+        if str(pilot.get("m0_calibration_space_sha256", "")) != m0_sha:
+            problems.append("the measured-pilot artifact is not bound to the M0 calibration space")
+        if str(pilot.get("target_register_sha256", "")) != plan.targets.register_sha256:
+            problems.append("the measured-pilot artifact is not bound to the target register")
+        if tuple(pilot.get("target_order") or ()) != plan.targets.frozen_order:
+            problems.append("the measured-pilot target order differs from the signed contract")
+        try:
+            pilot_seeds = tuple(int(seed) for seed in pilot.get("discovery_seeds", ()))
+        except (TypeError, ValueError):
+            pilot_seeds = ()
+        if pilot_seeds != plan.seeds.discovery:
+            problems.append("the measured-pilot discovery seeds differ from the signed block")
+        if str(pilot.get("scientific_code_sha256", "")) != _code_sha256():
             problems.append("the measured-pilot artifact is not bound to the current scientific code")
+        if pilot.get("scientific_runtime") != nig.scientific_runtime_fingerprint():
+            problems.append("the measured-pilot scientific runtime differs from the current runtime")
+        if not _has_evidence_value(pilot.get("machine_profile")):
+            problems.append("the measured-pilot artifact has no machine profile")
+        if not isinstance(pilot.get("scheduler_request"), Mapping) or not pilot.get(
+            "scheduler_request"
+        ):
+            problems.append("the measured-pilot artifact has no scheduler request")
+        raw_measurement = _evidence_path(pilot.get("raw_measurement_path"))
+        if raw_measurement is None or not raw_measurement.is_file():
+            problems.append("the measured-pilot raw measurement source is missing")
+        elif str(pilot.get("raw_measurement_sha256", "")) != ccs.sha256_file(raw_measurement):
+            problems.append("the measured-pilot raw-measurement hash is stale")
 
     # Exercise the exact configuration-construction route production will use,
     # including the generated M1 calibration space and the diagnosis block.
@@ -557,24 +887,36 @@ def _validate_m1_anchor_evidence(
         raise ContractError(f"{path}: M1 anchor-confirmation evidence must be a JSON object")
 
     problems: list[str] = []
+    base_config = _evidence_path(plan.require("models.base_config"))
     expected_scalars = {
         "schema": M1_ANCHOR_EVIDENCE_SCHEMA,
+        "status": "FINAL",
         "model": nc.MODEL_M1,
         "plan_sha256": plan.plan_sha256,
         "anchors_sha256": ccs.sha256_file(anchors_path),
         "scientific_code_sha256": _code_sha256(),
         "scientific_config_sha256": _scientific_config_sha256(plan, model),
+        "base_config_sha256": (
+            ccs.sha256_file(base_config) if base_config is not None and base_config.is_file() else ""
+        ),
         "target_register_sha256": plan.targets.register_sha256,
         "p_parameter": str(plan.require("p_parameter.name")),
     }
     for field, expected in expected_scalars.items():
         if payload.get(field) != expected:
             problems.append(f"{field} does not match the frozen {field}")
+    if not _paths_match(payload.get("anchors_path"), anchors_path):
+        problems.append("anchors_path does not match the supplied anchor table")
     if payload.get("passed") is not True:
         problems.append("passed is not the Boolean true")
-    for field in ("generated_utc", "command"):
-        if not str(payload.get(field, "")).strip():
-            problems.append(f"{field} is missing")
+    if payload.get("production_eligible") is not True:
+        problems.append("production_eligible is not the Boolean true")
+    if payload.get("scientific_runtime") != nig.scientific_runtime_fingerprint():
+        problems.append("scientific_runtime does not match the current scientific runtime")
+    if not _valid_utc_timestamp(payload.get("generated_utc")):
+        problems.append("generated_utc is missing or is not an ISO-8601 UTC timestamp")
+    if not str(payload.get("command", "")).strip():
+        problems.append("command is missing")
     if tuple(payload.get("target_order") or ()) != tuple(plan.targets.frozen_order):
         problems.append("target_order does not match the frozen target contract")
     try:
@@ -636,6 +978,20 @@ def _validate_m1_anchor_evidence(
             )
         if row.get("nominal_pass") is not True:
             problems.append(f"{candidate_id}: nominal_pass is not the Boolean true")
+        per_seed_hashes = row.get("per_seed_joint_vector_hashes")
+        if not isinstance(per_seed_hashes, list) or len(per_seed_hashes) != 20 \
+                or len(per_seed_hashes) != n_replicates:
+            problems.append(
+                f"{candidate_id}: per_seed_joint_vector_hashes must contain exactly "
+                "one hash for each of the 20 confirmation seeds"
+            )
+        elif any(str(value) != anchor.vector_hash for value in per_seed_hashes):
+            problems.append(
+                f"{candidate_id}: per_seed_joint_vector_hashes do not preserve the "
+                "complete anchor vector on every seed"
+            )
+        if not _is_sha256(row.get("seed_result_artifact_sha256")):
+            problems.append(f"{candidate_id}: seed_result_artifact_sha256 is not a SHA-256")
 
     if problems:
         raise ContractError(

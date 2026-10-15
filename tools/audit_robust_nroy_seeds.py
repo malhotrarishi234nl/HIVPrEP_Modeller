@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from datetime import datetime, timezone
 import fnmatch
 import hashlib
 import json
@@ -27,6 +28,11 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import nroy_contract as nc  # noqa: E402
+
 SCHEMA = "robust_nroy_seed_audit/1.0.0"
 SCOPE_SCHEMA = "robust_nroy_seed_source_scope/1.0.0"
 CANDIDATE_SCHEMA = "robust_nroy_candidate_seed_blocks/1.0.0"
@@ -66,6 +72,17 @@ def sha256_file(path: Path) -> str:
 def canonical_sha256(payload: Any) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return sha256_bytes(encoded)
+
+
+def valid_utc_timestamp(value: object) -> bool:
+    text = str(value or "")
+    if not text.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(text[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed)
 
 
 def _json_pointer(parts: Sequence[str]) -> str:
@@ -451,12 +468,18 @@ def load_candidate_blocks(path: Path | None) -> dict[str, Any] | None:
         raise ValueError("candidate discovery and confirmation blocks must be non-empty")
     if len(discovery) != len(set(discovery)) or len(confirmation) != len(set(confirmation)):
         raise ValueError("candidate discovery and confirmation blocks must contain unique integers")
-    return {"discovery": discovery, "confirmation": confirmation, "proposal_rng": proposal[0],
-            "sha256": sha256_file(path)}
+    return {
+        "discovery": discovery,
+        "confirmation": confirmation,
+        "proposal_rng": proposal[0],
+        "sha256": canonical_sha256(payload),
+    }
 
 
 def build_audit(root: Path, scope_path: Path,
-                candidate_path: Path | None = None) -> dict[str, Any]:
+                candidate_path: Path | None = None, *,
+                plan_path: Path | None = None,
+                generated_utc: str | None = None) -> dict[str, Any]:
     scope = load_scope(scope_path)
     candidates = load_candidate_blocks(candidate_path)
     findings, inventory = scan_scope(root, scope)
@@ -520,20 +543,55 @@ def build_audit(root: Path, scope_path: Path,
         if overlap_rows:
             unresolved.append("candidate seed blocks overlap internally or with parsed prior seeds")
 
-    passed = candidates is not None and disjointness["status"] == "PROVEN"
-    scope_relative = scope_path.relative_to(root).as_posix() if scope_path.is_relative_to(root) \
-        else scope_path.name
+    plan: nc.FrozenPlan | None = None
+    plan_error: str | None = None
+    if plan_path is None:
+        plan_error = "signed production plan was not supplied"
+    else:
+        try:
+            plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+        except (OSError, ValueError, nc.ContractError, json.JSONDecodeError) as exc:
+            plan_error = f"signed production plan is invalid: {exc}"
+    plan_matches = False
+    if plan is not None and candidates is not None:
+        plan_matches = (
+            tuple(candidates["discovery"]) == plan.seeds.discovery
+            and tuple(candidates["confirmation"]) == plan.seeds.confirmation
+            and int(candidates["proposal_rng"]) == plan.seeds.proposal_rng
+        )
+        if not plan_matches:
+            plan_error = "candidate seed blocks do not exactly match the signed production plan"
+    if plan_error:
+        unresolved.append(plan_error)
+    if not valid_utc_timestamp(generated_utc):
+        unresolved.append("final audit generation timestamp is not a valid ISO-8601 UTC value")
+
+    passed = (
+        candidates is not None
+        and disjointness["status"] == "PROVEN"
+        and plan_matches
+        and not unresolved
+    )
+    scope_relative = (
+        scope_path.relative_to(root).as_posix()
+        if root.resolve() == ROOT.resolve() and scope_path.is_relative_to(root)
+        else str(scope_path)
+    )
     artifact = {
         "schema": SCHEMA,
-        "status": "PASS" if passed else "INCOMPLETE",
-        "production_eligible": False,
+        "status": "FINAL" if passed else "INCOMPLETE",
+        "production_eligible": passed,
         "passed": passed,
         "deterministic": True,
-        "generated_utc": None,
+        "generated_utc": generated_utc,
         "command": (
             f"python tools/audit_robust_nroy_seeds.py --scope {scope_relative}"
             + (f" --candidate-blocks {candidate_path.name}" if candidate_path else "")
+            + (f" --plan {plan_path}" if plan_path else "")
+            + (f" --generated-utc {generated_utc}" if generated_utc else "")
         ),
+        "plan_path": str(plan_path) if plan_path is not None else None,
+        "plan_sha256": plan.plan_sha256 if plan is not None else None,
         "scope_manifest": {
             "path": scope_relative,
             "sha256": sha256_file(scope_path),
@@ -569,6 +627,14 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scope", required=True, type=Path)
     parser.add_argument("--candidate-blocks", type=Path)
+    parser.add_argument(
+        "--plan", type=Path,
+        help="fully signed production plan whose exact candidate blocks must match",
+    )
+    parser.add_argument(
+        "--generated-utc",
+        help="explicit ISO-8601 evidence timestamp; required for a production-eligible FINAL",
+    )
     parser.add_argument("--out", type=Path, help="write the deterministic JSON artifact")
     parser.add_argument("--check", type=Path,
                         help="compare the deterministic rendering with an existing artifact")
@@ -580,8 +646,13 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        artifact = build_audit(ROOT, args.scope.resolve(),
-                               args.candidate_blocks.resolve() if args.candidate_blocks else None)
+        artifact = build_audit(
+            ROOT,
+            args.scope.resolve(),
+            args.candidate_blocks.resolve() if args.candidate_blocks else None,
+            plan_path=args.plan.resolve() if args.plan else None,
+            generated_utc=args.generated_utc,
+        )
     except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         print(f"SEED AUDIT ERROR: {exc}", file=sys.stderr)
         return 1
