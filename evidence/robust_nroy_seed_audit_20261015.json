@@ -1,6 +1,6 @@
 {
   "ambiguous_references": {
-    "count": 75592,
+    "count": 75595,
     "examples": [
       {
         "detail": "textual seed reference requires owner interpretation: copied config, plus seed, M0/M1 selection, M1 `p`, and output directory via",
@@ -1253,9 +1253,9 @@
         "source": "documentation/reports/calibration/HM_STOCHASTIC_CONFIRMATION_RUN_2026-09-15.md"
       }
     ],
-    "examples_truncated": 75342
+    "examples_truncated": 75345
   },
-  "artifact_sha256": "7d9f6ecf7ddbb3dd78fd144e3ebf17bea6c596105a63348bb7a33f07387701e5",
+  "artifact_sha256": "3d64e3fef0a0f384f15f94aeb7000a4d67e010b7b1c7d1b81ae1c7a3d6407351",
   "candidate_blocks": {
     "confirmation": [],
     "discovery": [],
@@ -17081,12 +17081,12 @@
       "tracked:csv_text": 5,
       "tracked:excluded": 1,
       "tracked:json": 82,
-      "tracked:text": 66
+      "tracked:text": 68
     },
     "excluded_output_files": 71531,
-    "inventory_sha256": "5d91d8661c910242800f973e4a8dbf53dcd0aab287370e1d5b1baca384b24939",
-    "scanned_content_index_sha256": "1bb6a7d6b0597b698692853d308f9daad83ec5cd2082849948135485c0370158",
-    "scanned_files": 2903
+    "inventory_sha256": "4c49006ccb86a7f43bb2f8159329f775a2d727f04dc0ec9d51e43b14efdb0402",
+    "scanned_content_index_sha256": "49713e1c468db521038ff025d889d0f0de7598f65ba74b8ae585167b142fa842",
+    "scanned_files": 2905
   },
   "status": "INCOMPLETE",
   "unparseable_references": {
@@ -17313,7 +17313,7 @@
   "unresolved": [
     "owner has not approved the complete seed-source scope",
     "source coverage remains declared UNRESOLVED",
-    "75592 ambiguous seed-like references require review",
+    "75595 ambiguous seed-like references require review",
     "43 selected or tracked references were unparseable",
     "71531 mounted-output files were inventoried but not content-scanned under the declared rules",
     "candidate seed blocks were not supplied; disjointness is not evaluated",

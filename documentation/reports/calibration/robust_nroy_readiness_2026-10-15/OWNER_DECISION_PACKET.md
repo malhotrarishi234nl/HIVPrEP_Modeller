@@ -8,6 +8,15 @@ decision-register SHA-256
 It recommends decisions; it does not edit or sign the plan and does not
 authorize an engine run.
 
+After all 43 values are reviewed, the separate sign-off block must also be
+completed with a nonblank string `signed_by`, an exact `YYYY-MM-DD`
+`signed_date`, and
+`spec_version = "ROBUST_NROY_FREEZE_SPEC_2026-10-14"`. The runner checks that
+`design.spec` names that governing specification and rejects malformed dates,
+numeric signers, numeric strings in scientific decisions, or a different spec
+label. Completing the sign-off records review; it still does not authorize an
+engine run.
+
 The 43 rows are partitioned exactly once: **A 25 + B 8 + C 3 + D 3 + E 4 =
 43**. The literature supports the method families, not this project's exact
 numeric constants. Values below are deliberately simple engineering choices

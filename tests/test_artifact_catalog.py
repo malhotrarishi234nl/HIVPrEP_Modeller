@@ -53,8 +53,8 @@ def test_catalog_summary_and_unique_scope(catalog: dict[str, object]) -> None:
     counts = Counter(record["classification"] for record in records)
     assert set(counts) <= ALLOWED_CLASSES
     assert dict(sorted(counts.items())) == catalog["classification_counts"]
-    assert catalog["remaining_review_count"] == counts["REVIEW_REQUIRED"] == 9
-    assert catalog["terminally_classified_count"] == len(records) - 9 == 123
+    assert catalog["remaining_review_count"] == counts["REVIEW_REQUIRED"] == 0
+    assert catalog["terminally_classified_count"] == len(records) == 132
 
 
 def test_every_record_is_safe_and_reviewable(catalog: dict[str, object]) -> None:
@@ -108,7 +108,7 @@ def test_historical_rows_never_claim_current_compatibility_or_validation(
         for record in catalog["records"]
         if record["classification"] == "HISTORICAL_RETAINED"
     ]
-    assert len(historical) == 78
+    assert len(historical) == 87
     assert all(
         record["current_code_compatibility"] in {"INCOMPATIBLE", "UNKNOWN", "NOT_APPLICABLE"}
         for record in historical
@@ -124,7 +124,7 @@ def test_terminal_rows_have_evidence_and_required_relationships(
         for record in catalog["records"]
         if record["classification"] != "REVIEW_REQUIRED"
     ]
-    assert len(terminal) == 123
+    assert len(terminal) == 132
     assert all(record["evidence_source"].strip() for record in terminal)
     assert all(
         record["superseded_by"].strip()

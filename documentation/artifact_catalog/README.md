@@ -15,10 +15,10 @@ directories are named by at least one tracked repository file. Loose files
 directly inside the three roots are listed separately in the JSON summary so
 they remain visible even though the row-level scope is directories.
 
-Of the 132 directories, 123 have a terminal evidence-backed disposition and 9
-remain `REVIEW_REQUIRED`. The terminal counts are:
+All 132 directories now have a terminal evidence-backed preservation
+disposition. No row remains `REVIEW_REQUIRED`. The counts are:
 
-- 78 `HISTORICAL_RETAINED`
+- 87 `HISTORICAL_RETAINED`
 - 25 `SUPERSEDED`
 - 9 `PREPARED_NOT_RUN`
 - 7 `FAILED_OR_INCOMPLETE`
@@ -56,37 +56,20 @@ successors. It applied four conservative rules:
 No files under `outputs/` were moved, deleted, rewritten, or resealed during
 this pass.
 
-## Nine owner decisions still required
+## Conservative closure of the final nine rows
 
-The following rows stay `REVIEW_REQUIRED` because they may still feed a live
-thesis, conference, target-contract, or parameter claim. Their manifests and
-citations establish presence, not the owner decision or current scientific
-acceptance needed to retire or promote them.
+The selected Option B direction requires a new V13.22-on-1980 calibration.
+The final nine open rows all predate that fitted model. They are now retained
+as historical evidence and excluded from current scientific claims, without
+asserting that their underlying sources or assumptions are wrong. The exact
+paths, rationale, and conditions for any future re-adoption are recorded in
+`ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md` in the robust-NROY readiness
+package.
 
-1. Current diagnosis/conference chain (three rows):
-   `outputs/calibration/diagnosis_triangulation_orchestration_20260922`,
-   `outputs/calibration/stage_diagnosis_candidate_baseline_review_20260922`, and
-   `outputs/calibration/followup_knot_and_late_dx_20260929`. Decide which, if
-   any, remains the canonical live claim source. A live source needs an explicit
-   current-code/current-config validation route; a retired source can be marked
-   historical or superseded by the named canonical successor.
-2. Active evidence/assumption inputs (five rows):
-   `outputs/calibration/rivm_aids_vintage_audit_20260916`,
-   `outputs/hta_results/ae_adherence_corridor_20260914_225729`,
-   `outputs/hta_results/aids_at_diagnosis_20260914_183434`,
-   `outputs/hta_results/b1_b2_calibration_space_20260914`, and
-   `outputs/hta_results/rivm_prep_targets_20260914_134653`. For each, record
-   whether its evidence/assumption is adopted in the current target or economic
-   contract and has received the required scientific review; otherwise retire
-   it as historical. Citation by a config or report is not approval.
-3. Variance input (one row):
-   `outputs/hta_results/a5_ensemble_variance_20260914_150556`. Decide whether
-   its recorded variance estimate remains an approved input under the selected
-   1980 Option-B recalibration, must be rerun for that backbone, or is retired
-   as historical. Until then it must not be relabeled current or removed.
-
-These nine decisions do not authorize destructive cleanup. Every open row keeps
-the `preserve_in_place;no_cleanup_until_terminal_review` retention rule.
+This closes catalog triage, not scientific validation. No output was deleted,
+moved, rewritten, or resealed, and the catalog still contains no
+`CURRENT_VALIDATED` artifact. Reusing an old target, assumption, variance, or
+diagnostic requires an explicit current-contract review or a new Option B run.
 
 ## Classification policy
 

@@ -893,6 +893,69 @@
       "current_code_compatibility": "UNKNOWN",
       "classification_reason": "The report explicitly describes a structural diagnostic with no calibration and no modification of tracked code or existing artifacts; retain it as recorded-code evidence, not current production validation.",
       "evidence_source": "outputs/hta_results/ridge_identifiability_20260914_134151/REPORT.md"
+    },
+    "outputs/calibration/diagnosis_triangulation_orchestration_20260922": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PRE_OPTION_B_DIAGNOSTIC",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This completed diagnosis-triangulation package predates the selected V13.22-on-1980 Option B recalibration and is excluded from current fitted-model claims while retained as development evidence.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/calibration/stage_diagnosis_candidate_baseline_review_20260922": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PRE_OPTION_B_DIAGNOSTIC",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This baseline-review package predates the selected V13.22-on-1980 Option B recalibration and is excluded from current fitted-model claims while retained as development evidence.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/calibration/followup_knot_and_late_dx_20260929": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_PRE_OPTION_B_DIAGNOSTIC",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This follow-up analysis predates the selected V13.22-on-1980 Option B recalibration and is excluded from current fitted-model claims while retained as development evidence.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/calibration/rivm_aids_vintage_audit_20260916": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_INPUT_REQUIRES_NEW_CONTRACT_REVIEW",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "The audit is preserved as source-review evidence, but any adoption of its target interpretation must be explicitly reviewed and bound to the new Option B analysis contract.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/hta_results/ae_adherence_corridor_20260914_225729": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ASSUMPTION_REQUIRES_NEW_CONTRACT_REVIEW",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This assumption package is retained for review but is not silently carried into the new Option B analysis contract.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/hta_results/aids_at_diagnosis_20260914_183434": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ASSUMPTION_REQUIRES_NEW_CONTRACT_REVIEW",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This assumption package is retained for review but is not silently carried into the new Option B analysis contract.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/hta_results/b1_b2_calibration_space_20260914": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_ASSUMPTION_REQUIRES_NEW_CONTRACT_REVIEW",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This calibration-space evidence predates the Option B recalibration and requires an explicit new-contract review before any parameter bounds are adopted.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/hta_results/rivm_prep_targets_20260914_134653": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_INPUT_REQUIRES_NEW_CONTRACT_REVIEW",
+      "current_code_compatibility": "UNKNOWN",
+      "classification_reason": "This target package is retained as source evidence, but any target adoption must be explicitly reviewed and bound to the new analysis contract.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
+    },
+    "outputs/hta_results/a5_ensemble_variance_20260914_150556": {
+      "classification": "HISTORICAL_RETAINED",
+      "scientific_status": "HISTORICAL_VARIANCE_REQUIRES_OPTION_B_REESTIMATION",
+      "current_code_compatibility": "INCOMPATIBLE",
+      "classification_reason": "The recorded variance estimate predates the selected Option B recalibration; retain it as history and re-estimate or independently justify any variance used by the new fitted model.",
+      "evidence_source": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md"
     }
   }
 }
