@@ -63,6 +63,9 @@ PRICING_SOURCE_SCHEMA = "robust_nroy_pricing_source/1.0.0"
 EXECUTION_PROFILE_SCHEMA = "coupled_calibration_execution_profile/1.0.0"
 SEARCH_COST_FORMULA = "trajectory_seconds_to_resource_hour/v1"
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
+RESEARCH_EXECUTION_SCHEMA = "coupled_calibration_research_execution/1.0.0"
+RESEARCH_RUN_CLASS = "RESEARCH_E2E_NOT_PRODUCTION_ELIGIBLE"
+RESEARCH_ALLOWED_STAGES = ("prepare", "smoke", "search", "resume", "confirmation")
 
 #: Modules whose content defines a result.  Frozen at preparation and re-verified
 #: before every stage that spends simulation budget.
@@ -182,6 +185,50 @@ class RunnerPlan:
                 "engine stage requires a separate stage-scoped authorization artifact"
             )
         return {"status": status, "allowed_modes": modes}
+
+    @property
+    def is_research_e2e(self) -> bool:
+        declaration = self.payload.get("research_execution")
+        return isinstance(declaration, dict) and declaration.get("run_class") == RESEARCH_RUN_CLASS
+
+    def validate_research_execution(self) -> dict:
+        """Validate an explicit non-production execution declaration.
+
+        This declaration is provenance and scope, not a production authorization.
+        It may waive production governance artifacts only for the permanently
+        non-production research route; scientific input, target, seed, smoke,
+        scoring, artifact-integrity and resume contracts remain unchanged.
+        """
+        declaration = self.payload.get("research_execution")
+        if not isinstance(declaration, dict):
+            raise ContractError("research execution requires plan.research_execution")
+        required = {
+            "schema", "status", "run_class", "production_eligible",
+            "allowed_stages", "limitations",
+        }
+        if set(declaration) != required:
+            raise ContractError(
+                "research_execution fields differ; "
+                f"missing={sorted(required - set(declaration))}, "
+                f"extra={sorted(set(declaration) - required)}"
+            )
+        if declaration["schema"] != RESEARCH_EXECUTION_SCHEMA:
+            raise ContractError("unsupported research_execution schema")
+        if declaration["status"] != "RESEARCH_ONLY":
+            raise ContractError("research_execution status must be RESEARCH_ONLY")
+        if declaration["run_class"] != RESEARCH_RUN_CLASS:
+            raise ContractError(f"research_execution run_class must be {RESEARCH_RUN_CLASS}")
+        if declaration["production_eligible"] is not False:
+            raise ContractError("research_execution production_eligible must be false")
+        if declaration["allowed_stages"] != list(RESEARCH_ALLOWED_STAGES):
+            raise ContractError(
+                "research_execution allowed_stages must exactly preserve the staged workflow"
+            )
+        limitations = declaration["limitations"]
+        if not isinstance(limitations, list) or not limitations \
+                or any(not isinstance(item, str) or not item.strip() for item in limitations):
+            raise ContractError("research_execution limitations must be non-empty strings")
+        return copy.deepcopy(declaration)
 
 
 # ==========================================================================
@@ -517,6 +564,74 @@ def require_stage_authorization(
             f"found {actual_upstream}"
         )
     return {"path": str(path), "sha256": ccs.sha256_file(path), **payload}
+
+
+def research_stage_declaration(
+    *,
+    stage: str,
+    plan: RunnerPlan,
+    plan_sha256: str,
+    upstream_sha256: dict[str, str],
+    authorization_path: Path | None = None,
+    measured_benchmark_path: Path | None = None,
+    pricing_approval_path: Path | None = None,
+) -> dict:
+    """Bind a stage to the explicit research plan without fabricating approval.
+
+    Production authorization, benchmark and pricing files are intentionally
+    rejected on this route so a research artifact cannot look production-approved.
+    """
+    if stage not in RESEARCH_ALLOWED_STAGES:
+        raise ContractError(f"unsupported research stage {stage!r}")
+    if any(value is not None for value in (
+        authorization_path, measured_benchmark_path, pricing_approval_path,
+    )):
+        raise ContractError(
+            "research E2E must not receive production authorization, benchmark, or pricing "
+            "artifacts; omit those options"
+        )
+    declaration = plan.validate_research_execution()
+    if stage not in declaration["allowed_stages"]:
+        raise ContractError(f"research_execution does not allow stage {stage!r}")
+    exact_plan_sha256 = _require_sha256(plan_sha256, what="exact research plan sha256")
+    if not isinstance(upstream_sha256, dict):
+        raise ContractError("research upstream_sha256 must be an object")
+    for key, digest in upstream_sha256.items():
+        _require_sha256(digest, what=f"research upstream_sha256.{key}")
+    return {
+        "schema": RESEARCH_EXECUTION_SCHEMA,
+        "status": "RESEARCH_ONLY",
+        "stage": stage,
+        "run_class": RESEARCH_RUN_CLASS,
+        "production_eligible": False,
+        "plan_sha256": exact_plan_sha256,
+        "upstream_sha256": dict(upstream_sha256),
+        "governance_not_claimed": [
+            "production stage authorization",
+            "production seed audit",
+            "production pricing approval",
+        ],
+    }
+
+
+def research_labels(enabled: bool) -> dict:
+    return ({
+        "run_class": RESEARCH_RUN_CLASS,
+        "production_eligible": False,
+        "research_only": True,
+    } if enabled else {})
+
+
+def require_matching_run_class(*, requested_research: bool, manifest: dict, what: str) -> None:
+    recorded_research = manifest.get("run_class") == RESEARCH_RUN_CLASS
+    if recorded_research != bool(requested_research):
+        requested = RESEARCH_RUN_CLASS if requested_research else "production-governed"
+        recorded = manifest.get("run_class", "production-governed")
+        raise ContractError(
+            f"{what} run class differs: requested {requested!r}, recorded {recorded!r}"
+        )
+    if recorded_research and manifest.get("production_eligible") is not False:
+        raise ContractError(f"{what} research artifact lacks production_eligible=false")
 
 
 def require_matching_plan_path(
@@ -960,6 +1075,11 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
             payload = strict_json_object(manifest, what="seed-scan manifest")
         except (OSError, ContractError) as exc:
             if not plan.inputs.get("seed_audit"):
+                if plan.is_research_e2e:
+                    raise ContractError(
+                        f"malformed seed-scan manifest is blocking for research execution: "
+                        f"{manifest}: {exc}"
+                    ) from exc
                 # Legacy plans remain inspectable. They are execution-ineligible elsewhere,
                 # so this does not allow a malformed source to reach a write/engine stage.
                 legacy_read_only_invalid.append(str(manifest.relative_to(root)))
@@ -1004,6 +1124,12 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
             f"reserved seeds collide with recorded use: {overlap}. Stopping. A replacement plan "
             f"must be declared and recorded; this runner never silently chooses another range."
         )
+    own_manifest_rule = f"Manifests carrying design={plan.design_name!r} are skipped as this experiment's own."
+    if plan.comparison_group is not None:
+        own_manifest_rule = (
+            f"Manifests carrying design={plan.design_name!r}, or the explicitly paired "
+            f"comparison group {plan.comparison_group!r}, are skipped as this experiment's own."
+        )
     return {
         "reserved": reserved, "n_manifests_scanned": n_manifests,
         "n_own_manifests_skipped": len(own), "own_manifests": own,
@@ -1014,9 +1140,7 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
         "invalid_manifests_legacy_read_only": legacy_read_only_invalid,
         "limitation": "Only seeds recorded in manifest.json files under outputs/, plus the "
                       "declared foreign ranges listed in this runner, are visible to the scan. "
-                      f"Manifests carrying design={plan.design_name!r}, or the explicitly paired "
-                      f"comparison group {plan.comparison_group!r}, are this experiment's own "
-                      "and are skipped.",
+                      + own_manifest_rule,
     }
 
 
@@ -1093,6 +1217,8 @@ def validate(*, plan_path: Path | None = None, run_seed_preflight: bool = True) 
         checks["seed_preflight"] = {"ok": False, "detail": "not run"}
     check("plan_execution_contract", lambda: assert_plan_matches(plan.payload))
     check("execution_authorization", plan.validate_execution_authorization)
+    if "research_execution" in plan.payload:
+        check("research_execution", plan.validate_research_execution)
     report = {"ok": all(c["ok"] for c in checks.values()), "checks": checks,
               "simulations_started": 0, "engines_constructed": 0,
               "artifacts_written": 0, "generated_utc": now()}
@@ -1108,7 +1234,7 @@ def assert_plan_matches(plan: dict) -> dict:
     """
     expected = plan_payload()
     required_sections = set(expected)
-    optional_sections = {"calibration_window", "execution_authorization"}
+    optional_sections = {"calibration_window", "execution_authorization", "research_execution"}
     if not required_sections.issubset(plan) or set(plan) - required_sections - optional_sections:
         missing = sorted(required_sections - set(plan))
         extra = sorted(set(plan) - required_sections - optional_sections)
@@ -1229,11 +1355,13 @@ def assert_plan_matches(plan: dict) -> dict:
             raise ContractError("paired CRN plans need the reviewed explicit reuse_policy")
     elif paired_designs is not None or "reuse_policy" in seeds:
         raise ContractError("paired_designs/reuse_policy require seeds.comparison_group")
+    if "research_execution" in plan:
+        RunnerPlan(plan).validate_research_execution()
     return {
         "plan_sections_verified": sorted(plan),
         "overridable_fields": ["design.name", "design.question", "design.declared_as",
                                "inputs", "seed values", "calibration_window",
-                               "execution_authorization"],
+                               "execution_authorization", "research_execution"],
         "design": plan["design"]["name"],
     }
 
@@ -1356,7 +1484,8 @@ def plan_payload() -> dict:
 
 def prepare(output_dir: Path, *, plan_path: Path | None = None,
             authorization_path: Path | None = None,
-            initial_size: int | None = None) -> dict:
+            initial_size: int | None = None,
+            research_e2e: bool = False) -> dict:
     """Freeze the design.  ``initial_size`` below the declared archive size is an
     ENGINEERING reduction: it is recorded in the manifest and flagged, so a
     reduced preparation can never be mistaken for the declared design."""
@@ -1368,12 +1497,28 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
     plan_contract = state["plan"]
     plan_source_sha256 = ccs.sha256_file(Path(plan_path))
     validate_executable_input_bindings(plan_contract)
-    seed_audit = validate_seed_audit_binding(plan_contract)
-    authorization = require_stage_authorization(
-        authorization_path, stage="prepare", plan=plan_contract,
-        plan_sha256=plan_source_sha256, upstream_sha256={}
-    )
+    if research_e2e:
+        research_execution = research_stage_declaration(
+            stage="prepare", plan=plan_contract, plan_sha256=plan_source_sha256,
+            upstream_sha256={}, authorization_path=authorization_path,
+        )
+        seed_evidence = report["checks"]["seed_preflight"]["detail"]
+        authorization = None
+    else:
+        research_execution = None
+        seed_evidence = validate_seed_audit_binding(plan_contract)
+        authorization = require_stage_authorization(
+            authorization_path, stage="prepare", plan=plan_contract,
+            plan_sha256=plan_source_sha256, upstream_sha256={}
+        )
     size = ccs.INITIAL_ARCHIVE_SIZE if initial_size is None else int(initial_size)
+    if research_e2e and not plan_contract.is_research_e2e:
+        raise ContractError("--research-e2e requires a plan with research_execution")
+    if size < plan_contract.max_warm_vectors or size > ccs.INITIAL_ARCHIVE_SIZE:
+        raise ContractError(
+            f"initial_size must be between {plan_contract.max_warm_vectors} and "
+            f"{ccs.INITIAL_ARCHIVE_SIZE}"
+        )
     space = state["space"]
     space_json = state["space_json"]
     check = injection_checker(
@@ -1429,8 +1574,7 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
         "module_sha256": module_hashes(), "environment": environment(),
         "plan_sha256": plan_source_sha256,
         "plan_content_sha256": ccs.sha256_json(plan),
-        "seed_audit": seed_audit,
-        "stage_authorization": authorization,
+        "seed_evidence": seed_evidence,
         "anchor_config_sha256": ccs.sha256_json(anchor_config),
         "proposal_rng": {"seed": plan_contract.proposal_rng_seed,
                          "state_after_initialisation": rng_state_after_initialisation},
@@ -1447,7 +1591,18 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
             "The AIDS observation proxy remains an unvalidated assumption; a good numerical fit "
             "cannot validate its definition.",
         ],
+        **research_labels(research_e2e),
     }
+    if research_e2e:
+        manifest["research_execution_declaration"] = research_execution
+        manifest["limitations"].append(
+            "This bounded E2E rehearsal is permanently research-only and cannot be promoted "
+            "into a production result by renaming or copying its artifacts."
+        )
+    else:
+        manifest["stage_authorization"] = authorization
+        # Preserve the established production manifest field name.
+        manifest["seed_audit"] = seed_evidence
     dump_json(output_dir / "manifest.json", manifest)
     write_artifact_index(output_dir)
     return manifest
@@ -1841,7 +1996,15 @@ def load_prepared(prepared_dir: Path) -> dict:
     plan = RunnerPlan(plan_payload_frozen)
     plan.validate_execution_authorization()
     validate_executable_input_bindings(plan)
-    validate_seed_audit_binding(plan)
+    research_e2e = manifest.get("run_class") == RESEARCH_RUN_CLASS
+    if research_e2e:
+        require_matching_run_class(
+            requested_research=True, manifest=manifest, what="prepared artifact"
+        )
+        plan.validate_research_execution()
+        seed_preflight(plan=plan)
+    else:
+        validate_seed_audit_binding(plan)
     state = load_inputs(plan)
     if manifest["input_sha256"] != state["hashes"]:
         raise ContractError("prepared inputs differ from the current inputs")
@@ -1896,20 +2059,34 @@ def build_smoke_pairs(prepared: dict) -> list[dict]:
 def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
           plan_path: Path | None = None, authorization_path: Path | None = None,
           worker: Callable[[dict], dict] = smoke_pair_worker,
-          executor_factory=ProcessPoolExecutor) -> dict:
+          executor_factory=ProcessPoolExecutor,
+          research_e2e: bool = False) -> dict:
     prepared = load_prepared(prepared_dir)
+    require_matching_run_class(
+        requested_research=research_e2e, manifest=prepared["manifest"],
+        what="prepared artifact",
+    )
     matching_plan = require_matching_plan_path(
         plan_path, prepared["contract"],
         expected_file_sha256=prepared["manifest"]["plan_sha256"],
     )
     prepared_binding = artifact_binding(Path(prepared_dir), "prepared")
-    authorization = require_stage_authorization(
-        authorization_path,
-        stage="smoke",
-        plan=prepared["contract"],
-        plan_sha256=matching_plan["file_sha256"],
-        upstream_sha256=prepared_binding,
-    )
+    if research_e2e:
+        research_execution = research_stage_declaration(
+            stage="smoke", plan=prepared["contract"],
+            plan_sha256=matching_plan["file_sha256"],
+            upstream_sha256=prepared_binding, authorization_path=authorization_path,
+        )
+        authorization = None
+    else:
+        research_execution = None
+        authorization = require_stage_authorization(
+            authorization_path,
+            stage="smoke",
+            plan=prepared["contract"],
+            plan_sha256=matching_plan["file_sha256"],
+            upstream_sha256=prepared_binding,
+        )
     gate = diagnosis_test_gate()
     assert_unoccupied(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1938,12 +2115,16 @@ def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
         "mean_seconds_per_trajectory": float(np.mean(per_trajectory)) if per_trajectory else None,
         "elapsed_seconds": time.time() - started,
         "prepared_dir": str(prepared_dir), "prepared_sha256": prepared["prepared_sha256"],
-        "stage_authorization": authorization,
         "module_sha256": module_hashes(), "input_sha256": prepared["state"]["hashes"],
         "diagnosis_test_gate": gate, "environment": environment(), "generated_utc": now(),
         "meaning": "Equivalence of the observed harness run and the production run at identical "
                    "parameters and seeds. It says nothing about model fit.",
+        **research_labels(research_e2e),
     }
+    if research_e2e:
+        result["research_execution_declaration"] = research_execution
+    else:
+        result["stage_authorization"] = authorization
     dump_json(output_dir / "SMOKE_RESULT.json", result)
     dump_json(output_dir / "observed_stocks.json",
               {str(r["pair_id"]): r.get("observed_stocks", {}) for r in rows})
@@ -1954,6 +2135,7 @@ def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
         "prepared_sha256": prepared["prepared_sha256"], "module_sha256": module_hashes(),
         "input_sha256": prepared["state"]["hashes"], "environment": environment(),
         "generated_utc": now(),
+        **research_labels(research_e2e),
     })
     write_artifact_index(output_dir)
     return result
@@ -1985,6 +2167,11 @@ def load_smoke(smoke_dir: Path, prepared: dict) -> dict:
     result = strict_json_object(smoke_dir / "SMOKE_RESULT.json", what="smoke result")
     if result.get("status") != ccs.STATUS_SMOKE_PASSED:
         raise ContractError(f"smoke artifact status is {result.get('status')!r}, expected SMOKE_PASSED")
+    require_matching_run_class(
+        requested_research=prepared["manifest"].get("run_class") == RESEARCH_RUN_CLASS,
+        manifest=result,
+        what="smoke artifact",
+    )
     verify_artifact_index(smoke_dir)
     if result["prepared_sha256"] != prepared["prepared_sha256"]:
         raise ContractError("the smoke artifact was produced from a different preparation")
@@ -2201,11 +2388,20 @@ def run_search(
     clock: Callable[[], float] = time.time,
     wall_time_cap: float = ccs.WALL_TIME_CAP_SECONDS,
     n_batches: int = ccs.N_BATCHES,
+    research_e2e: bool = False,
 ) -> dict:
     output_dir = Path(output_dir)
     if resume:
         context = strict_json_object(output_dir / "search_context.json", what="search context")
         manifest = strict_json_object(output_dir / "manifest.json", what="search manifest")
+        require_matching_run_class(
+            requested_research=research_e2e, manifest=context,
+            what="partial search context",
+        )
+        require_matching_run_class(
+            requested_research=research_e2e, manifest=manifest,
+            what="partial search manifest",
+        )
         if manifest.get("status") in (ccs.STATUS_SEARCH_COMPLETE, ccs.STATUS_CONFIRMATION_COMPLETE):
             raise ContractError(
                 f"{output_dir} is already {manifest['status']}; --resume must not overwrite a "
@@ -2214,6 +2410,10 @@ def run_search(
         prepared_dir = Path(context["prepared_dir"])
         smoke_dir = Path(context["smoke_dir"])
     prepared = load_prepared(prepared_dir)
+    require_matching_run_class(
+        requested_research=research_e2e, manifest=prepared["manifest"],
+        what="prepared artifact",
+    )
     matching_plan = require_matching_plan_path(
         plan_path, prepared["contract"],
         expected_file_sha256=prepared["manifest"]["plan_sha256"],
@@ -2252,28 +2452,44 @@ def run_search(
         raise ContractError(
             "resume execution settings differ from the authorized partial-search context"
         )
-    search_evidence = validate_search_evidence(
-        measured_benchmark_path,
-        pricing_approval_path,
-        plan_sha256=matching_plan["file_sha256"],
-        prepared_binding=prepared_binding,
-        smoke_binding=smoke_binding,
-        workers=workers,
-        total_authorized_trajectories=total_authorized_trajectories,
-        trajectories_per_in_flight_worker=len(prepared["contract"].discovery_seeds),
-        wall_time_cap_seconds=wall_time_cap_value,
-    )
+    if research_e2e:
+        search_evidence = {
+            "research_plan": matching_plan["file_sha256"],
+        }
+    else:
+        search_evidence = validate_search_evidence(
+            measured_benchmark_path,
+            pricing_approval_path,
+            plan_sha256=matching_plan["file_sha256"],
+            prepared_binding=prepared_binding,
+            smoke_binding=smoke_binding,
+            workers=workers,
+            total_authorized_trajectories=total_authorized_trajectories,
+            trajectories_per_in_flight_worker=len(prepared["contract"].discovery_seeds),
+            wall_time_cap_seconds=wall_time_cap_value,
+        )
     upstream_sha256 = {**prepared_binding, **smoke_binding, **search_evidence}
     if resume:
         upstream_sha256.update(artifact_binding(output_dir, "partial_search"))
         upstream_sha256.update(resume_integrity_binding(output_dir))
-    authorization = require_stage_authorization(
-        authorization_path,
-        stage="resume" if resume else "search",
-        plan=prepared["contract"],
-        plan_sha256=matching_plan["file_sha256"],
-        upstream_sha256=upstream_sha256,
-    )
+    if research_e2e:
+        research_execution = research_stage_declaration(
+            stage="resume" if resume else "search",
+            plan=prepared["contract"], plan_sha256=matching_plan["file_sha256"],
+            upstream_sha256=upstream_sha256, authorization_path=authorization_path,
+            measured_benchmark_path=measured_benchmark_path,
+            pricing_approval_path=pricing_approval_path,
+        )
+        authorization = None
+    else:
+        research_execution = None
+        authorization = require_stage_authorization(
+            authorization_path,
+            stage="resume" if resume else "search",
+            plan=prepared["contract"],
+            plan_sha256=matching_plan["file_sha256"],
+            upstream_sha256=upstream_sha256,
+        )
     if resume:
         if context["prepared_sha256"] != prepared["prepared_sha256"]:
             raise ContractError("the partial search was produced from a different preparation")
@@ -2288,9 +2504,14 @@ def run_search(
                              if context["module_sha256"].get(n) != current.get(n))
         if differences:
             raise ContractError(f"code changed since the partial search: {differences}")
+        journal_name = (
+            "research_resume_declarations.jsonl" if research_e2e
+            else "resume_authorizations.jsonl"
+        )
         append_journal(
-            output_dir / "journal/resume_authorizations.jsonl",
-            {**authorization, "recorded_utc": now()},
+            output_dir / f"journal/{journal_name}",
+            {**(research_execution if research_e2e else authorization),
+             "recorded_utc": now()},
         )
     else:
         assert_unoccupied(output_dir)
@@ -2305,7 +2526,7 @@ def run_search(
     initial = [dict(entry) for entry in prepared["initial"]]
 
     if not resume:
-        dump_json(output_dir / "search_context.json", {
+        context_payload = {
             "prepared_dir": str(Path(prepared_dir).resolve()),
             "prepared_sha256": prepared["prepared_sha256"],
             "smoke_dir": str(Path(smoke_dir).resolve()),
@@ -2318,13 +2539,21 @@ def run_search(
                 "hpc_override" if workers > ccs.MAX_WORKERS else "reviewed_local"
             ),
             "wall_time_cap_seconds": wall_time_cap_value,
-            "stage_authorization": authorization,
             "environment": environment(), "started_utc": now(),
+            **research_labels(research_e2e),
+        }
+        if research_e2e:
+            context_payload["research_execution_declaration"] = research_execution
+        else:
+            context_payload["stage_authorization"] = authorization
+        dump_json(output_dir / "search_context.json", context_payload)
+        dump_json(output_dir / "manifest.json", {
+            "design": plan.design_name,
+            "seed_comparison_group": plan.comparison_group,
+            "status": "RUNNING", "stage": "search",
+            "started_utc": now(),
+            **research_labels(research_e2e),
         })
-        dump_json(output_dir / "manifest.json", {"design": plan.design_name,
-                                                 "seed_comparison_group": plan.comparison_group,
-                                                 "status": "RUNNING", "stage": "search",
-                                                 "started_utc": now()})
 
     recorded_proposals = read_journal(output_dir / "journal/proposals.jsonl")
     proposals_by_id = {int(entry["candidate_id"]): entry for entry in recorded_proposals}
@@ -2530,11 +2759,26 @@ def write_search_outputs(output_dir: Path, archive: ccs.Archive, targets, *, sta
 
     passers = [r for r in records if r.primary_pass]
     sensitivity_only = [r for r in records if r.sensitivity_pass and not r.primary_pass]
+    research_e2e = prepared["manifest"].get("run_class") == RESEARCH_RUN_CLASS
+    planned_vectors = len(prepared["initial"]) + int(n_batches) * ccs.BATCH_SIZE
     manifest = {
         "design": plan.design_name,
         "seed_comparison_group": plan.comparison_group,
         "status": status, "stage": "search", "stopped_reason": stopped_reason,
         "n_candidates_evaluated": len(records), "n_batches_declared": n_batches,
+        "bounded_execution": {
+            "initial_archive_size": len(prepared["initial"]),
+            "full_design_initial_archive_size": ccs.INITIAL_ARCHIVE_SIZE,
+            "adaptive_batches": int(n_batches),
+            "full_design_adaptive_batches": ccs.N_BATCHES,
+            "batch_size": ccs.BATCH_SIZE,
+            "planned_discovery_vectors": planned_vectors,
+            "full_design_max_discovery_vectors": ccs.MAX_DISCOVERY_VECTORS,
+            "planned_discovery_trajectories": (
+                planned_vectors * len(plan.discovery_seeds)
+            ),
+            "full_design_discovery_trajectories": ccs.DISCOVERY_TRAJECTORIES,
+        },
         "budget": budget.as_dict(), "elapsed_seconds": elapsed_seconds,
         "n_discovery_primary_pass": len(passers),
         "n_sensitivity_only": len(sensitivity_only),
@@ -2554,7 +2798,13 @@ def write_search_outputs(output_dir: Path, archive: ccs.Archive, targets, *, sta
             "This is a bounded first attempt, not exhaustive coverage of 33 dimensions, and "
             "no result here demonstrates global impossibility.",
         ],
+        **research_labels(research_e2e),
     }
+    if research_e2e:
+        manifest["limitations"].append(
+            "RESEARCH E2E ONLY: completion means the declared bounded rehearsal finished; "
+            "it is not the full production search and is never production eligible."
+        )
     if failure:
         manifest["failure"] = failure
         manifest["failure_warning"] = (
@@ -2752,21 +3002,43 @@ def confirm(
     worker: Callable[[dict], dict] = evaluate_candidate_worker,
     executor_factory=ProcessPoolExecutor,
     clock: Callable[[], float] = time.time,
+    research_e2e: bool = False,
 ) -> dict:
     search = load_complete_search(source)
+    require_matching_run_class(
+        requested_research=research_e2e, manifest=search["manifest"],
+        what="completed search manifest",
+    )
+    require_matching_run_class(
+        requested_research=research_e2e, manifest=search["context"],
+        what="completed search context",
+    )
     prepared = load_prepared(Path(search["context"]["prepared_dir"]))
+    require_matching_run_class(
+        requested_research=research_e2e, manifest=prepared["manifest"],
+        what="prepared artifact",
+    )
     plan = prepared["contract"]
     matching_plan = require_matching_plan_path(
         plan_path, plan, expected_file_sha256=prepared["manifest"]["plan_sha256"]
     )
     search_binding = artifact_binding(Path(source), "completed_search")
-    authorization = require_stage_authorization(
-        authorization_path,
-        stage="confirmation",
-        plan=plan,
-        plan_sha256=matching_plan["file_sha256"],
-        upstream_sha256=search_binding,
-    )
+    if research_e2e:
+        research_execution = research_stage_declaration(
+            stage="confirmation", plan=plan,
+            plan_sha256=matching_plan["file_sha256"],
+            upstream_sha256=search_binding, authorization_path=authorization_path,
+        )
+        authorization = None
+    else:
+        research_execution = None
+        authorization = require_stage_authorization(
+            authorization_path,
+            stage="confirmation",
+            plan=plan,
+            plan_sha256=matching_plan["file_sha256"],
+            upstream_sha256=search_binding,
+        )
     discovery_replicates = len(plan.discovery_seeds)
     confirmation_replicates = len(plan.confirmation_seeds)
     state = prepared["state"]
@@ -2895,7 +3167,6 @@ def confirm(
         "source_search": str(Path(source).resolve()),
         "source_search_manifest_sha256": ccs.sha256_file(Path(source) / "manifest.json"),
         "prepared_sha256": prepared["prepared_sha256"], "input_sha256": state["hashes"],
-        "stage_authorization": authorization,
         "module_sha256": module_hashes(), "diagnosis_test_gate": gate,
         "variance_stability": stability, "cross_validation": cross_validation,
         "environment": environment(), "generated_utc": now(),
@@ -2909,7 +3180,16 @@ def confirm(
             "Saved 2025 tensors are diagnostic states with restart_safe=false, not restart "
             "checkpoints.",
         ],
+        **research_labels(research_e2e),
     }
+    if research_e2e:
+        manifest["research_execution_declaration"] = research_execution
+        manifest["limitations"].append(
+            "RESEARCH E2E ONLY: confirmation assesses the bounded rehearsal shortlist and "
+            "does not make any candidate production eligible."
+        )
+    else:
+        manifest["stage_authorization"] = authorization
     dump_json(output_dir / "manifest.json", manifest)
     write_decision_report(output_dir, confirmed, targets, manifest, search)
     write_artifact_index(output_dir)
@@ -3087,6 +3367,25 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--workers", type=int, default=ccs.DEFAULT_WORKERS)
     parser.add_argument(
+        "--research-e2e", action="store_true",
+        help=(
+            "run the explicit permanently non-production research profile; requires a plan "
+            f"declaring run_class={RESEARCH_RUN_CLASS}"
+        ),
+    )
+    parser.add_argument(
+        "--initial-size", type=int, default=None,
+        help="research prepare only: bounded initial archive size (methodological maximum unchanged)",
+    )
+    parser.add_argument(
+        "--n-batches", type=int, default=None,
+        help="research search/resume only: bounded number of adaptive 64-vector batches",
+    )
+    parser.add_argument(
+        "--wall-time-cap-seconds", type=float, default=None,
+        help="research search/resume only: stop dispatch at this bounded wall-time cap",
+    )
+    parser.add_argument(
         "--allow-hpc-workers",
         action="store_true",
         help=(
@@ -3103,6 +3402,33 @@ def _require(value, message: str):
     return value
 
 
+def validate_cli_execution_profile(args: argparse.Namespace) -> None:
+    bounded = any(value is not None for value in (
+        args.initial_size, args.n_batches, args.wall_time_cap_seconds,
+    ))
+    if bounded and not args.research_e2e:
+        raise ContractError(
+            "--initial-size, --n-batches, and --wall-time-cap-seconds are exposed only with "
+            "--research-e2e; production defaults and gates are unchanged"
+        )
+    if args.research_e2e and any(value is not None for value in (
+        args.authorization, args.measured_benchmark, args.pricing_approval,
+    )):
+        raise ContractError(
+            "--research-e2e must not receive production authorization, benchmark, or pricing "
+            "artifacts"
+        )
+    if args.initial_size is not None and not args.prepare:
+        raise ContractError("--initial-size is valid only with --prepare")
+    if (args.n_batches is not None or args.wall_time_cap_seconds is not None) \
+            and not (args.run_search or args.resume):
+        raise ContractError(
+            "--n-batches and --wall-time-cap-seconds are valid only with --run-search or --resume"
+        )
+    if args.research_e2e and args.allow_hpc_workers:
+        raise ContractError("the local research E2E profile does not allow --allow-hpc-workers")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     upper = ABSOLUTE_HPC_WORKER_CAP if args.allow_hpc_workers else ccs.MAX_WORKERS
@@ -3112,9 +3438,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"error: --workers must be between 1 and {upper}{hint}"
         )
     try:
+        validate_cli_execution_profile(args)
         plan_path = _require(args.plan, "every mode requires an explicit --plan path")
         if not Path(plan_path).is_file():
             raise ContractError(f"explicit --plan does not exist: {plan_path}")
+        if args.research_e2e:
+            RunnerPlan(
+                strict_json_object(Path(plan_path), what="research coupled calibration plan")
+            ).validate_research_execution()
         if not any((args.prepare, args.smoke, args.run_search, args.confirm, args.resume)):
             report = validate(plan_path=plan_path)
             printable = {k: v for k, v in report.items() if k != "state"}
@@ -3125,7 +3456,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0 if report["ok"] else 2
         if args.prepare:
             manifest = prepare(_require(args.output_dir, "--prepare needs --output-dir"),
-                               plan_path=plan_path, authorization_path=args.authorization)
+                               plan_path=plan_path, authorization_path=args.authorization,
+                               initial_size=args.initial_size,
+                               research_e2e=args.research_e2e)
             print(json.dumps({k: manifest[k] for k in
                               ("status", "simulations_started", "initial_archive_size")}, indent=2))
             print(f"Prepared {args.output_dir}; 0 simulations started.")
@@ -3134,7 +3467,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = smoke(_require(args.prepared, "--smoke needs --prepared"),
                            _require(args.output_dir, "--smoke needs --output-dir"),
                            workers=args.workers, plan_path=plan_path,
-                           authorization_path=args.authorization)
+                           authorization_path=args.authorization,
+                           research_e2e=args.research_e2e)
             print(json.dumps({k: result[k] for k in
                               ("status", "pairs", "trajectories", "warm_vectors_exercised",
                                "mean_seconds_per_trajectory")}, indent=2))
@@ -3148,14 +3482,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 workers=args.workers, resume=bool(args.resume),
                                 plan_path=plan_path, authorization_path=args.authorization,
                                 measured_benchmark_path=args.measured_benchmark,
-                                pricing_approval_path=args.pricing_approval)
+                                pricing_approval_path=args.pricing_approval,
+                                n_batches=(ccs.N_BATCHES if args.n_batches is None
+                                           else args.n_batches),
+                                wall_time_cap=(ccs.WALL_TIME_CAP_SECONDS
+                                               if args.wall_time_cap_seconds is None
+                                               else args.wall_time_cap_seconds),
+                                research_e2e=args.research_e2e)
             print(json.dumps(ccs.json_safe(result), indent=2))
             return 0 if result["status"] == ccs.STATUS_SEARCH_COMPLETE else 1
         if args.confirm:
             manifest = confirm(_require(args.source, "--confirm needs --source"),
                                _require(args.output_dir, "--confirm needs --output-dir"),
                                workers=args.workers, plan_path=plan_path,
-                               authorization_path=args.authorization)
+                               authorization_path=args.authorization,
+                               research_e2e=args.research_e2e)
             print(json.dumps({k: manifest[k] for k in
                               ("status", "n_candidates", "n_confirmation_primary_pass")}, indent=2))
             return 0

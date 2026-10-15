@@ -71,6 +71,11 @@ RUN_MANIFEST_FILENAME = "run_reproducibility_manifest.json"
 RUN_SHEET_SNAPSHOT_FILENAME = "approved_analysis_run_sheet.json"
 RUN_MANIFEST_SCHEMA = "model_run_reproducibility/1.1.0"
 PROTECTED_SCIENTIFIC_OUTPUT = "baseline_run_001.csv"
+RESEARCH_RUN_TAG = "research_not_production_eligible"
+RESEARCH_SCIENTIFIC_OUTPUT = f"{RESEARCH_RUN_TAG}_run_001.csv"
+RESEARCH_NOTICE_FILENAME = "RESEARCH_NOT_PRODUCTION_ELIGIBLE.json"
+RESEARCH_NOTICE_SCHEMA = "model_research_run_notice/1.0.0"
+RESEARCH_CLASSIFICATION = "RESEARCH_NOT_PRODUCTION_ELIGIBLE"
 
 # Direct scientific implementation inputs for the ordinary model route.  The
 # sidecar hashes every file, rather than treating a Git commit as sufficient
@@ -1032,9 +1037,21 @@ def write_reproducibility_bundle(
     model: str, p: float | None, seed: int, command_argv: Sequence[str],
     parameter_contract_sha256: str, scientific_files_sha256: str,
     requirements_operator_sha256: str, runtime_identity: Mapping[str, str],
-    run_sheet_path: str | Path, run_sheet_sha256: str,
+    run_sheet_path: str | Path | None, run_sheet_sha256: str | None,
+    execution_mode: str = "production",
 ) -> Path:
     """Write the effective config and PREPARED sidecar before engine import."""
+    if execution_mode not in {"production", "research"}:
+        raise OperatorConfigError(f"invalid execution mode: {execution_mode!r}")
+    if execution_mode == "production" and (
+        run_sheet_path is None or run_sheet_sha256 is None
+    ):
+        raise OperatorConfigError("production runs require an approved analysis run sheet")
+    if execution_mode == "research" and (
+        run_sheet_path is not None or run_sheet_sha256 is not None
+    ):
+        raise OperatorConfigError("research runs cannot claim an approved analysis run sheet")
+
     input_path = Path(input_config_path)
     if _sha256_file(input_path) != input_config_sha256:
         raise OperatorConfigError(
@@ -1042,32 +1059,37 @@ def write_reproducibility_bundle(
         )
     if _sha256_file(PARAMETER_CONTRACT_PATH) != parameter_contract_sha256:
         raise OperatorConfigError(
-            f"collaborator parameter contract changed after approval validation: "
+            f"collaborator parameter contract changed after run validation: "
             f"{PARAMETER_CONTRACT_PATH}"
         )
     _, current_requirements_sha256 = _operator_requirements_contract()
     if current_requirements_sha256 != requirements_operator_sha256:
         raise OperatorConfigError(
-            f"operator requirements changed after approval validation: "
+            f"operator requirements changed after run validation: "
             f"{REQUIREMENTS_OPERATOR_PATH}"
         )
-    sheet_path = Path(run_sheet_path)
-    try:
-        sheet_bytes = sheet_path.read_bytes()
-    except OSError as exc:
-        raise OperatorConfigError(
-            f"analysis run sheet became unreadable after validation: {sheet_path}"
-        ) from exc
-    if hashlib.sha256(sheet_bytes).hexdigest() != run_sheet_sha256:
-        raise OperatorConfigError(
-            f"analysis run sheet changed after validation: {sheet_path}"
-        )
+    sheet_path: Path | None = None
+    sheet_bytes: bytes | None = None
+    if execution_mode == "production":
+        assert run_sheet_path is not None
+        assert run_sheet_sha256 is not None
+        sheet_path = Path(run_sheet_path)
+        try:
+            sheet_bytes = sheet_path.read_bytes()
+        except OSError as exc:
+            raise OperatorConfigError(
+                f"analysis run sheet became unreadable after validation: {sheet_path}"
+            ) from exc
+        if hashlib.sha256(sheet_bytes).hexdigest() != run_sheet_sha256:
+            raise OperatorConfigError(
+                f"analysis run sheet changed after validation: {sheet_path}"
+            )
 
     # Build all potentially failing provenance before creating the run directory.
     code_identity = _code_identity()
     if code_identity["scientific_files_sha256"] != scientific_files_sha256:
         raise OperatorConfigError(
-            "MODEL_CODE_FILES changed after production approval validation"
+            "MODEL_CODE_FILES changed after run validation"
         )
     effective_bytes = _json_bytes(dict(effective_config))
 
@@ -1083,6 +1105,7 @@ def write_reproducibility_bundle(
         )
     effective_path = output_path / EFFECTIVE_CONFIG_FILENAME
     run_sheet_snapshot_path = output_path / RUN_SHEET_SNAPSHOT_FILENAME
+    research_notice_path = output_path / RESEARCH_NOTICE_FILENAME
     manifest_path = output_path / RUN_MANIFEST_FILENAME
     try:
         with effective_path.open("xb") as handle:
@@ -1091,19 +1114,53 @@ def write_reproducibility_bundle(
         raise OperatorConfigError(
             f"refusing to overwrite reproducibility file: {effective_path}"
         ) from exc
-    try:
-        with run_sheet_snapshot_path.open("xb") as handle:
-            handle.write(sheet_bytes)
-    except FileExistsError as exc:
-        raise OperatorConfigError(
-            f"refusing to overwrite reproducibility file: {run_sheet_snapshot_path}"
-        ) from exc
+    if execution_mode == "production":
+        assert sheet_bytes is not None
+        try:
+            with run_sheet_snapshot_path.open("xb") as handle:
+                handle.write(sheet_bytes)
+        except FileExistsError as exc:
+            raise OperatorConfigError(
+                f"refusing to overwrite reproducibility file: {run_sheet_snapshot_path}"
+            ) from exc
+
+    research_notice: dict[str, Any] | None = None
+    research_notice_bytes: bytes | None = None
+    if execution_mode == "research":
+        research_notice = {
+            "schema": RESEARCH_NOTICE_SCHEMA,
+            "classification": RESEARCH_CLASSIFICATION,
+            "production_eligible": False,
+            "statement": (
+                "This output is an explicitly requested research run. It was not "
+                "authorized by a production approval or analysis run sheet and must "
+                "not be represented as production-eligible or as an accepted final result."
+            ),
+            "route": {"model": model, "p": p, "seed": int(seed)},
+            "input_config_sha256": input_config_sha256,
+            "scientific_files_sha256": scientific_files_sha256,
+        }
+        research_notice_bytes = _json_bytes(research_notice)
+        try:
+            with research_notice_path.open("xb") as handle:
+                handle.write(research_notice_bytes)
+        except FileExistsError as exc:
+            raise OperatorConfigError(
+                f"refusing to overwrite research notice: {research_notice_path}"
+            ) from exc
 
     manifest = {
         "schema": RUN_MANIFEST_SCHEMA,
         "status": "PREPARED",
         "prepared_utc": _utc_now(),
         "completed_utc": None,
+        "run_class": "PRODUCTION" if execution_mode == "production" else "RESEARCH",
+        "classification": (
+            "PRODUCTION_AUTHORIZED"
+            if execution_mode == "production"
+            else RESEARCH_CLASSIFICATION
+        ),
+        "production_eligible": execution_mode == "production",
         "command": ["run_model.py", *command_argv],
         "input_config": {
             "path": str(input_path.resolve()),
@@ -1117,11 +1174,21 @@ def write_reproducibility_bundle(
             "path": str(PARAMETER_CONTRACT_PATH.resolve()),
             "sha256": parameter_contract_sha256,
         },
-        "analysis_run_sheet": {
-            "source_path": str(sheet_path.resolve()),
-            "sealed_path": str(run_sheet_snapshot_path.resolve()),
-            "sha256": run_sheet_sha256,
-        },
+        "analysis_run_sheet": (
+            {
+                "source_path": str(sheet_path.resolve()),
+                "sealed_path": str(run_sheet_snapshot_path.resolve()),
+                "sha256": run_sheet_sha256,
+            }
+            if sheet_path is not None else None
+        ),
+        "research_notice": (
+            {
+                "path": str(research_notice_path.resolve()),
+                "sha256": hashlib.sha256(research_notice_bytes).hexdigest(),
+            }
+            if research_notice_bytes is not None else None
+        ),
         "operator_requirements": {
             "path": str(REQUIREMENTS_OPERATOR_PATH.resolve()),
             "sha256": requirements_operator_sha256,
@@ -1180,13 +1247,22 @@ def finalize_run_manifest(
 
 def _verify_protected_scientific_output(output_dir: str | Path) -> dict[str, Any]:
     """Require the exact non-empty regular result from the protected route."""
-    path = Path(output_dir) / PROTECTED_SCIENTIFIC_OUTPUT
+    return _verify_scientific_output(
+        output_dir, filename=PROTECTED_SCIENTIFIC_OUTPUT
+    )
+
+
+def _verify_scientific_output(
+    output_dir: str | Path, *, filename: str,
+) -> dict[str, Any]:
+    """Require one exact non-empty regular result from the selected route."""
+    path = Path(output_dir) / filename
     try:
         metadata = path.lstat()
     except FileNotFoundError as exc:
         raise OperatorConfigError(
             f"engine returned without required scientific output: "
-            f"{PROTECTED_SCIENTIFIC_OUTPUT}"
+            f"{filename}"
         ) from exc
     if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
         raise OperatorConfigError(
@@ -1195,7 +1271,7 @@ def _verify_protected_scientific_output(output_dir: str | Path) -> dict[str, Any
     if metadata.st_size <= 0:
         raise OperatorConfigError(f"required scientific output is empty: {path}")
     return {
-        "relative_path": PROTECTED_SCIENTIFIC_OUTPUT,
+        "relative_path": filename,
         "size_bytes": metadata.st_size,
         "sha256": _sha256_file(path),
     }
@@ -1244,20 +1320,31 @@ def _require_protected_output_contract(
     runtime: Mapping[str, Any], *, output_dir: str | Path,
 ) -> None:
     """Freeze the ordinary one-run output contract expected after execution."""
+    _require_output_contract(
+        runtime, output_dir=output_dir, expected_run_tag="baseline"
+    )
+
+
+def _require_output_contract(
+    runtime: Mapping[str, Any], *, output_dir: str | Path,
+    expected_run_tag: str,
+) -> None:
+    """Freeze the common one-run CSV output contract and its exact run tag."""
     output = runtime.get("output")
     if not isinstance(output, Mapping):
         raise OperatorConfigError("runtime config has no protected output object")
     expected = {
         "enabled": True,
         "format": "csv",
-        "run_tag": "baseline",
+        "run_tag": expected_run_tag,
         "write_per_run_files": True,
     }
+    expected_output = f"{expected_run_tag}_run_001.csv"
     for field, expected_value in expected.items():
         if field not in output or extract_value(output[field]) != expected_value:
             raise OperatorConfigError(
                 f"protected output.{field} must remain {expected_value!r} for "
-                f"{PROTECTED_SCIENTIFIC_OUTPUT}"
+                f"{expected_output}"
             )
     if "directory" not in output or Path(
         str(extract_value(output["directory"]))
@@ -1265,6 +1352,23 @@ def _require_protected_output_contract(
         raise OperatorConfigError(
             "protected output.directory does not match --output-dir"
         )
+
+
+def _shape_research_output(runtime: dict) -> None:
+    """Give research results a durable non-production filename label."""
+    output = runtime.get("output")
+    if not isinstance(output, dict):
+        raise OperatorConfigError("runtime config has no research output object")
+    _set_value(output, "run_tag", RESEARCH_RUN_TAG)
+
+
+def _require_research_output_contract(
+    runtime: Mapping[str, Any], *, output_dir: str | Path,
+) -> None:
+    """Freeze the one-run output contract for non-production research runs."""
+    _require_output_contract(
+        runtime, output_dir=output_dir, expected_run_tag=RESEARCH_RUN_TAG
+    )
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1296,6 +1400,13 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     out.add_argument(
+        "--research-run", action="store_true",
+        help=(
+            "execute without production approval or a run sheet; output is "
+            "permanently labelled research-only and not production-eligible"
+        ),
+    )
+    out.add_argument(
         "--validate-only", action="store_true",
         help="validate the config and route without constructing the engine",
     )
@@ -1306,6 +1417,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     command_argv = list(sys.argv[1:] if argv is None else argv)
     args = parser().parse_args(command_argv)
     try:
+        if args.research_run and args.validate_only:
+            raise OperatorConfigError(
+                "--research-run and --validate-only are separate modes; choose one"
+            )
+        if args.research_run and args.run_sheet is not None:
+            raise OperatorConfigError(
+                "--research-run cannot use --run-sheet or claim production authorization"
+            )
         args.seed = _validate_seed(args.seed, required=not args.validate_only)
         base, input_config_sha256 = _load_shared_config_and_hash(args.config)
         output_path = (
@@ -1340,33 +1459,49 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise OperatorConfigError(
                 f"output directory is not empty: {output_path}; choose a new run directory"
             )
-        _require_protected_output_contract(runtime, output_dir=output_path)
-        approval_bindings = _require_production_approval(base)
-        if args.run_sheet is None:
-            raise OperatorConfigError(
-                "--run-sheet is required for an actual run; scientific approval "
-                "and dispatch authorization must be recorded separately"
+        run_sheet_sha256: str | None = None
+        if args.research_run:
+            _shape_research_output(runtime)
+            _require_research_output_contract(runtime, output_dir=output_path)
+            requirements_versions, requirements_sha256 = (
+                _operator_requirements_contract()
             )
-        _, run_sheet_sha256 = _load_analysis_run_sheet(
-            args.run_sheet,
-            input_config_sha256=input_config_sha256,
-            parameter_contract_sha256=(
-                approval_bindings["parameter_contract_sha256"]
-            ),
-            scientific_files_sha256=approval_bindings["code_identity"][
-                "scientific_files_sha256"
-            ],
-            requirements_operator_sha256=approval_bindings[
-                "requirements_operator_sha256"
-            ],
-            model=args.model,
-            p=args.p,
-            seed=args.seed,
-            output_dir=output_path,
-            production_approved_utc=approval_bindings[
-                "production_approved_utc"
-            ],
-        )
+            approval_bindings = {
+                "parameter_contract_sha256": (
+                    collaborator_parameter_contract_sha256()
+                ),
+                "requirements_operator_sha256": requirements_sha256,
+                "requirements_versions": requirements_versions,
+                "code_identity": _code_identity(),
+            }
+        else:
+            _require_protected_output_contract(runtime, output_dir=output_path)
+            approval_bindings = _require_production_approval(base)
+            if args.run_sheet is None:
+                raise OperatorConfigError(
+                    "--run-sheet is required for an actual run; scientific approval "
+                    "and dispatch authorization must be recorded separately"
+                )
+            _, run_sheet_sha256 = _load_analysis_run_sheet(
+                args.run_sheet,
+                input_config_sha256=input_config_sha256,
+                parameter_contract_sha256=(
+                    approval_bindings["parameter_contract_sha256"]
+                ),
+                scientific_files_sha256=approval_bindings["code_identity"][
+                    "scientific_files_sha256"
+                ],
+                requirements_operator_sha256=approval_bindings[
+                    "requirements_operator_sha256"
+                ],
+                model=args.model,
+                p=args.p,
+                seed=args.seed,
+                output_dir=output_path,
+                production_approved_utc=approval_bindings[
+                    "production_approved_utc"
+                ],
+            )
         runtime_identity = _require_operator_runtime(
             approval_bindings["requirements_versions"]
         )
@@ -1391,6 +1526,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             runtime_identity=runtime_identity,
             run_sheet_path=args.run_sheet,
             run_sheet_sha256=run_sheet_sha256,
+            execution_mode=("research" if args.research_run else "production"),
         )
     except OperatorConfigError as exc:
         print(f"ERROR: {exc}")
@@ -1401,7 +1537,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         engine = SimulationEngineV3(runtime, seed=args.seed)
         engine.run(run_number=1)
-        scientific_output = _verify_protected_scientific_output(output_path)
+        scientific_output = _verify_scientific_output(
+            output_path,
+            filename=(
+                RESEARCH_SCIENTIFIC_OUTPUT
+                if args.research_run else PROTECTED_SCIENTIFIC_OUTPUT
+            ),
+        )
     except Exception as exc:
         finalize_run_manifest(
             manifest_path, status="FAILED", failure_type=type(exc).__name__
@@ -1413,10 +1555,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     finalize_run_manifest(
         manifest_path, status="COMPLETE", scientific_output=scientific_output
     )
-    print(
-        f"COMPLETE: {args.model} results written to {output_path}; "
-        f"reproducibility manifest: {manifest_path}"
-    )
+    if args.research_run:
+        print(
+            f"COMPLETE RESEARCH RUN ({RESEARCH_CLASSIFICATION}): {args.model} "
+            f"results written to {output_path}; reproducibility manifest: "
+            f"{manifest_path}"
+        )
+    else:
+        print(
+            f"COMPLETE: {args.model} results written to {output_path}; "
+            f"reproducibility manifest: {manifest_path}"
+        )
     return 0
 
 

@@ -377,6 +377,137 @@ def test_operator_run_refuses_unapproved_config_before_engine_import(
     assert not output.exists()
 
 
+@pytest.mark.parametrize(
+    ("model", "p", "seed"),
+    [("M0", None, 42101), ("M1", 0.2, 42102)],
+)
+def test_explicit_research_run_executes_m0_or_positive_p_m1_with_durable_labels(
+    model, p, seed, tmp_path, monkeypatch, capsys,
+):
+    output = tmp_path / f"research-{model.lower()}"
+    seen = {}
+
+    class FakeEngine:
+        def __init__(self, config, seed):
+            seen["config"] = config
+            seen["seed"] = seed
+
+        def run(self, run_number):
+            seen["run_number"] = run_number
+            output_config = seen["config"]["output"]
+            output_dir = Path(output_config["directory"]["value"])
+            run_tag = output_config["run_tag"]["value"]
+            (output_dir / f"{run_tag}_run_{run_number:03d}.csv").write_text(
+                "year,new_infections\n1980,1\n"
+            )
+
+    monkeypatch.setitem(
+        sys.modules, "run_v3", types.SimpleNamespace(SimulationEngineV3=FakeEngine)
+    )
+    runtime_identity = _allow_test_runtime(monkeypatch)
+    times = iter(("2026-10-15T11:00:00+00:00", "2026-10-15T11:01:00+00:00"))
+    monkeypatch.setattr(run_model, "_utc_now", lambda: next(times))
+
+    command = [
+        "--config", str(SHARED), "--model", model, "--seed", str(seed),
+        "--output-dir", str(output), "--research-run",
+    ]
+    if p is not None:
+        command[4:4] = ["--p", str(p)]
+
+    assert run_model.main(command) == 0
+    assert seen["seed"] == seed
+    assert seen["run_number"] == 1
+    assert seen["config"]["output"]["run_tag"]["value"] == (
+        run_model.RESEARCH_RUN_TAG
+    )
+    assert "production_approval" not in seen["config"]
+
+    manifest_path = output / run_model.RUN_MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    result = output / run_model.RESEARCH_SCIENTIFIC_OUTPUT
+    notice_path = output / run_model.RESEARCH_NOTICE_FILENAME
+    notice = json.loads(notice_path.read_text())
+    effective = json.loads((output / run_model.EFFECTIVE_CONFIG_FILENAME).read_text())
+
+    assert result.is_file()
+    assert not (output / run_model.PROTECTED_SCIENTIFIC_OUTPUT).exists()
+    assert not (output / run_model.RUN_SHEET_SNAPSHOT_FILENAME).exists()
+    assert manifest["run_class"] == "RESEARCH"
+    assert manifest["classification"] == run_model.RESEARCH_CLASSIFICATION
+    assert manifest["production_eligible"] is False
+    assert manifest["analysis_run_sheet"] is None
+    assert manifest["route"] == {"model": model, "p": p, "seed": seed}
+    assert manifest["runtime_identity"] == runtime_identity
+    assert manifest["scientific_output"]["relative_path"] == result.name
+    assert manifest["research_notice"] == {
+        "path": str(notice_path.resolve()),
+        "sha256": hashlib.sha256(notice_path.read_bytes()).hexdigest(),
+    }
+    assert notice["classification"] == run_model.RESEARCH_CLASSIFICATION
+    assert notice["production_eligible"] is False
+    assert notice["route"] == {"model": model, "p": p, "seed": seed}
+    assert effective["output"]["run_tag"]["value"] == run_model.RESEARCH_RUN_TAG
+    if model == "M0":
+        assert not _has_profile(effective)
+    else:
+        profile = ssd.load_stage_structured_diagnosis(
+            ConfigReader(effective).as_v6_dict()
+        )
+        assert profile.enabled
+        assert profile.aids_symptom_annual_probability == pytest.approx(p)
+    message = capsys.readouterr().out
+    assert run_model.RESEARCH_CLASSIFICATION in message
+
+
+def test_research_run_cannot_claim_a_production_run_sheet(
+    tmp_path, monkeypatch, capsys,
+):
+    output = tmp_path / "must-not-run"
+
+    class MustNotConstruct:
+        def __init__(self, config, seed):
+            raise AssertionError("invalid research request reached engine construction")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "run_v3",
+        types.SimpleNamespace(SimulationEngineV3=MustNotConstruct),
+    )
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M0", "--seed", "42103",
+        "--output-dir", str(output), "--research-run",
+        "--run-sheet", str(tmp_path / "synthetic.json"),
+    ]) == 2
+    assert "cannot use --run-sheet" in capsys.readouterr().out
+    assert not output.exists()
+
+
+def test_research_run_refuses_to_overwrite_any_existing_output(
+    tmp_path, monkeypatch, capsys,
+):
+    output = tmp_path / "existing-research-run"
+    output.mkdir()
+    preserved = output / run_model.RESEARCH_NOTICE_FILENAME
+    preserved.write_text("preserve prior research evidence")
+
+    class MustNotConstruct:
+        def __init__(self, config, seed):
+            raise AssertionError("research replay reached engine construction")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "run_v3",
+        types.SimpleNamespace(SimulationEngineV3=MustNotConstruct),
+    )
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M0", "--seed", "42104",
+        "--output-dir", str(output), "--research-run",
+    ]) == 2
+    assert "output directory is not empty" in capsys.readouterr().out
+    assert preserved.read_text() == "preserve prior research evidence"
+
+
 def test_copied_approval_does_not_authorize_an_unlisted_parameter_edit(
     tmp_path, monkeypatch, capsys,
 ):
@@ -888,6 +1019,10 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     manifest = json.loads(manifest_path.read_text())
     assert manifest["schema"] == run_model.RUN_MANIFEST_SCHEMA
     assert manifest["status"] == "COMPLETE"
+    assert manifest["run_class"] == "PRODUCTION"
+    assert manifest["classification"] == "PRODUCTION_AUTHORIZED"
+    assert manifest["production_eligible"] is True
+    assert manifest["research_notice"] is None
     assert manifest["route"] == {"model": "M1", "p": 0.2, "seed": 42001}
     assert manifest["input_config"] == {
         "path": str(operator_copy.resolve()),
