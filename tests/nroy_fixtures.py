@@ -48,6 +48,9 @@ TEST_SIGNATURES: dict[str, object] = {
     "models.m0.calib_space": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
     "models.base_config": SHARED_PRODUCTION_CONFIG,
     "target_contract.register_path": "configs/hm_target_register_focused_20260916.json",
+    "target_contract.register_sha256": ccs.sha256_file(
+        ROOT / "configs" / "hm_target_register_focused_20260916.json"
+    ),
     "target_contract.n_targets": 13,
     "target_contract.frozen_order": list(ccs.FROZEN_TARGET_ORDER),
     "p_parameter.name": P_NAME,

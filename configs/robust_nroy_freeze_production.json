@@ -54,6 +54,8 @@
     ],
     "frozen_order_note": "The 13-target contract is the production spec's RECOMMENDED choice because it implements the recorded 1996-onward HIV and 2000-onward AIDS source-window decision. Older 15-target memos predate that decision. Recommended is not signed.",
     "register_sha256": "UNSIGNED",
+    "register_sha256_proposal": "87db68409e1a3e0c6ede762b37fd7f8c64008a1ba289b4965eb7a7be645e7a03",
+    "register_sha256_note": "Hash of configs/hm_target_register_focused_20260916.json as audited on 2026-10-15. Recompute immediately before signing; a changed register requires renewed target review.",
     "reporting_groups_proposal": {
       "diagnoses_1996_2015": [
         "shm_new_diagnoses_msm@1996",
@@ -241,8 +243,8 @@
   },
 
   "tolerances": {
-    "merge_numerical_tolerance": "UNSIGNED",
-    "merge_numerical_tolerance_note": "Single-process and sharded merges must be bit-identical where arithmetic order is fixed, and numerically identical under a declared tight tolerance otherwise. This implementation fixes arithmetic order by sorting on (design_id, seed) before every reduction, so the bit-identical branch applies; the tolerance still needs a signed value for any future unordered reduction.",
+    "merge_arithmetic_contract": "bit-identical after sorting by (design_id, seed)",
+    "merge_arithmetic_contract_note": "This is an implemented invariant, not an owner-set tolerance. If a future unordered reduction is introduced, it requires a new reviewed plan field and adversarial tests before use.",
     "duplicate_vector_tolerance": 1e-10,
     "duplicate_vector_tolerance_note": "Computational near-duplicate rule inherited from the coupled search. Not a scientific criterion."
   },
@@ -270,6 +272,17 @@
     "stability_rank_tolerance_note": "How far the effective rank may move across bootstrap and leave-one-candidate-out refits before the diagnostic is reported as unavailable/unstable. It is never repaired by dropping targets or switching estimator.",
     "stability_direction_cosine": "UNSIGNED",
     "stability_direction_cosine_note": "Minimum |cos| between leading correlated directions across refits for the diagnostic to count as stable."
+  },
+
+  "production_prerequisites": {
+    "config_registry": "evidence/robust_nroy/CONFIG_REGISTRY.md",
+    "acceptance_inputs": "evidence/robust_nroy/acceptance_inputs/acceptance_input_provenance.json",
+    "seed_disjointness_audit": "evidence/robust_nroy/seed_audit.json",
+    "identity_gate": "evidence/robust_nroy/identity_gate/m0_m1_identity_gate.json",
+    "measured_pilot": "evidence/robust_nroy/measured_pilot.json",
+    "priced_budget": "evidence/robust_nroy/priced_budget.json",
+    "m1_anchor_confirmation": "evidence/robust_nroy/m1_anchor_confirmation.json",
+    "note": "Paths are frozen before plan signature. Evidence is generated only after its preceding gate and must bind this exact signed plan; missing files keep validation fail-closed."
   },
 
   "deferred_decisions": {

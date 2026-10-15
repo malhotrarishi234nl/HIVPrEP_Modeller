@@ -284,10 +284,21 @@ def command_validate(args: argparse.Namespace) -> int:
         path = ROOT / path
     raw = json.loads(path.read_text())
     pending = nc.unsigned_values(raw)
+    sign_off = raw.get("sign_off") if isinstance(raw, Mapping) else None
+    unsigned_sign_off = [
+        field for field in ("signed_by", "signed_date", "spec_version")
+        if not isinstance(sign_off, Mapping) or nc.is_unsigned(sign_off.get(field))
+    ]
 
     print(f"run plan: {path}")
     print(f"plan sha256: {ccs.sha256_file(path)}")
     print()
+    if not pending and unsigned_sign_off:
+        print("FAIL CLOSED: all decision values are present, but the signature gate is incomplete.")
+        print("No production simulation may start.\n")
+        for field in unsigned_sign_off:
+            print(f"  sign_off.{field}")
+        return 2
     if not pending:
         plan = nc.FrozenPlan.load(path)
         print("All required decisions are signed.")
@@ -307,6 +318,11 @@ def command_validate(args: argparse.Namespace) -> int:
 
     print(f"FAIL CLOSED: {len(pending)} required value(s) are unsigned.")
     print("No production simulation may start.\n")
+    if unsigned_sign_off:
+        print("-- separate signature gate (not counted as scientific/numerical decisions) --")
+        for field in unsigned_sign_off:
+            print(f"  sign_off.{field}")
+        print()
     without = [item for item in pending if item.proposal is None]
     with_proposal = [item for item in pending if item.proposal is not None]
     if with_proposal:

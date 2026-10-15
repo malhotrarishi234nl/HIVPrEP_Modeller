@@ -300,6 +300,10 @@ REQUIRED_DECISIONS: dict[str, str] = {
         "evaluator will run"
     ),
     "target_contract.register_path": "production target register path",
+    "target_contract.register_sha256": (
+        "SHA-256 of the exact production target register; the path alone does not "
+        "freeze target definitions"
+    ),
     "target_contract.frozen_order": "exact frozen target order",
     "target_contract.n_targets": "declared number of targets (contract size)",
     "p_parameter.name": "calibration-space name of the AIDS-symptom diagnosis probability p",

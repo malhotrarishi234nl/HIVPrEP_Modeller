@@ -46,6 +46,7 @@ def test_every_required_decision_is_reported_not_just_the_first():
     pending = {item.path for item in nc.unsigned_values(raw)}
     for path in (
         "target_contract.frozen_order", "p_parameter.min", "p_parameter.max",
+        "target_contract.register_sha256",
         "budget.max_trajectories", "ambient.quota_per_scale", "graph.bridge_fractions",
         "representative_selection.rule", "seeds.discovery", "seeds.confirmation",
         "promotion.variance_alpha", "separation.min_direction_classes",

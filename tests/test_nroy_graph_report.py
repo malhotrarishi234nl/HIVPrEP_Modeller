@@ -634,6 +634,8 @@ def test_validate_subcommand_fails_closed_on_the_shipped_plan(capsys):
     assert code == 2, "validate must exit non-zero while decisions are unsigned"
     assert "FAIL CLOSED" in out
     assert "No production simulation may start" in out
+    assert "separate signature gate" in out
+    assert "sign_off.signed_by" in out
 
 
 def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evidence(
