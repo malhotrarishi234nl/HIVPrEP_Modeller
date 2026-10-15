@@ -33,6 +33,11 @@ its own notes say production uses the 1980 backbone. The 1975-versus-1980
 backbone must therefore be reconciled before selection or signature. The exact
 file hash must be recorded after that review.
 
+`PRODUCTION_BACKBONE_RECONCILIATION.md` records the preserved 1980 candidates,
+their exact hashes, the current-space compatibility audit, and the required
+Option A/Option B owner decision. It finds no safe mechanical drop-in for the
+current space and does not select a config.
+
 ## Exact production route
 
 `ProductionEvaluator.config_for` first creates an explicit model-specific

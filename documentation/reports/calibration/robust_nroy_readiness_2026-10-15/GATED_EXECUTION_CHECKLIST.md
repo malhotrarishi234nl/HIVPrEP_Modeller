@@ -24,8 +24,9 @@ engine-running gate.
 - [ ] All 42 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
 - [ ] The prepared stochastic M1-capable derivative's inherited diagnostic 1975
   backbone and explicitly unvalidated period inputs are reconciled against the
-  intended 1980 production backbone; only then is the reviewed base selected
-  and hashed.
+  intended 1980 production backbone; the owner selects Option A or B from
+  `PRODUCTION_BACKBONE_RECONCILIATION.md`; only then is the reviewed base
+  selected and hashed.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
 - [ ] Historical artifacts have an approved disposition; current claims exclude unrepeated stale lineages.
 - [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.

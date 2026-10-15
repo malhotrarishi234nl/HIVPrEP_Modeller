@@ -22,6 +22,8 @@
   consequences and dispositions for stale scientific lineages.
 - `PRODUCTION_CONFIG_ASSESSMENT.md`: proposed-config rejection and exact
   `ProductionEvaluator.config_for` route.
+- `PRODUCTION_BACKBONE_RECONCILIATION.md`: exact 1975/1980 lineage evidence,
+  compatibility audit, and the unresolved Option A/Option B owner decision.
 - `POSITIVE_P_M1_CONFIRMATION_PLAN.md`: candidate, seed, vector and evidence
   contract without execution.
 - `acceptance_inputs_pre_sign/`: current-source observed values, component
@@ -110,7 +112,8 @@ bindings and cannot pass the production validator as stored.
    code-route tests do not replace the identity gate or scientific review. Its
    inherited 1975 diagnostic backbone and explicitly unvalidated period inputs
    must be reconciled against the intended 1980 production backbone before it
-   can be selected or signed.
+   can be selected or signed. The evidence, incompatible paths, and required
+   owner choice are recorded in `PRODUCTION_BACKBONE_RECONCILIATION.md`.
 3. Choose whether a full preserved backlog edition should be restored as
    authoritative documentation.
 4. Approve retirement-only versus current-code rerun for the two stale

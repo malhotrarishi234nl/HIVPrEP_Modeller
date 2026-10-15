@@ -4,6 +4,8 @@
 
 - Production-readiness status and evidence:
   `reports/calibration/robust_nroy_readiness_2026-10-15/README.md`
+- Production-backbone evidence and required 1975/1980 decision:
+  `reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md`
 - Ordered launch gates:
   `reports/calibration/robust_nroy_readiness_2026-10-15/GATED_EXECUTION_CHECKLIST.md`
 - Owner decisions, assumptions, and methods reading:
