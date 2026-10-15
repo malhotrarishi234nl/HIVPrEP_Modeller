@@ -1,0 +1,138 @@
+{
+  "schema_version": "artifact_vault_manifest/1.0.0",
+  "artifact_id": "conference_scaleway_20260929",
+  "classification": "HISTORICAL_RETAINED",
+  "scientific_status": "VALID_FOR_RECORDED_2026_09_29_LINEAGE_ONLY_NOT_CURRENT_OPTION_B_EVIDENCE",
+  "current_code_compatibility": "INCOMPATIBLE_WITH_CURRENT_OPTION_B_PRODUCTION_ROUTE",
+  "source_only_collaborator_handoff_required": false,
+  "full_artifact_vault_handoff_required": true,
+  "canonical_archive_set": {
+    "repository_relative_path": "outputs/backups/conference_overnight_scaleway_20260929/archives/final_verified",
+    "external_location": null,
+    "external_location_status": "LOCATION_REQUIRED",
+    "backup_policy_status": "DECISION_REQUIRED",
+    "archive_checksum_manifest": {
+      "name": "ARCHIVE_SHA256SUMS",
+      "sha256": "877814374e7bc001c58fa4e5be0e2a8515566fa506caee5769a4c58df3e03c07",
+      "bytes": 381
+    },
+    "archive_payload_bytes": 307523991,
+    "archive_set_bytes_including_checksum_manifest": 307524372,
+    "archives": [
+      {
+        "name": "calibration_suite_2008_vs_2010.tgz",
+        "sha256": "0a221ff0bed920ed238db94f9bfb6c6e5e631cd0971eeee401addd375f543d87",
+        "bytes": 273103648,
+        "extracted_root": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6",
+        "extracted_file_count": 5021,
+        "extracted_logical_bytes": 3346773133
+      },
+      {
+        "name": "conference_results_full.tgz",
+        "sha256": "62346c51808cdf44b9d13e2012e60762545e26bacb17ed382d4cb5dba76cff93",
+        "bytes": 34209009,
+        "extracted_root": "outputs/suites/conference_overnight_h4d_20260929_prepared",
+        "extracted_file_count": 24188,
+        "extracted_logical_bytes": 192987325
+      },
+      {
+        "name": "prepared_policy_suite.tgz",
+        "sha256": "3ced24341cf850b5d7505c1dace2fc3c24264e88a1628b53d7f4877dc8fb9e1b",
+        "bytes": 5566,
+        "extracted_root": "outputs/suites/prep_policy_suite_20260929_prepared",
+        "extracted_file_count": 4,
+        "extracted_logical_bytes": 45420
+      },
+      {
+        "name": "provenance_config_final.tgz",
+        "sha256": "887d9d07ba433fae892f43d1539f15685e654f1244af0ee5df013f5880e2b220",
+        "bytes": 205768,
+        "extracted_root": "provenance_config_final",
+        "extracted_file_count": 48,
+        "extracted_logical_bytes": 1091495
+      }
+    ]
+  },
+  "restore_contract": {
+    "environment_variable": "HIV_PREP_ARTIFACT_ROOT",
+    "environment_variable_points_to": "absolute extracted artifact root containing outputs/ and provenance_config_final/",
+    "legacy_default_relative_path": "outputs/backups/conference_overnight_scaleway_20260929/restore_final_verified",
+    "implicit_download_or_extraction": false,
+    "expected_file_count": 29261,
+    "expected_logical_bytes": 3540897373,
+    "expected_directory_count_including_root": 567,
+    "expected_symlink_count": 0,
+    "required_consumer_subpaths": {
+      "professor_packet": "outputs/suites/conference_overnight_h4d_20260929_prepared",
+      "followup_calibration": "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+    }
+  },
+  "restoration_verification": {
+    "verified_date": "2026-10-15",
+    "archive_checksums_passed": true,
+    "safe_relative_member_paths": true,
+    "regular_files_and_directories_only": true,
+    "fresh_extraction_matches_legacy_final_restore_byte_for_byte": true,
+    "fresh_extraction_file_count": 29261,
+    "fresh_extraction_logical_bytes": 3540897373,
+    "provenance_checksum_entries_passed": 47,
+    "provenance_checksum_entries_failed": 0,
+    "local_validation_checks_passed": 59,
+    "local_validation_failure_artifacts": 0,
+    "integrity_scope": "SHA-256 integrity and restoration only; no signature or off-machine durability is established"
+  },
+  "disposition": {
+    "exact_disposable_duplicates": [
+      {
+        "path": "outputs/backups/conference_overnight_scaleway_20260929/archives/calibration_suite_2008_vs_2010.tgz",
+        "canonical_name": "calibration_suite_2008_vs_2010.tgz",
+        "sha256": "0a221ff0bed920ed238db94f9bfb6c6e5e631cd0971eeee401addd375f543d87",
+        "bytes": 273103648,
+        "classification": "DISPOSABLE_DUPLICATE"
+      },
+      {
+        "path": "outputs/backups/conference_overnight_scaleway_20260929/archives/conference_results_full.tgz",
+        "canonical_name": "conference_results_full.tgz",
+        "sha256": "62346c51808cdf44b9d13e2012e60762545e26bacb17ed382d4cb5dba76cff93",
+        "bytes": 34209009,
+        "classification": "DISPOSABLE_DUPLICATE"
+      },
+      {
+        "path": "outputs/backups/conference_overnight_scaleway_20260929/archives/prepared_policy_suite.tgz",
+        "canonical_name": "prepared_policy_suite.tgz",
+        "sha256": "3ced24341cf850b5d7505c1dace2fc3c24264e88a1628b53d7f4877dc8fb9e1b",
+        "bytes": 5566,
+        "classification": "DISPOSABLE_DUPLICATE"
+      }
+    ],
+    "exact_duplicate_total_bytes": 307318223,
+    "superseded_not_duplicate": {
+      "path": "outputs/backups/conference_overnight_scaleway_20260929/archives/provenance_config_final.tgz",
+      "sha256": "824e2a7becab360933377eabc05c47d89dbc6e7f169bae93a03b8f729a800010",
+      "bytes": 206678,
+      "classification": "SUPERSEDED",
+      "superseded_by": "outputs/backups/conference_overnight_scaleway_20260929/archives/final_verified/provenance_config_final.tgz",
+      "warning": "Not byte-identical: its 56-line internal checksum manifest lists nine absent AppleDouble files and fails; the canonical 47-line manifest passes."
+    },
+    "loose_restore_candidates": [
+      {
+        "path": "outputs/backups/conference_overnight_scaleway_20260929/restore",
+        "classification": "CANDIDATE_NOT_YET_DISPOSABLE",
+        "reason": "The whole tree is not byte-identical because its stale SHA256SUMS differs."
+      },
+      {
+        "path": "outputs/backups/conference_overnight_scaleway_20260929/restore_final_verified",
+        "classification": "CANDIDATE_NOT_YET_DISPOSABLE",
+        "reason": "It is reproducible from the canonical archives, but destructive cleanup still requires an external canonical location, backup policy, owner approval, and migrated consumers."
+      }
+    ]
+  },
+  "cleanup_gates": {
+    "consumer_paths_migrated": true,
+    "canonical_external_location_recorded": false,
+    "backup_policy_approved": false,
+    "destination_copy_checksum_verified": false,
+    "owner_cleanup_approved": false,
+    "destructive_cleanup_authorized": false
+  }
+}

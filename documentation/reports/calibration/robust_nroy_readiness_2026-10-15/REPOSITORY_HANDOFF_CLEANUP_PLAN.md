@@ -31,6 +31,16 @@ deletion of verified duplicate backup trees still require explicit storage and
 retention decisions. These do not unblock scientific production; the larger
 blockers are the new Option B calibration and the signed evidence gates.
 
+The conference backup has now been prepared for non-destructive migration. Its
+canonical archive hashes and restore contract are tracked under stable artifact
+ID `conference_scaleway_20260929`; a clean temporary extraction matched the
+recorded final restore exactly; and the two historical consumers accept
+`HIV_PREP_ARTIFACT_ROOT` while retaining the old location only as an explicit
+legacy default. This closes the source-path portability issue, not the vault
+lifecycle: no external location, backup policy, destination verification, or
+owner cleanup approval exists yet. Source-only collaborator handoff does not
+require this historical artifact; full artifact-vault handoff remains blocked.
+
 ## Immediate blockers
 
 1. The active branch is 20 commits ahead of `main`, with 40 modified tracked
@@ -111,15 +121,30 @@ two extracted restore trees differ only in one checksum file: the older copy
 indexes nine AppleDouble metadata files removed from the verified final copy.
 Three archive files are byte-identical to their `final_verified` counterparts.
 
-The verified final archive set is about 293 MB and has complete checksums. It
-is the likely canonical retained bundle, but two scripts still reference the
-extracted `restore_final_verified` tree. Before removing any duplicate:
+The verified final archive set is 307,524,372 bytes including its checksum
+manifest. It is now the declared canonical retained bundle. All four archive
+checksums pass, and a safe temporary extraction produced exactly 29,261 files
+and 3,540,897,373 logical bytes, byte-identical to `restore_final_verified`.
+The two historical consumers now resolve a configurable extracted root via
+`HIV_PREP_ARTIFACT_ROOT`; no download or extraction occurs implicitly.
 
-1. migrate those consumers to a stable artifact ID/path or explicit restore;
-2. verify the final archives by extraction in a temporary directory;
-3. verify their internal checksums and expected file count;
-4. record old-path redirects and the owner disposition;
-5. only then remove duplicate loose trees/copies.
+Three older archive files are byte-identical and are classified
+`DISPOSABLE_DUPLICATE` in the tracked vault manifest. The older provenance
+archive is not identical: its internal checksum list references nine absent
+AppleDouble files and fails, so it is `SUPERSEDED` rather than duplicate. These
+classifications do not authorize deletion. Before removing any duplicate or
+loose restore tree:
+
+1. record the canonical external vault location and access policy;
+2. approve the backup and retention policy;
+3. verify the destination hashes and a fresh destination restore;
+4. record owner disposition and cleanup approval;
+5. regenerate path-derived evidence such as the seed audit after cleanup;
+6. only then remove duplicate loose trees/copies.
+
+Exact hashes, classifications, restoration evidence, and open gates are in
+`documentation/artifact_catalog/vault_conference_scaleway_20260929.json` and
+`CONFERENCE_BACKUP_VAULT_AUDIT_2026-10-15.md`.
 
 ## Minimal artifact catalog
 

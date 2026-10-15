@@ -7,11 +7,27 @@ import argparse
 import csv
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "outputs/backups/conference_overnight_scaleway_20260929/restore_final_verified/outputs/suites/conference_overnight_h4d_20260929_prepared"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.artifact_vault import (  # noqa: E402
+    ArtifactVaultError,
+    CONFERENCE_ARTIFACT_ID,
+    conference_artifact_uri,
+    configured_conference_artifact_root,
+    require_conference_artifact_subpath,
+)
+
+CONFERENCE_RESULTS_RELATIVE = Path(
+    "outputs/suites/conference_overnight_h4d_20260929_prepared"
+)
+ARTIFACT_ROOT, ARTIFACT_ROOT_SOURCE = configured_conference_artifact_root(ROOT)
+SRC = ARTIFACT_ROOT / CONFERENCE_RESULTS_RELATIVE
 OUT = ROOT / "outputs/professor_evidence_package_20260929"
 FIG = OUT / "figures"
 FIG_V2 = OUT / "figures_v2_professor_style"
@@ -26,6 +42,22 @@ GRAY = "666666"
 def rows(path: Path):
     with path.open(newline="", encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
+
+
+def require_historical_source() -> Path:
+    """Fail before writing if the retained 2026-09-29 artifact is unavailable."""
+
+    return require_conference_artifact_subpath(ROOT, CONFERENCE_RESULTS_RELATIVE)
+
+
+def stable_source(path: Path) -> str:
+    """Describe inputs without embedding a machine-specific artifact-vault path."""
+
+    try:
+        relative = path.relative_to(ARTIFACT_ROOT)
+    except ValueError:
+        return str(path.relative_to(ROOT))
+    return conference_artifact_uri(relative)
 
 
 def fnum(v):
@@ -371,14 +403,30 @@ def build_json():
         "earlier_target_fit": ROOT/"outputs/calibration/stage_diagnosis_candidate_baseline_review_20260922/target_implausibility_table.csv",
         "new_target_fit": SRC/"calibration_comparison/target_comparison.csv",
     }
-    payload={k:{"source":str(v.relative_to(ROOT)),"rows":rows(v)} for k,v in datasets.items()}
+    payload={k:{"source":stable_source(v),"rows":rows(v)} for k,v in datasets.items()}
+    payload["_artifact_provenance"] = {
+        "artifact_id": CONFERENCE_ARTIFACT_ID,
+        "artifact_source": conference_artifact_uri(CONFERENCE_RESULTS_RELATIVE),
+        "root_selection": ARTIFACT_ROOT_SOURCE,
+        "scientific_status": "historical 2026-09-29 lineage; not current Option-B evidence",
+    }
     OUT.mkdir(parents=True,exist_ok=True)
     (OUT/"packet_data.json").write_text(json.dumps(payload),encoding="utf-8")
 
 
-if __name__ == "__main__":
-    ap=argparse.ArgumentParser(); ap.add_argument("mode",choices=["figures","figures_v2","docx","json","all"]); args=ap.parse_args()
+def main() -> None:
+    ap=argparse.ArgumentParser()
+    ap.add_argument("mode",choices=["figures","figures_v2","docx","json","all"])
+    args=ap.parse_args()
+    try:
+        require_historical_source()
+    except ArtifactVaultError as exc:
+        ap.error(str(exc))
     if args.mode in ("figures","all"): build_figures()
     if args.mode in ("figures_v2","all"): build_figures_v2()
     if args.mode in ("json","all"): build_json()
     if args.mode in ("docx","all"): build_docx()
+
+
+if __name__ == "__main__":
+    main()

@@ -28,7 +28,11 @@ No directory is currently classified `CURRENT_VALIDATED` or
 `DISPOSABLE_DUPLICATE`. That is deliberate: the available evidence did not
 establish those stronger claims within this scope. Known conference backup
 duplicates live under `outputs/backups`, outside the three roots cataloged
-here, and are not silently imported into this catalog.
+here, and are not silently imported into this catalog. Their separate tracked
+vault contract is `vault_conference_scaleway_20260929.json`: it identifies the
+canonical historical archive set, three byte-identical duplicate archives, a
+superseded non-identical provenance archive, and the gates that still prohibit
+destructive cleanup.
 
 ## Terminal-classification pass
 

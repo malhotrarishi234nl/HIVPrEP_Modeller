@@ -48,11 +48,20 @@ import coupled_calibration_search as ccs
 import run_coupled_calibration as rcc
 import run_stage_structured_diagnosis_focused_calibration as fc
 from coupled_calibration_search import ContractError
+from tools.artifact_vault import (
+    ArtifactVaultError,
+    CONFERENCE_ARTIFACT_ID,
+    conference_artifact_uri,
+    configured_conference_artifact_root,
+    require_conference_artifact_subpath,
+)
 
 ROOT = Path(__file__).resolve().parent
 SUITE = ROOT / "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
-BACKUP = (ROOT / "outputs/backups/conference_overnight_scaleway_20260929/restore_final_verified"
-          / "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6")
+CONFERENCE_CALIBRATION_RELATIVE = Path(
+    "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6"
+)
+_ARTIFACT_ROOT, ARTIFACT_ROOT_SOURCE = configured_conference_artifact_root(ROOT)
 FC_PLAN = ROOT / "outputs/calibration/stage_structured_diagnosis_focused_calibration_20260922/frozen_plan.json"
 FC_PLAN_SHA = "534e0d8f04f1aba662699f2b1c9427295953fc606fcf08c391511f260c8a0675"
 PRIOR_V109 = ROOT / "outputs/calibration/stage_diagnosis_candidate_baseline_review_20260922/candidate_configuration.json"
@@ -99,6 +108,12 @@ def atomic_json(path: Path, obj) -> None:
 # Inputs
 # ----------------------------------------------------------------------------
 
+def require_historical_source() -> Path:
+    """Fail before running if the retained calibration artifact is unavailable."""
+
+    return require_conference_artifact_subpath(ROOT, CONFERENCE_CALIBRATION_RELATIVE)
+
+
 def load_case(case: str) -> dict:
     plan = json.loads((SUITE / "cases" / case / "resolved_configs/coupled_search_plan.json").read_text())
     inputs = plan["inputs"]
@@ -118,7 +133,8 @@ def load_case(case: str) -> dict:
 
 def load_theta(case: str) -> dict:
     cid = CASES[case]["candidate_id"]
-    path = BACKUP / "cases" / case / "calibration/confirmation/raw" / f"candidate_{cid}.json"
+    backup = require_historical_source()
+    path = backup / "cases" / case / "calibration/confirmation/raw" / f"candidate_{cid}.json"
     raw = json.loads(path.read_text())
     params = {k: float(v) for k, v in raw["params"].items()}
     if ccs.vector_identity(params) != raw["params_sha256"]:
@@ -140,7 +156,11 @@ def context() -> dict:
     if keys[0] != keys[1]:
         raise ContractError("the two cases resolve different target lists")
     _CTX = {"fcplan": json.loads(FC_PLAN.read_text()), "cases": cases,
-            "theta": {c: load_theta(c) for c in CASES}, "targets": cases["break_2010"]["targets"]}
+            "theta": {c: load_theta(c) for c in CASES}, "targets": cases["break_2010"]["targets"],
+            "source_artifact": {"artifact_id": CONFERENCE_ARTIFACT_ID,
+                                "artifact_uri": conference_artifact_uri(CONFERENCE_CALIBRATION_RELATIVE),
+                                "root_selection": ARTIFACT_ROOT_SOURCE,
+                                "scientific_status": "historical; not current Option-B evidence"}}
     return _CTX
 
 
@@ -474,7 +494,10 @@ def design_record(rows: list[dict]) -> dict:
                                "u", "config_sha256")} for r in rows]
     return {"design": slim, "design_sha256": ccs.sha256_json(slim), "n_vectors_per_backbone": N_VECTORS,
             "box_half_width_normalised": BOX_HALF, "design_seed": DESIGN_SEED,
-            "confirmation_seeds": list(CONF_SEEDS), "discovery_seeds": list(DISC_SEEDS)}
+            "confirmation_seeds": list(CONF_SEEDS), "discovery_seeds": list(DISC_SEEDS),
+            "source_artifact": {"artifact_id": CONFERENCE_ARTIFACT_ID,
+                                "artifact_uri": conference_artifact_uri(CONFERENCE_CALIBRATION_RELATIVE),
+                                "scientific_status": "historical; not current Option-B evidence"}}
 
 
 def counts() -> dict:
@@ -553,7 +576,8 @@ def cmd_select() -> None:
                             "discovery_J": rec.j, "config_sha256": by_id[rec.candidate_id]["config_sha256"]})
     frozen = {"created_utc": now(), "rule": "select_finalists() in run_followup_knot_and_late_dx_20260929.py",
               "confirmation_seeds": list(CONF_SEEDS), "entries": entries,
-              "design_sha256": design_record(design)["design_sha256"]}
+              "design_sha256": design_record(design)["design_sha256"],
+              "source_artifact": ctx["source_artifact"]}
     atomic_json(sl_path, frozen)
     print(f"froze {len(entries)} finalists -> {sl_path}")
     for e in entries:
@@ -623,6 +647,8 @@ def cmd_report() -> None:
     targets = ctx["targets"]
     banner = "**SYNTHETIC OUTPUT FROM --fake-engine: pipeline test only, not scientific.**\n\n" if FAKE else ""
     lines = [f"# Follow-up: knot test and late-diagnosis engine ({'FAKE' if FAKE else 'real'} run)", "", banner,
+             f"Source artifact: `{conference_artifact_uri(CONFERENCE_CALIBRATION_RELATIVE)}` "
+             "(historical 2026-09-29 lineage; not current Option-B evidence).", "",
              "Post-hoc extension designed after the conference-suite results; see the script docstring for "
              "the declared design. Fresh confirmation seeds 230100-230119.", ""]
     # ---- step 1 / 3
@@ -757,6 +783,11 @@ def main() -> None:
     ap.add_argument("--fake-engine", action="store_true",
                     help="synthetic stand-in worker to test the pipeline; writes to a separate _FAKE directory")
     args = ap.parse_args()
+    if args.command != "status":
+        try:
+            require_historical_source()
+        except ArtifactVaultError as exc:
+            ap.error(str(exc))
     FAKE = bool(args.fake_engine)
     cmds = {"validate": lambda: cmd_validate(args.workers), "smoke": lambda: cmd_smoke(args.workers), "knot-test": lambda: cmd_knot(args.workers),
             "late-dx-discover": lambda: cmd_discover(args.workers), "late-dx-select": cmd_select,
