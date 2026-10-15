@@ -170,6 +170,49 @@ MODEL_M0 = "M0"
 MODEL_M1 = "M1"
 MODELS = (MODEL_M0, MODEL_M1)
 
+# The production engine still constructs ``numpy.random.RandomState`` with each
+# simulation seed.  That API accepts exactly unsigned 32-bit seed values.  Use
+# the same explicit domain for every declared RNG seed (simulation, proposal,
+# diagnostic and prior-run registry) so a plan cannot validate and then fail at
+# the first RNG constructor, and so seed comparisons have one unambiguous
+# integer domain.
+RNG_SEED_MIN = 0
+RNG_SEED_MAX = (1 << 32) - 1
+
+
+def require_native_integer(
+    value: Any,
+    *,
+    what: str,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    """Return a signed JSON integer without coercion.
+
+    Python's ``int`` constructor silently turns ``1.9`` into ``1``, ``True``
+    into ``1`` and ``"5"`` into ``5``.  Those are different signed plan values,
+    not alternate spellings of one value, so production contracts must reject
+    them before any conversion.
+    """
+    if type(value) is not int:
+        raise ContractError(
+            f"{what} must be a native JSON integer (not Boolean, string or float); "
+            f"got {value!r} ({type(value).__name__})"
+        )
+    if minimum is not None and value < minimum:
+        requirement = "must be positive (>= 1)" if minimum == 1 else f"must be >= {minimum}"
+        raise ContractError(f"{what} {requirement}; got {value}")
+    if maximum is not None and value > maximum:
+        raise ContractError(f"{what} must be <= {maximum}; got {value}")
+    return value
+
+
+def require_rng_seed(value: Any, *, what: str) -> int:
+    """Return one RNG seed in the engine-supported unsigned-32-bit domain."""
+    return require_native_integer(
+        value, what=what, minimum=RNG_SEED_MIN, maximum=RNG_SEED_MAX
+    )
+
 
 # ==========================================================================
 # Canonical serialisation and hashing
@@ -537,7 +580,9 @@ class TargetContract:
         if not isinstance(node, Mapping):
             raise ContractError("run plan has no 'target_contract' block")
         order = tuple(str(t) for t in node["frozen_order"])
-        declared_n = int(node["n_targets"])
+        declared_n = require_native_integer(
+            node["n_targets"], what="target_contract.n_targets", minimum=1
+        )
         if declared_n != len(order):
             raise ContractError(
                 f"target contract declares n_targets={declared_n} but lists {len(order)} targets"
@@ -1035,6 +1080,14 @@ class SeedRegistry:
     foreign: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
+        for label, block in (
+            ("seeds.discovery", self.discovery),
+            ("seeds.confirmation", self.confirmation),
+            ("seeds.known_used_elsewhere", self.foreign),
+        ):
+            for index, seed in enumerate(block):
+                require_rng_seed(seed, what=f"{label}[{index}]")
+        require_rng_seed(self.proposal_rng, what="seeds.proposal_rng")
         if len(self.discovery) != 5:
             raise ContractError(
                 f"discovery must contain exactly 5 seeds; got {len(self.discovery)}"
@@ -1079,10 +1132,10 @@ class SeedRegistry:
         if not isinstance(node, Mapping):
             raise ContractError("run plan has no 'seeds' block")
         return cls(
-            discovery=tuple(int(s) for s in node["discovery"]),
-            confirmation=tuple(int(s) for s in node["confirmation"]),
-            proposal_rng=int(node["proposal_rng"]),
-            foreign=tuple(int(s) for s in (node.get("known_used_elsewhere") or ())),
+            discovery=tuple(node["discovery"]),
+            confirmation=tuple(node["confirmation"]),
+            proposal_rng=node["proposal_rng"],
+            foreign=tuple(node.get("known_used_elsewhere") or ()),
         )
 
     def seeds_for(self, stage: str) -> tuple[int, ...]:
@@ -1802,8 +1855,8 @@ class FrozenPlan:
         bins = [float(b) for b in self.require("p_parameter.bins")]
         if not bins or not np.all(np.isfinite(bins)):
             raise ContractError(f"p coverage bins must be non-empty and finite: {bins}")
-        if sorted(bins) != bins:
-            raise ContractError(f"p coverage bins must be ascending: {bins}")
+        if sorted(bins) != bins or len(set(bins)) != len(bins):
+            raise ContractError(f"p coverage bins must be ascending and distinct: {bins}")
         if bins[0] < p_min or bins[-1] > p_max:
             raise ContractError(
                 f"p coverage bins {bins} fall outside the declared range [{p_min}, {p_max}]"
@@ -1838,10 +1891,14 @@ class FrozenPlan:
         if not (0.0 < alpha < 1.0):
             raise ContractError(f"promotion.variance_alpha must be in (0, 1); got {alpha}")
 
-        if int(self.require("support.min_confirming_neighbours")) < 1:
-            raise ContractError("support.min_confirming_neighbours must be >= 1")
-        if int(self.require("separation.min_direction_classes")) < 1:
-            raise ContractError("separation.min_direction_classes must be >= 1")
+        require_native_integer(
+            self.require("support.min_confirming_neighbours"),
+            what="support.min_confirming_neighbours", minimum=1,
+        )
+        require_native_integer(
+            self.require("separation.min_direction_classes"),
+            what="separation.min_direction_classes", minimum=1,
+        )
 
         min_an = float(self.require("separation.min_anchor_neighbour"))
         min_nn = float(self.require("separation.min_neighbour_neighbour"))
@@ -1855,10 +1912,14 @@ class FrozenPlan:
                 f"smallest ambient scale ({min(scales)}); no probe could ever qualify"
             )
 
-        if int(self.require("budget.max_trajectories")) <= 0:
-            raise ContractError("budget.max_trajectories must be positive")
-        if int(self.require("budget.max_attempts")) <= 0:
-            raise ContractError("budget.max_attempts must be positive")
+        require_native_integer(
+            self.require("budget.max_trajectories"),
+            what="budget.max_trajectories", minimum=1,
+        )
+        require_native_integer(
+            self.require("budget.max_attempts"),
+            what="budget.max_attempts", minimum=1,
+        )
         wall_cap = float(self.require("budget.wall_time_cap_seconds"))
         if not np.isfinite(wall_cap) or wall_cap <= 0.0:
             raise ContractError("budget.wall_time_cap_seconds must be finite and positive")
@@ -1871,20 +1932,24 @@ class FrozenPlan:
             "archive_following.max_directions",
         )
         for path in positive_integer_paths:
-            if int(self.require(path)) <= 0:
-                raise ContractError(f"{path} must be positive")
+            require_native_integer(self.require(path), what=path, minimum=1)
 
         for path in ("archive_following.scales", "cross_block.scales"):
             values = [float(value) for value in self.require(path)]
             if not values or not np.all(np.isfinite(values)) or any(value <= 0.0 for value in values):
                 raise ContractError(f"{path} must contain finite positive values: {values}")
+            if sorted(values) != values or len(set(values)) != len(values):
+                raise ContractError(f"{path} must be ascending and distinct: {values}")
 
-        if int(self.require("archive_following.quota")) <= 0:
-            raise ContractError("archive_following.quota must be positive")
-        if int(self.require("cross_block.quota")) < 0:
-            raise ContractError("cross_block.quota must be non-negative")
+        require_native_integer(
+            self.require("archive_following.quota"),
+            what="archive_following.quota", minimum=1,
+        )
         cross_scales = [float(value) for value in self.require("cross_block.scales")]
-        cross_quota = int(self.require("cross_block.quota"))
+        cross_quota = require_native_integer(
+            self.require("cross_block.quota"),
+            what="cross_block.quota", minimum=0,
+        )
         cells_per_direction = 2 * len(cross_scales)
         if cross_quota % cells_per_direction:
             raise ContractError(
@@ -1892,6 +1957,20 @@ class FrozenPlan:
                 f"scale x sign design; {len(cross_scales)} scales require a multiple "
                 f"of {cells_per_direction} cells"
             )
+
+        if bool(self.get("correlated_output_diagnostic.enabled", False)):
+            require_native_integer(
+                self.require("correlated_output.n_seed_block_bootstrap"),
+                what="correlated_output.n_seed_block_bootstrap", minimum=1,
+            )
+            bootstrap_seed = require_rng_seed(
+                self.require("correlated_output.bootstrap_seed"),
+                what="correlated_output.bootstrap_seed",
+            )
+            if bootstrap_seed in set(self.seeds.discovery) | set(self.seeds.confirmation):
+                raise ContractError(
+                    "correlated_output.bootstrap_seed must not be a simulation seed"
+                )
 
         quotas = self.kernel_quotas()
         if not quotas:
@@ -1905,11 +1984,11 @@ class FrozenPlan:
         fall back to another kernel or pad its quota with duplicates.
         """
         scales = [float(s) for s in self.require("ambient.scales")]
-        per_scale = int(self.require("ambient.quota_per_scale"))
+        per_scale = self.require("ambient.quota_per_scale")
         declared = {
             KERNEL_AMBIENT: per_scale * len(scales),
-            KERNEL_ARCHIVE_FOLLOWING: int(self.require("archive_following.quota")),
-            KERNEL_CROSS_BLOCK: int(self.require("cross_block.quota")),
+            KERNEL_ARCHIVE_FOLLOWING: self.require("archive_following.quota"),
+            KERNEL_CROSS_BLOCK: self.require("cross_block.quota"),
         }
         # A zero quota means the plan deliberately did not declare that kernel,
         # which `nroy_design.assert_cross_block_declared` cross-checks against

@@ -115,6 +115,146 @@ def test_cross_field_validation_fails_closed(tmp_path, override, message):
         fx.signed_plan(tmp_path, **override)
 
 
+@pytest.mark.parametrize(
+    "path,valid_value",
+    [
+        ("target_contract.n_targets", 13),
+        ("budget.max_trajectories", 100000),
+        ("budget.max_attempts", 100000),
+        ("representative_selection.n_per_component", 2),
+        ("ambient.quota_per_scale", 4),
+        ("ambient.max_attempts_per_anchor", 2000),
+        ("archive_following.quota", 4),
+        ("archive_following.neighbour_count", 3),
+        ("archive_following.max_directions", 1),
+        ("cross_block.quota", 4),
+        ("separation.min_direction_classes", 2),
+        ("support.min_confirming_neighbours", 2),
+    ],
+)
+@pytest.mark.parametrize("bad_kind", ["fractional", "string", "boolean"])
+def test_signed_integer_decisions_reject_coercible_non_integers(
+    tmp_path, path, valid_value, bad_kind,
+):
+    bad = {
+        "fractional": float(valid_value) + 0.5,
+        "string": str(valid_value),
+        "boolean": True,
+    }[bad_kind]
+    with pytest.raises(ContractError, match="native JSON integer"):
+        fx.signed_plan(tmp_path, **{path: bad})
+
+
+def _correlated_output_decisions(**overrides):
+    decisions = {
+        "correlated_output_diagnostic.enabled": True,
+        "correlated_output.shrinkage": 0.1,
+        "correlated_output.n_seed_block_bootstrap": 10,
+        "correlated_output.bootstrap_seed": 990001,
+        "correlated_output.stability_rank_tolerance": 10.0,
+        "correlated_output.stability_direction_cosine": 0.0,
+    }
+    decisions.update(overrides)
+    return decisions
+
+
+@pytest.mark.parametrize(
+    "path,bad",
+    [
+        ("correlated_output.n_seed_block_bootstrap", 10.5),
+        ("correlated_output.n_seed_block_bootstrap", "10"),
+        ("correlated_output.n_seed_block_bootstrap", True),
+        ("correlated_output.bootstrap_seed", 990001.5),
+        ("correlated_output.bootstrap_seed", "990001"),
+        ("correlated_output.bootstrap_seed", True),
+    ],
+)
+def test_conditional_integer_decisions_reject_coercion(tmp_path, path, bad):
+    with pytest.raises(ContractError, match="native JSON integer"):
+        fx.signed_plan(tmp_path, **_correlated_output_decisions(**{path: bad}))
+
+
+@pytest.mark.parametrize("bad", [1.5, "1", True])
+@pytest.mark.parametrize("path", ["discovery", "confirmation"])
+def test_simulation_seed_blocks_reject_coercible_non_integers(tmp_path, path, bad):
+    plan = fx.signed_plan_dict()
+    seeds = list(plan["seeds"][path])
+    seeds[0] = bad
+    with pytest.raises(ContractError, match="native JSON integer"):
+        fx.signed_plan(tmp_path, **{f"seeds.{path}": seeds})
+
+
+@pytest.mark.parametrize("bad", [1.5, "1", True])
+def test_proposal_seed_rejects_coercible_non_integers(tmp_path, bad):
+    with pytest.raises(ContractError, match="native JSON integer"):
+        fx.signed_plan(tmp_path, **{"seeds.proposal_rng": bad})
+
+
+@pytest.mark.parametrize("bad", [1.5, "1", True])
+def test_prior_seed_registry_rejects_coercible_non_integers(tmp_path, bad):
+    with pytest.raises(ContractError, match="native JSON integer"):
+        fx.signed_plan(tmp_path, **{"seeds.known_used_elsewhere": [bad]})
+
+
+@pytest.mark.parametrize("bad", [-1, nc.RNG_SEED_MAX + 1])
+@pytest.mark.parametrize("path", ["discovery", "confirmation"])
+def test_simulation_seed_blocks_enforce_engine_range(tmp_path, path, bad):
+    plan = fx.signed_plan_dict()
+    seeds = list(plan["seeds"][path])
+    seeds[0] = bad
+    with pytest.raises(ContractError, match=r"must be (>= 0|<= 4294967295)"):
+        fx.signed_plan(tmp_path, **{f"seeds.{path}": seeds})
+
+
+@pytest.mark.parametrize("bad", [-1, nc.RNG_SEED_MAX + 1])
+def test_proposal_seed_enforces_engine_range(tmp_path, bad):
+    with pytest.raises(ContractError, match=r"must be (>= 0|<= 4294967295)"):
+        fx.signed_plan(tmp_path, **{"seeds.proposal_rng": bad})
+
+
+@pytest.mark.parametrize("bad", [-1, nc.RNG_SEED_MAX + 1])
+def test_prior_seed_registry_enforces_engine_range(tmp_path, bad):
+    with pytest.raises(ContractError, match=r"must be (>= 0|<= 4294967295)"):
+        fx.signed_plan(tmp_path, **{"seeds.known_used_elsewhere": [bad]})
+
+
+@pytest.mark.parametrize("bad", [-1, nc.RNG_SEED_MAX + 1])
+def test_conditional_bootstrap_seed_enforces_engine_range(tmp_path, bad):
+    with pytest.raises(ContractError, match=r"must be (>= 0|<= 4294967295)"):
+        fx.signed_plan(
+            tmp_path,
+            **_correlated_output_decisions(**{"correlated_output.bootstrap_seed": bad}),
+        )
+
+
+def test_rng_seed_domain_endpoints_are_valid(tmp_path):
+    plan = fx.signed_plan(
+        tmp_path,
+        **{
+            "seeds.discovery": [0, 910001, 910002, 910003, 910004],
+            "seeds.proposal_rng": nc.RNG_SEED_MAX,
+        },
+    )
+    assert plan.seeds.discovery[0] == nc.RNG_SEED_MIN
+    assert plan.seeds.proposal_rng == nc.RNG_SEED_MAX
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        ("p_parameter.bins", [0.0, 0.1, 0.1, 0.5]),
+        ("p_parameter.bins", [0.0, 0.2, 0.1, 0.5]),
+        ("archive_following.scales", [0.025, 0.025]),
+        ("archive_following.scales", [0.05, 0.025]),
+        ("cross_block.scales", [0.025, 0.025]),
+        ("cross_block.scales", [0.05, 0.025]),
+    ],
+)
+def test_ordered_design_values_must_be_strictly_ascending(tmp_path, path, value):
+    with pytest.raises(ContractError, match="ascending and distinct"):
+        fx.signed_plan(tmp_path, **{path: value})
+
+
 def test_seed_blocks_must_be_disjoint(tmp_path):
     with pytest.raises(ContractError, match="overlap"):
         fx.signed_plan(tmp_path, **{"seeds.confirmation": [910000] + list(range(910100, 910119))})
