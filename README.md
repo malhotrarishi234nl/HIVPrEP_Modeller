@@ -44,6 +44,10 @@ writes no run files. Actual simulations additionally require the canonical
 config's protected machine-readable production approval; no current candidate
 has it, and the collaborator CLI has no bypass. This leaves mechanical
 validation usable while calibration and scientific acceptance are completed.
+Collaborator edits are limited to the numeric paths and closed intervals in
+`configs/collaborator_parameter_contract.json`; production approval must bind
+that file's exact SHA-256. Seeds must be uint32 integers, and the approved
+analysis run sheet—not the operator—defines their pairing and replication.
 
 ## Safety boundary
 

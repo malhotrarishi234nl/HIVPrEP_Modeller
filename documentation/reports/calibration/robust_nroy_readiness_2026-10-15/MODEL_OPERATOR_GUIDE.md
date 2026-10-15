@@ -18,6 +18,10 @@ importing the engine.
 
 ## Start from a copy
 
+Run every command in this guide from the repository root. First create the
+environment described in the root `README.md`; then confirm that both M0 and M1
+pass the validation commands below before requesting permission for a run.
+
 Use the shared candidate as the source and give each analysis its own named
 copy. Do not edit the canonical file in place.
 
@@ -31,15 +35,19 @@ approved fitted model. It is suitable for mechanical validation and for a
 separately authorized calibration workflow; it is not yet eligible for real
 collaborator simulations.
 
-Edit only existing scientific parameter `value` payloads in
-`configs/my_analysis_config.json` and record the purpose and source of every
-change. Do not add, remove, or rename keys or list entries, and do not edit
-notes, sources, tiers, bounds, distribution metadata, or provenance. The model
-remains runnable without any calibration step. When a parameter object declares
-numeric `bounds`, `range`, `min`/`max`, or `minimum`/`maximum`, an edited value
-must remain inside that declared inclusive interval. The CLI does not invent a
-range where the config declares none; absence of a range is not scientific
-approval for an arbitrary value.
+The exact editable surface is the short, machine-readable
+`configs/collaborator_parameter_contract.json`. Edit only a listed `path`, keep
+the numeric value inside that path's closed `minimum`/`maximum` interval, and
+record the purpose and source of every change in the analysis record supplied by
+the maintainer. Every other field is protected, including fixed-tier values,
+mode/enum strings, switches, indexed group definitions, notes, sources, tiers,
+bounds, distribution metadata, and provenance. The coupled initial-stock and
+sexual-debut `p_msm` values must remain equal.
+
+Passing validation means the copy preserves the reviewed structure and bounded
+parameter surface. It still does not establish scientific validity. To expand
+the editable surface, a maintainer must review and change the contract; an
+operator must not work around it by editing another JSON field.
 
 ## Validate without running the engine
 
@@ -64,7 +72,9 @@ probability:
 ```
 
 These commands do not construct the simulation engine.
-They may omit `--seed` because no stochastic trajectory is created.
+They may omit `--seed` because no stochastic trajectory is created. If supplied,
+the seed must be an integer in `[0, 4294967295]`, the domain accepted by the
+NumPy/engine RNG.
 Validation-only also does not require production approval; its success is a
 mechanical preflight result, not permission to simulate.
 
@@ -81,6 +91,13 @@ config with the protected approval contract below. Until then they fail closed.
 Once promoted, choose an explicit seed and a new, analysis-specific output
 directory. A real run always requires `--seed`; the CLI never falls back to the
 saved config seed.
+
+Do not reuse the draft copy made before promotion. After promotion, make a fresh
+copy of the newly approved canonical config, reapply only the reviewed parameter
+diff, and run `--validate-only` again. Obtain the seed or paired seed list from
+the approved analysis run sheet; do not invent or casually reuse the example
+seed below. One command creates one stochastic trajectory, so repeat runs only
+as declared by that run sheet and give every trajectory a new output directory.
 
 ```bash
 .venv/bin/python run_model.py \
@@ -108,8 +125,17 @@ directory:
   M0/M1 choice, M1 `p` when applicable, and output route;
 - `run_reproducibility_manifest.json`: input-config path and SHA-256,
   effective-config path and SHA-256, model, `p`, explicit seed, output path,
-  Python/dependency/platform identity, Git identity, and hashes of the direct
-  model implementation files.
+  parameter-contract path and SHA-256, Python/dependency/platform identity, Git
+  identity, and hashes of the direct model implementation files.
+
+With the protected canonical output settings, a completed one-run directory is:
+
+```text
+outputs/collaborator_runs/<analysis-and-seed>/
+  baseline_run_001.csv
+  effective_config.json
+  run_reproducibility_manifest.json
+```
 
 The manifest starts as `PREPARED`, becomes `COMPLETE` only after the run
 returns successfully, and becomes `FAILED` with the exception type if the
@@ -124,12 +150,13 @@ this exact maintainer-owned block:
 
 ```json
 "production_approval": {
-  "schema": "model_config_production_approval/1.0.0",
+  "schema": "model_config_production_approval/1.1.0",
   "status": "APPROVED",
   "production_eligible": true,
   "approved": true,
   "approved_by": "Named approving owner",
-  "approved_utc": "2026-10-15T09:00:00Z"
+  "approved_utc": "2026-10-15T09:00:00Z",
+  "collaborator_parameter_contract_sha256": "<exact reviewed contract SHA-256>"
 }
 ```
 
@@ -141,17 +168,21 @@ therefore requires a reviewed canonical-config change after calibration and
 scientific acceptance; collaborators continue to edit only permitted parameter
 values in copies of that promoted canonical config.
 
+The contract hash is essential: it means the approver reviewed the complete
+editable path-and-interval domain, not merely the canonical point values. A copy
+may vary only within that approved domain. Changing the contract, changing the
+canonical config outside `production_approval`, or copying an old approval into
+a different config invalidates the approval. The current contract is a
+fail-closed code contract, not scientific approval; it must be reviewed again
+after recalibration changes the canonical parameter vector.
+
 ## Editable and protected inputs
 
-Ordinary analysis inputs may be changed in a copied config when the change is
-documented and scientifically justified. Examples include existing population,
-transmission, progression, intervention, and costing parameter `value`
-payloads. The validator preserves their object/list shape and scalar JSON type.
-Declared numeric bounds/ranges are enforced for changed values. Values without
-declared ranges still require scientific justification; the CLI does not infer
-new bounds from names, notes, or neighbouring parameters. The seed, model
-choice, M1 `p`, and output directory must be supplied on the command line so
-the run intent is visible.
+Only numeric paths in `configs/collaborator_parameter_contract.json` may change
+in a copied config, and every change must be documented and scientifically
+justified. The validator enforces the contract interval plus any compatible
+co-located canonical range. The seed, model choice, M1 `p`, and output directory
+must be supplied on the command line so the run intent is visible.
 
 Do not edit these protected shared-route fields:
 

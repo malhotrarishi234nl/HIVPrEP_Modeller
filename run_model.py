@@ -30,6 +30,12 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = ROOT / "configs" / (
     "V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
 )
+PARAMETER_CONTRACT_PATH = ROOT / "configs" / "collaborator_parameter_contract.json"
+PARAMETER_CONTRACT_SCHEMA = "collaborator_parameter_contract/1.0.0"
+CANONICAL_CONFIG_RELATIVE = (
+    "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
+)
+UINT32_MAX = 2**32 - 1
 
 
 class OperatorConfigError(ValueError):
@@ -41,10 +47,10 @@ PROTECTED_ROOTS = {
     "calibration_metadata", "production_approval",
 }
 
-PRODUCTION_APPROVAL_SCHEMA = "model_config_production_approval/1.0.0"
+PRODUCTION_APPROVAL_SCHEMA = "model_config_production_approval/1.1.0"
 PRODUCTION_APPROVAL_FIELDS = {
     "schema", "status", "production_eligible", "approved", "approved_by",
-    "approved_utc",
+    "approved_utc", "collaborator_parameter_contract_sha256",
 }
 
 EFFECTIVE_CONFIG_FILENAME = "effective_config.json"
@@ -92,7 +98,10 @@ def _load_shared_config_and_hash(path: str | Path) -> tuple[dict, str]:
         raise OperatorConfigError(
             f"canonical config is unavailable or invalid: {DEFAULT_CONFIG}"
         ) from exc
-    forbidden = _first_forbidden_edit(payload, canonical)
+    parameter_rules, _ = _load_parameter_contract(canonical)
+    forbidden = _first_forbidden_edit(
+        payload, canonical, editable_paths=frozenset(parameter_rules)
+    )
     if forbidden is not None:
         raise OperatorConfigError(
             f"forbidden config edit at {_format_path(forbidden)}; collaborator "
@@ -102,6 +111,11 @@ def _load_shared_config_and_hash(path: str | Path) -> tuple[dict, str]:
     range_problem = _first_declared_range_problem(payload, canonical)
     if range_problem is not None:
         raise OperatorConfigError(range_problem)
+    contract_problem = _first_parameter_contract_problem(
+        payload, canonical, parameter_rules
+    )
+    if contract_problem is not None:
+        raise OperatorConfigError(contract_problem)
 
     deterministic = payload.get("run_control", {}).get("deterministic_mode")
     deterministic = extract_value(deterministic)
@@ -127,16 +141,9 @@ def _load_shared_config_and_hash(path: str | Path) -> tuple[dict, str]:
 
 def _first_forbidden_edit(
     candidate: Any, canonical: Any, path: tuple[str | int, ...] = (),
-    *, in_editable_value: bool = False,
+    *, editable_paths: frozenset[tuple[str | int, ...]] = frozenset(),
 ) -> tuple[str | int, ...] | None:
-    """Return the first non-operator edit while preserving JSON schema.
-
-    Existing ``value`` payloads outside protected roots and the M0/M1 routing
-    block are operator-editable. Object keys, list lengths, scalar types and
-    every non-``value`` field must remain canonical.
-    """
-    protected = _protected_path(path)
-    editable = in_editable_value and not protected
+    """Return the first edit outside the exact collaborator contract paths."""
 
     if isinstance(canonical, dict):
         if not isinstance(candidate, dict):
@@ -148,12 +155,9 @@ def _first_forbidden_edit(
             return path + (key,)
         for key, canonical_value in canonical.items():
             child_path = path + (key,)
-            child_editable = editable or (
-                key == "value" and not _protected_path(child_path)
-            )
             found = _first_forbidden_edit(
                 candidate[key], canonical_value, child_path,
-                in_editable_value=child_editable,
+                editable_paths=editable_paths,
             )
             if found is not None:
                 return found
@@ -165,15 +169,15 @@ def _first_forbidden_edit(
         for index, canonical_value in enumerate(canonical):
             found = _first_forbidden_edit(
                 candidate[index], canonical_value, path + (index,),
-                in_editable_value=editable,
+                editable_paths=editable_paths,
             )
             if found is not None:
                 return found
         return None
 
-    if candidate == canonical:
+    if _same_json_scalar_value(candidate, canonical):
         return None
-    if editable and _same_json_scalar_type(candidate, canonical):
+    if path in editable_paths:
         return None
     return path
 
@@ -193,6 +197,10 @@ def _same_json_scalar_type(candidate: Any, canonical: Any) -> bool:
     if canonical is None:
         return candidate is None
     return type(candidate) is type(canonical)
+
+
+def _same_json_scalar_value(candidate: Any, canonical: Any) -> bool:
+    return _same_json_scalar_type(candidate, canonical) and candidate == canonical
 
 
 def _first_declared_range_problem(
@@ -337,7 +345,232 @@ def _format_path(path: tuple[str | int, ...]) -> str:
     return text
 
 
-def _require_production_approval(config: Mapping[str, Any]) -> None:
+def _config_without_approval_sha256(config: Mapping[str, Any]) -> str:
+    payload = dict(config)
+    payload.pop("production_approval", None)
+    try:
+        encoded = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    except (TypeError, ValueError) as exc:
+        raise OperatorConfigError(
+            "canonical config cannot be hashed as strict JSON for the collaborator "
+            "parameter contract"
+        ) from exc
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _contract_path(raw: Any, *, field: str = "path") -> tuple[str, ...]:
+    if not isinstance(raw, str) or not raw.strip():
+        raise OperatorConfigError(f"parameter contract {field} must be a non-empty path")
+    parts = tuple(raw.split("."))
+    if any(not part for part in parts):
+        raise OperatorConfigError(f"parameter contract {field} is malformed: {raw!r}")
+    return parts
+
+
+def _value_at_path(payload: Mapping[str, Any], path: tuple[str, ...]) -> Any:
+    node: Any = payload
+    for part in path:
+        if not isinstance(node, Mapping) or part not in node:
+            raise OperatorConfigError(
+                f"parameter contract path is absent from the canonical config: "
+                f"{_format_path(path)}"
+            )
+        node = node[part]
+    return node
+
+
+def _load_parameter_contract(
+    canonical: Mapping[str, Any],
+) -> tuple[dict[tuple[str, ...], dict[str, Any]], str]:
+    """Validate and return the exact bounded collaborator-edit contract."""
+    try:
+        raw = PARAMETER_CONTRACT_PATH.read_bytes()
+    except FileNotFoundError as exc:
+        raise OperatorConfigError(
+            f"collaborator parameter contract is missing: {PARAMETER_CONTRACT_PATH}"
+        ) from exc
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise OperatorConfigError(
+            f"collaborator parameter contract is invalid JSON at line {exc.lineno}: "
+            f"{exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise OperatorConfigError("collaborator parameter contract must be one JSON object")
+    expected_top = {
+        "schema", "canonical_config", "canonical_config_without_approval_sha256",
+        "approval_scope", "parameters",
+    }
+    if set(payload) != expected_top:
+        raise OperatorConfigError(
+            "collaborator parameter contract has unexpected or missing top-level fields"
+        )
+    if payload["schema"] != PARAMETER_CONTRACT_SCHEMA:
+        raise OperatorConfigError(
+            f"collaborator parameter contract schema must be {PARAMETER_CONTRACT_SCHEMA!r}"
+        )
+    if payload["canonical_config"] != CANONICAL_CONFIG_RELATIVE:
+        raise OperatorConfigError(
+            "collaborator parameter contract names the wrong canonical config"
+        )
+    scope = payload["approval_scope"]
+    if not isinstance(scope, str) or not scope.strip():
+        raise OperatorConfigError(
+            "collaborator parameter contract approval_scope must be non-empty"
+        )
+    declared_config_hash = payload["canonical_config_without_approval_sha256"]
+    actual_config_hash = _config_without_approval_sha256(canonical)
+    if declared_config_hash != actual_config_hash:
+        raise OperatorConfigError(
+            "collaborator parameter contract does not match the canonical config "
+            f"without production_approval (declared {declared_config_hash!r}, "
+            f"actual {actual_config_hash!r})"
+        )
+    raw_rules = payload["parameters"]
+    if not isinstance(raw_rules, list) or not raw_rules:
+        raise OperatorConfigError(
+            "collaborator parameter contract parameters must be a non-empty list"
+        )
+
+    rules: dict[tuple[str, ...], dict[str, Any]] = {}
+    for index, raw_rule in enumerate(raw_rules):
+        if not isinstance(raw_rule, dict):
+            raise OperatorConfigError(
+                f"parameter contract rule {index} must be one JSON object"
+            )
+        required = {"path", "type", "minimum", "maximum", "unit", "notes"}
+        allowed = required | {"must_equal"}
+        if not required.issubset(raw_rule) or not set(raw_rule).issubset(allowed):
+            raise OperatorConfigError(
+                f"parameter contract rule {index} has unexpected or missing fields"
+            )
+        path = _contract_path(raw_rule["path"])
+        if path in rules:
+            raise OperatorConfigError(
+                f"parameter contract repeats path {_format_path(path)}"
+            )
+        if path[-1] != "value" or _protected_path(path):
+            raise OperatorConfigError(
+                f"parameter contract path is not an editable scientific value: "
+                f"{_format_path(path)}"
+            )
+        if raw_rule["type"] != "number":
+            raise OperatorConfigError(
+                f"parameter contract {_format_path(path)} supports only type 'number'"
+            )
+        lower = raw_rule["minimum"]
+        upper = raw_rule["maximum"]
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            for value in (lower, upper)
+        ) or float(lower) > float(upper):
+            raise OperatorConfigError(
+                f"parameter contract {_format_path(path)} has invalid closed bounds"
+            )
+        if not isinstance(raw_rule["unit"], str) or not raw_rule["unit"].strip() \
+                or not isinstance(raw_rule["notes"], str) or not raw_rule["notes"].strip():
+            raise OperatorConfigError(
+                f"parameter contract {_format_path(path)} needs non-empty unit and notes"
+            )
+        parent = _value_at_path(canonical, path[:-1])
+        if isinstance(parent, Mapping) and parent.get("tier") == "fixed":
+            raise OperatorConfigError(
+                f"fixed-tier parameter cannot enter the collaborator contract: "
+                f"{_format_path(path)}"
+            )
+        canonical_value = _value_at_path(canonical, path)
+        if isinstance(canonical_value, bool) or not isinstance(
+            canonical_value, (int, float)
+        ) or not math.isfinite(float(canonical_value)):
+            raise OperatorConfigError(
+                f"canonical {_format_path(path)} must be a finite number"
+            )
+        if not float(lower) <= float(canonical_value) <= float(upper):
+            raise OperatorConfigError(
+                f"canonical {_format_path(path)} is outside the collaborator contract"
+            )
+        rules[path] = dict(raw_rule)
+
+    for path, rule in rules.items():
+        if "must_equal" not in rule:
+            continue
+        companion = _contract_path(rule["must_equal"], field="must_equal")
+        if companion not in rules:
+            raise OperatorConfigError(
+                f"parameter contract {_format_path(path)} must_equal target is not "
+                "an editable contract path"
+            )
+        if _value_at_path(canonical, path) != _value_at_path(canonical, companion):
+            raise OperatorConfigError(
+                f"canonical coupled values differ: {_format_path(path)} and "
+                f"{_format_path(companion)}"
+            )
+
+    return rules, hashlib.sha256(raw).hexdigest()
+
+
+def collaborator_parameter_contract_sha256() -> str:
+    try:
+        canonical = json.loads(DEFAULT_CONFIG.read_text())
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise OperatorConfigError(
+            f"canonical config is unavailable or invalid: {DEFAULT_CONFIG}"
+        ) from exc
+    _, digest = _load_parameter_contract(canonical)
+    return digest
+
+
+def _first_parameter_contract_problem(
+    candidate: Mapping[str, Any], canonical: Mapping[str, Any],
+    rules: Mapping[tuple[str, ...], Mapping[str, Any]],
+) -> str | None:
+    for path, rule in rules.items():
+        value = _value_at_path(candidate, path)
+        canonical_value = _value_at_path(canonical, path)
+        if _same_json_scalar_value(value, canonical_value):
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                or not math.isfinite(float(value)):
+            return f"edited {_format_path(path)} must be a finite number"
+        lower = float(rule["minimum"])
+        upper = float(rule["maximum"])
+        if not lower <= float(value) <= upper:
+            return (
+                f"edited {_format_path(path)}={value!r} is outside its approved "
+                f"collaborator interval [{rule['minimum']!r}, {rule['maximum']!r}]"
+            )
+    for path, rule in rules.items():
+        if "must_equal" not in rule:
+            continue
+        companion = _contract_path(rule["must_equal"], field="must_equal")
+        if _value_at_path(candidate, path) != _value_at_path(candidate, companion):
+            return (
+                f"edited {_format_path(path)} must equal "
+                f"{_format_path(companion)}"
+            )
+    return None
+
+
+def _validate_seed(seed: Any, *, required: bool) -> int | None:
+    if seed is None:
+        if required:
+            raise OperatorConfigError(
+                "--seed is required for every run; validation-only is the only mode "
+                "that may omit it"
+            )
+        return None
+    if type(seed) is not int or not 0 <= seed <= UINT32_MAX:
+        raise OperatorConfigError(
+            f"--seed must be an integer in [0, {UINT32_MAX}]"
+        )
+    return seed
+
+
+def _require_production_approval(config: Mapping[str, Any]) -> str:
     """Fail closed unless this canonical config is approved for real runs.
 
     Validation-only intentionally does not call this function.  The approval
@@ -396,6 +629,13 @@ def _require_production_approval(config: Mapping[str, Any]) -> None:
         raise OperatorConfigError(
             "production_approval.approved_utc must include a timezone"
         )
+    contract_sha256 = collaborator_parameter_contract_sha256()
+    if approval["collaborator_parameter_contract_sha256"] != contract_sha256:
+        raise OperatorConfigError(
+            "production_approval.collaborator_parameter_contract_sha256 must match "
+            f"the reviewed contract {PARAMETER_CONTRACT_PATH} ({contract_sha256})"
+        )
+    return contract_sha256
 
 
 def _sha256_file(path: Path) -> str:
@@ -477,12 +717,18 @@ def write_reproducibility_bundle(
     *, input_config_path: str | Path, input_config_sha256: str,
     effective_config: Mapping[str, Any], output_dir: str | Path,
     model: str, p: float | None, seed: int, command_argv: Sequence[str],
+    parameter_contract_sha256: str,
 ) -> Path:
     """Write the effective config and PREPARED sidecar before engine import."""
     input_path = Path(input_config_path)
     if _sha256_file(input_path) != input_config_sha256:
         raise OperatorConfigError(
             f"input config changed after validation: {input_path}; validate a stable copy again"
+        )
+    if _sha256_file(PARAMETER_CONTRACT_PATH) != parameter_contract_sha256:
+        raise OperatorConfigError(
+            f"collaborator parameter contract changed after approval validation: "
+            f"{PARAMETER_CONTRACT_PATH}"
         )
 
     # Build all potentially failing provenance before creating the run directory.
@@ -515,6 +761,10 @@ def write_reproducibility_bundle(
         "effective_config": {
             "path": str(effective_path.resolve()),
             "sha256": hashlib.sha256(effective_bytes).hexdigest(),
+        },
+        "collaborator_parameter_contract": {
+            "path": str(PARAMETER_CONTRACT_PATH.resolve()),
+            "sha256": parameter_contract_sha256,
         },
         "route": {"model": model, "p": p, "seed": int(seed)},
         "runtime_identity": runtime_identity,
@@ -600,7 +850,10 @@ def parser() -> argparse.ArgumentParser:
     )
     out.add_argument(
         "--seed", type=int, default=None,
-        help="explicit RNG seed; required for a run and optional only with --validate-only",
+        help=(
+            f"explicit RNG seed in [0, {UINT32_MAX}]; required for a run and "
+            "optional only with --validate-only"
+        ),
     )
     out.add_argument(
         "--output-dir", default=None,
@@ -617,6 +870,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     command_argv = list(sys.argv[1:] if argv is None else argv)
     args = parser().parse_args(command_argv)
     try:
+        args.seed = _validate_seed(args.seed, required=not args.validate_only)
         base, input_config_sha256 = _load_shared_config_and_hash(args.config)
         runtime = config_for_model(
             base, model=args.model,
@@ -636,11 +890,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "engine was not constructed"
             )
             return 0
-        if args.seed is None:
-            raise OperatorConfigError(
-                "--seed is required for every run; validation-only is the only mode "
-                "that may omit it"
-            )
         if args.output_dir is None:
             raise OperatorConfigError(
                 "--output-dir is required for a run so results are not silently discarded"
@@ -652,7 +901,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise OperatorConfigError(
                 f"output directory is not empty: {output_path}; choose a new run directory"
             )
-        _require_production_approval(base)
+        parameter_contract_sha256 = _require_production_approval(base)
         manifest_path = write_reproducibility_bundle(
             input_config_path=args.config,
             input_config_sha256=input_config_sha256,
@@ -662,6 +911,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             p=args.p,
             seed=args.seed,
             command_argv=command_argv,
+            parameter_contract_sha256=parameter_contract_sha256,
         )
     except OperatorConfigError as exc:
         print(f"ERROR: {exc}")

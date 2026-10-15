@@ -46,6 +46,9 @@ def _write_approved_canonical(tmp_path: Path) -> Path:
         "approved": True,
         "approved_by": "Synthetic test owner",
         "approved_utc": "2026-10-15T09:00:00Z",
+        "collaborator_parameter_contract_sha256": (
+            run_model.collaborator_parameter_contract_sha256()
+        ),
     }
     path = tmp_path / "synthetic_approved_canonical.json"
     path.write_text(json.dumps(payload, indent=2))
@@ -75,6 +78,16 @@ def test_shared_config_loads_as_safe_standalone_m0_without_an_engine():
     assert profile.symptom_start_year == 1985.0
     translated = ConfigReader(base).as_v6_dict()
     assert ssd.load_stage_structured_diagnosis(translated) == profile
+
+
+def test_parameter_contract_is_bound_to_canonical_scientific_config():
+    canonical = json.loads(SHARED.read_text())
+    canonical["population"]["total_size"]["value"] += 1
+    with pytest.raises(
+        run_model.OperatorConfigError,
+        match="does not match the canonical config without production_approval",
+    ):
+        run_model._load_parameter_contract(canonical)
 
 
 def test_m0_route_removes_optional_block_and_never_mutates_base():
@@ -169,6 +182,24 @@ def test_operator_run_requires_an_explicit_seed_before_engine_import(tmp_path, c
     assert not output.exists()
 
 
+@pytest.mark.parametrize("seed", ["-1", str(2**32)])
+def test_operator_rejects_seed_outside_numpy_uint32_domain(seed, tmp_path, capsys):
+    output = tmp_path / "must-not-exist"
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M0", "--seed", seed,
+        "--output-dir", str(output),
+    ]) == 2
+    assert "--seed must be an integer in [0, 4294967295]" in capsys.readouterr().out
+    assert not output.exists()
+
+
+def test_seed_contract_rejects_bool_and_accepts_uint32_endpoints():
+    with pytest.raises(run_model.OperatorConfigError, match="must be an integer"):
+        run_model._validate_seed(True, required=True)
+    assert run_model._validate_seed(0, required=True) == 0
+    assert run_model._validate_seed(2**32 - 1, required=True) == 2**32 - 1
+
+
 def test_operator_run_refuses_unapproved_config_before_engine_import(
     tmp_path, monkeypatch, capsys,
 ):
@@ -192,6 +223,33 @@ def test_operator_run_refuses_unapproved_config_before_engine_import(
     assert not output.exists()
 
 
+def test_copied_approval_does_not_authorize_an_unlisted_parameter_edit(
+    tmp_path, monkeypatch, capsys,
+):
+    approved = _write_approved_canonical(tmp_path)
+    monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
+    config = json.loads(approved.read_text())
+    config["population"]["total_size"]["value"] = 1
+    edited = _write_copy(tmp_path, config)
+    output = tmp_path / "must-not-run"
+
+    class MustNotConstruct:
+        def __init__(self, config, seed):
+            raise AssertionError("unreviewed edit reached engine construction")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "run_v3",
+        types.SimpleNamespace(SimulationEngineV3=MustNotConstruct),
+    )
+    assert run_model.main([
+        "--config", str(edited), "--model", "M0", "--seed", "12345",
+        "--output-dir", str(output),
+    ]) == 2
+    assert "forbidden config edit at population.total_size.value" in capsys.readouterr().out
+    assert not output.exists()
+
+
 def test_operator_cannot_self_approve_a_copy(tmp_path, capsys):
     config = json.loads(SHARED.read_text())
     config["production_approval"] = {
@@ -201,6 +259,9 @@ def test_operator_cannot_self_approve_a_copy(tmp_path, capsys):
         "approved": True,
         "approved_by": "Unreviewed operator edit",
         "approved_utc": "2026-10-15T09:00:00Z",
+        "collaborator_parameter_contract_sha256": (
+            run_model.collaborator_parameter_contract_sha256()
+        ),
     }
     path = _write_copy(tmp_path, config)
     assert run_model.main([
@@ -217,6 +278,10 @@ def test_operator_cannot_self_approve_a_copy(tmp_path, capsys):
         ("approved", "true", "approved must be true"),
         ("approved_by", "  ", "must name the approving owner"),
         ("approved_utc", "2026-10-15T09:00:00", "must include a timezone"),
+        (
+            "collaborator_parameter_contract_sha256", "0" * 64,
+            "must match the reviewed contract",
+        ),
     ],
 )
 def test_production_approval_contract_rejects_false_or_malformed_claims(
@@ -230,6 +295,9 @@ def test_production_approval_contract_rejects_false_or_malformed_claims(
             "approved": True,
             "approved_by": "Synthetic test owner",
             "approved_utc": "2026-10-15T09:00:00Z",
+            "collaborator_parameter_contract_sha256": (
+                run_model.collaborator_parameter_contract_sha256()
+            ),
         }
     }
     config["production_approval"][field] = value
@@ -237,11 +305,9 @@ def test_production_approval_contract_rejects_false_or_malformed_claims(
         run_model._require_production_approval(config)
 
 
-def test_operator_copy_may_change_an_existing_scientific_value(tmp_path, capsys):
+def test_operator_copy_may_change_a_bounded_contract_parameter(tmp_path, capsys):
     config = json.loads(SHARED.read_text())
-    config["transmission_model"]["disease"]["diagnosis"]["annual_rate"][
-        "value"
-    ] = 0.4
+    config["interventions"]["oral_prep"]["uptake_rate"]["value"] = 0.2
     path = _write_copy(tmp_path, config)
     assert run_model.main([
         "--config", str(path), "--model", "M0", "--validate-only",
@@ -252,6 +318,7 @@ def test_operator_copy_may_change_an_existing_scientific_value(tmp_path, capsys)
 def test_operator_copy_accepts_a_value_inside_declared_bounds(tmp_path, capsys):
     config = json.loads(SHARED.read_text())
     config["population"]["p_msm"]["value"] = 0.08
+    config["demography"]["sexual_debut"]["p_msm"]["value"] = 0.08
     path = _write_copy(tmp_path, config)
     assert run_model.main([
         "--config", str(path), "--model", "M0", "--validate-only",
@@ -269,6 +336,63 @@ def test_operator_copy_rejects_a_value_outside_declared_bounds(tmp_path, capsys)
     message = capsys.readouterr().out
     assert "population.p_msm.value=0.5" in message
     assert "declared bounds [0.05, 0.09]" in message
+
+
+@pytest.mark.parametrize(
+    ("edit", "forbidden_path"),
+    [
+        (
+            lambda c: c["population"]["total_size"].__setitem__("value", 1),
+            "population.total_size.value",
+        ),
+        (
+            lambda c: c["population"]["initialization_method"].__setitem__(
+                "value", "not_a_mode"
+            ),
+            "population.initialization_method.value",
+        ),
+        (
+            lambda c: c["transmission_model"]["groups"]["hiv_stages"]["value"][0].__setitem__(
+                "name", "NOT_A_STAGE"
+            ),
+            "transmission_model.groups.hiv_stages.value[0].name",
+        ),
+    ],
+)
+def test_operator_copy_rejects_unlisted_fixed_enum_and_engine_schema_edits(
+    tmp_path, capsys, edit, forbidden_path,
+):
+    config = json.loads(SHARED.read_text())
+    edit(config)
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 2
+    assert f"forbidden config edit at {forbidden_path}" in capsys.readouterr().out
+
+
+def test_operator_copy_rejects_probability_outside_approved_contract(
+    tmp_path, capsys,
+):
+    config = json.loads(SHARED.read_text())
+    config["interventions"]["oral_prep"]["uptake_rate"]["value"] = 999.0
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 2
+    message = capsys.readouterr().out
+    assert "interventions.oral_prep.uptake_rate.value=999.0" in message
+    assert "approved collaborator interval [0.0, 1.0]" in message
+
+
+def test_coupled_msm_proportions_must_change_together(tmp_path, capsys):
+    config = json.loads(SHARED.read_text())
+    config["population"]["p_msm"]["value"] = 0.08
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 2
+    assert "must equal population.p_msm.value" in capsys.readouterr().out
 
 
 def test_unchanged_canonical_value_is_not_reinterpreted_against_old_bounds():
@@ -289,6 +413,9 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     output = tmp_path / "recorded-run"
     approved = _write_approved_canonical(tmp_path)
     monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
+    operator_payload = json.loads(approved.read_text())
+    operator_payload["interventions"]["oral_prep"]["uptake_rate"]["value"] = 0.2
+    operator_copy = _write_copy(tmp_path, operator_payload)
     seen = {}
 
     class FakeEngine:
@@ -314,7 +441,7 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     monkeypatch.setattr(run_model, "_utc_now", lambda: next(times))
 
     assert run_model.main([
-        "--config", str(approved), "--model", "M1", "--p", "0.2",
+        "--config", str(operator_copy), "--model", "M1", "--p", "0.2",
         "--seed", "42001", "--output-dir", str(output),
     ]) == 0
     assert seen["seed"] == 42001
@@ -328,13 +455,17 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     assert manifest["status"] == "COMPLETE"
     assert manifest["route"] == {"model": "M1", "p": 0.2, "seed": 42001}
     assert manifest["input_config"] == {
-        "path": str(approved.resolve()),
-        "sha256": hashlib.sha256(approved.read_bytes()).hexdigest(),
+        "path": str(operator_copy.resolve()),
+        "sha256": hashlib.sha256(operator_copy.read_bytes()).hexdigest(),
     }
     assert manifest["effective_config"]["path"] == str(effective_path.resolve())
     assert manifest["effective_config"]["sha256"] == hashlib.sha256(
         effective_path.read_bytes()
     ).hexdigest()
+    assert manifest["collaborator_parameter_contract"] == {
+        "path": str(run_model.PARAMETER_CONTRACT_PATH.resolve()),
+        "sha256": run_model.collaborator_parameter_contract_sha256(),
+    }
     assert manifest["output_path"] == str(output.resolve())
     assert manifest["runtime_identity"] == {"python": "test"}
     assert manifest["code_identity"]["scientific_files_sha256"] == "code-hash"
@@ -345,6 +476,7 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     ]
     assert node["enabled"]["value"] is True
     assert node["aids_symptom_annual_probability"]["value"] == pytest.approx(0.2)
+    assert effective["interventions"]["oral_prep"]["uptake_rate"]["value"] == 0.2
     assert effective["production_approval"] == {
         "schema": run_model.PRODUCTION_APPROVAL_SCHEMA,
         "status": "APPROVED",
@@ -352,6 +484,9 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
         "approved": True,
         "approved_by": "Synthetic test owner",
         "approved_utc": "2026-10-15T09:00:00Z",
+        "collaborator_parameter_contract_sha256": (
+            run_model.collaborator_parameter_contract_sha256()
+        ),
     }
     assert "reproducibility manifest" in capsys.readouterr().out
 
@@ -420,6 +555,10 @@ def test_fake_engine_failure_marks_manifest_failed(tmp_path, monkeypatch):
         (
             lambda c: c["run_control"]["seed"].__setitem__("value", 9001),
             "run_control.seed.value",
+        ),
+        (
+            lambda c: c["run_control"]["n_runs"].__setitem__("value", True),
+            "run_control.n_runs.value",
         ),
         (
             lambda c: c["output"]["directory"].__setitem__("value", "elsewhere"),

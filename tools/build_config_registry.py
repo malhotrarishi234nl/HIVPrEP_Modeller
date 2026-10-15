@@ -55,6 +55,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
     """),
     ROLE_PROPOSED: _names("""
         calib_space_v13_25_unordered_orientation_20260921.json
+        collaborator_parameter_contract.json
         hm_target_register_focused_20260916.json
         robust_nroy_freeze_production.json
     """),
@@ -183,6 +184,10 @@ STATUS_OVERRIDES = {
     "calib_space_v13_25_unordered_orientation_20260921.json": (
         "UNSIGNED_PROPOSAL — proposed robust-NROY M0 space; bounds and injection paths require review"
     ),
+    "collaborator_parameter_contract.json": (
+        "UNAPPROVED_CONTRACT — fail-closed edit allowlist; production use requires exact "
+        "SHA-256 binding in the canonical production approval"
+    ),
     "hm_target_register_focused_20260916.json": (
         "UNSIGNED_PROPOSAL — proposed 13-target contract; target constructs and provenance require review"
     ),
@@ -202,6 +207,10 @@ SAFE_NOTE_OVERRIDES = {
     ),
     "calib_space_v13_25_unordered_orientation_20260921.json": (
         "Do not treat bounds as accepted; use only after joint scientific review and signed-plan binding."
+    ),
+    "collaborator_parameter_contract.json": (
+        "Use to validate draft copies only; binding its exact hash in production approval means the "
+        "approver reviewed every listed path and interval."
     ),
     "hm_target_register_focused_20260916.json": (
         "Do not treat targets as accepted; use only after source-window, construct, and provenance review."

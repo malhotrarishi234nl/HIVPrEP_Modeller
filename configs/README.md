@@ -21,7 +21,9 @@ The route is code-tested but is not a production approval.
 An actual collaborator simulation additionally requires a protected canonical
 `production_approval` block with exact schema, `APPROVED` status, both
 `approved` and `production_eligible` set to true, and a named approver plus
-timezone-qualified approval time. No current candidate has that approval and
+timezone-qualified approval time. The approval must also bind the exact SHA-256
+of `collaborator_parameter_contract.json`, so a copied approval cannot expand
+the editable parameter surface. No current candidate has that approval and
 there is no CLI bypass.
 
 ## Current robust-NROY inputs
@@ -63,9 +65,10 @@ there is no CLI bypass.
 
 The collaborator route distinguishes:
 
-- **operator-editable:** existing scientific parameter `value` payloads in a
-  copied config, plus seed, M0/M1 selection, M1 `p`, and output directory via
-  `run_model.py` command-line options;
+- **operator-editable:** only the numeric JSON paths and closed intervals listed
+  by `collaborator_parameter_contract.json` in a copied config, plus seed,
+  M0/M1 selection, M1 `p`, and output directory via `run_model.py` command-line
+  options;
 - **scientifically frozen:** target definitions/order, calibration bounds,
   acceptance rule, discrepancy and variance construction;
 - **provenance protected:** config/schema version, source hashes, code/runtime
@@ -75,21 +78,30 @@ Preflight must reject edits outside the supported surface instead of silently
 accepting or discarding them.
 
 The collaborator validator compares a supplied copy with the canonical
-candidate. Object keys, list lengths, JSON value types, and every field outside
-an existing scientific `value` payload must match. In particular, do not edit
-`meta`, `run_control`, `output`, `_readme`, diagnostic/calibration provenance,
-or the saved `stage_structured_diagnosis` block. A rejection names the first
-forbidden path; start again from a fresh canonical copy rather than repairing
-an uncertain schema by hand.
+candidate. Object keys, list lengths, fixed-tier values, enum/mode strings,
+switches, indexed engine definitions, and every field outside the exact
+contract paths must match. In particular, do not edit `meta`, `run_control`,
+`output`, `_readme`, diagnostic/calibration provenance, or the saved
+`stage_structured_diagnosis` block. A rejection names the first forbidden path;
+start again from a fresh canonical copy rather than repairing an uncertain
+schema by hand.
 
-For an edited `value`, the validator enforces co-located numeric `bounds`,
-`range`, `min`/`max`, or `minimum`/`maximum` metadata when it exists. It does
-not infer a limit where the canonical parameter declares none, and passing
-this mechanical check does not make the edit scientifically accepted. Actual
-runs require an explicit command-line seed, an exact protected production
-approval inherited from the canonical config, and produce an effective-config
-snapshot plus a reproducibility manifest in the new output directory. A
-collaborator cannot promote a copied config by adding or editing the approval.
+For an edited value, the validator enforces the contract's closed interval plus
+co-located numeric bounds when present. Passing this mechanical check does not
+make an edit scientifically accepted. Actual runs require an explicit uint32
+command-line seed, an exact protected production approval inherited from the
+canonical config, and produce an effective-config snapshot plus a
+reproducibility manifest in the new output directory. The approval binds the
+exact editable contract; binding it means the approver reviewed the whole
+listed parameter domain. A collaborator cannot promote a copied config by
+adding or editing the approval.
+
+After a maintainer promotes the canonical config, discard any copy made before
+promotion. Make a fresh copy of the approved canonical, reapply only the
+reviewed parameter diff, and validate again. Use only the seed list and number
+of trajectories declared by the approved analysis run sheet; the CLI accepts
+integer seeds in `[0, 4294967295]` and each trajectory needs a new output
+directory.
 
 `run_model.py` structurally validates the M1 symptom probability as a
 mathematical probability in `[0,1]`. That does not approve the entire interval

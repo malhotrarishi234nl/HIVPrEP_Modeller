@@ -1,0 +1,161 @@
+{
+  "schema": "collaborator_parameter_contract/1.0.0",
+  "canonical_config": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
+  "canonical_config_without_approval_sha256": "d88e0ff837b6495508ce9af75d6dc20c09f609e11e6f4c300b5008446bc89175",
+  "approval_scope": "A production approval bound to this file's exact SHA-256 authorizes collaborator edits only at the listed JSON paths and only inside the listed closed intervals. It does not approve any other config edit, calibration claim, model variant, run design, or compute dispatch.",
+  "parameters": [
+    {
+      "path": "population.p_msm.value",
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 0.09,
+      "unit": "proportion",
+      "notes": "Must remain equal to demography.sexual_debut.p_msm.value."
+    },
+    {
+      "path": "population.epidemic_seed.seed_prevalence.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 0.05,
+      "unit": "proportion",
+      "notes": "Bounded historical epidemic-seeding parameter."
+    },
+    {
+      "path": "population.epidemic_seed.msm_fraction.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "proportion",
+      "notes": "Bounded historical epidemic-seeding parameter."
+    },
+    {
+      "path": "demography.sexual_debut.p_msm.value",
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 0.09,
+      "unit": "proportion",
+      "must_equal": "population.p_msm.value",
+      "notes": "Coupled to the initial-stock MSM proportion."
+    },
+    {
+      "path": "transmission_model.mixing.epsilon_hetero.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "proportion",
+      "notes": "Heterosexual activity-class assortativity."
+    },
+    {
+      "path": "transmission_model.mixing.epsilon_msm.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "proportion",
+      "notes": "MSM activity-class assortativity."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.beta_per_route.vaginal_mtf.chronic.value",
+      "type": "number",
+      "minimum": 0.0006,
+      "maximum": 0.0011,
+      "unit": "per-act probability",
+      "notes": "Literature-bounded chronic-stage route probability."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.beta_per_route.vaginal_ftm.chronic.value",
+      "type": "number",
+      "minimum": 0.0001,
+      "maximum": 0.0014,
+      "unit": "per-act probability",
+      "notes": "Literature-bounded chronic-stage route probability."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.beta_per_route.anal_receptive.chronic.value",
+      "type": "number",
+      "minimum": 0.0102,
+      "maximum": 0.0186,
+      "unit": "per-act probability",
+      "notes": "Literature-bounded chronic-stage route probability."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.beta_per_route.anal_insertive.chronic.value",
+      "type": "number",
+      "minimum": 0.0004,
+      "maximum": 0.0028,
+      "unit": "per-act probability",
+      "notes": "Literature-bounded chronic-stage route probability."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.stage_multiplier_acute.value",
+      "type": "number",
+      "minimum": 4.47,
+      "maximum": 18.81,
+      "unit": "relative risk",
+      "notes": "Literature-bounded acute-stage multiplier."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.stage_multiplier_aids.value",
+      "type": "number",
+      "minimum": 4.45,
+      "maximum": 11.88,
+      "unit": "relative risk",
+      "notes": "Literature-bounded AIDS-stage multiplier."
+    },
+    {
+      "path": "transmission_model.disease.transmission.advanced.msm_versatility.value",
+      "type": "number",
+      "minimum": 0.25,
+      "maximum": 0.75,
+      "unit": "proportion",
+      "notes": "Bounded MSM role-versatility parameter."
+    },
+    {
+      "path": "transmission_model.disease.advanced.art_mortality_reduction.value",
+      "type": "number",
+      "minimum": 0.75,
+      "maximum": 0.97,
+      "unit": "proportional reduction",
+      "notes": "Uncertain, literature-bounded ART mortality effect."
+    },
+    {
+      "path": "interventions.oral_prep.uptake_rate.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "annual probability",
+      "notes": "Oral PrEP initiation probability."
+    },
+    {
+      "path": "interventions.oral_prep.dropout_rate.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "annual probability",
+      "notes": "Oral PrEP discontinuation probability."
+    },
+    {
+      "path": "interventions.lenacapavir.uptake_rate.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "annual probability",
+      "notes": "Lenacapavir initiation probability; changing it does not enable a disabled intervention."
+    },
+    {
+      "path": "interventions.lenacapavir.dropout_rate.value",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "unit": "annual probability",
+      "notes": "Lenacapavir discontinuation probability; changing it does not enable a disabled intervention."
+    },
+    {
+      "path": "interventions.lenacapavir.advanced.efficacy.value",
+      "type": "number",
+      "minimum": 0.843,
+      "maximum": 0.995,
+      "unit": "proportional reduction",
+      "notes": "PURPOSE-2 uncertainty interval recorded by the canonical config."
+    }
+  ]
+}
