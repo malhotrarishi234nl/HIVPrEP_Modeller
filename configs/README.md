@@ -7,6 +7,11 @@ Do not choose a configuration because its filename contains `final`,
 current operator guide/registry and run its preflight validator before any
 simulation.
 
+The repository-wide [configuration registry](../CONFIG_REGISTRY.csv) and its
+[interpretation guide](../documentation/guides/CONFIGURATION_REGISTRY.md)
+classify every tracked file under this directory. The registry is an inventory,
+not scientific approval or production authorization.
+
 Collaborators should not edit Python. The prepared handoff route exposes model
 choice through `run_model.py` and parameter changes through reviewed JSON
 copies. Follow the

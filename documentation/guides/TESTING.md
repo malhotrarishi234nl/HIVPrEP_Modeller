@@ -19,6 +19,14 @@ provenance validation, and synthetic/mock calculations. It must not require
 The robust-NROY subset is listed in the root README. The handoff pass will
 expand and mark this lane so it can run from a source-only clone.
 
+The configuration-inventory drift check belongs to this lane and runs no
+engine:
+
+```bash
+.venv/bin/python tools/build_config_registry.py --check
+.venv/bin/python -m pytest -q -p pytest_no_engine_guard tests/test_config_registry.py
+```
+
 ## Lane 2: external-data integration
 
 Purpose: verify target/workbook loaders, raw-data schemas, and literature pins.

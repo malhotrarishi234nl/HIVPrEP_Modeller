@@ -21,6 +21,8 @@
 - Optional environment-specific workbook builders:
   `guides/OPTIONAL_ARTIFACT_BUILDERS.md`
 - Configuration guide: `../configs/README.md`
+- Complete tracked configuration inventory and interpretation:
+  `../CONFIG_REGISTRY.csv` and `guides/CONFIGURATION_REGISTRY.md`
 - External-input contract: `../data/README.md`
 
 ## Historical guidance

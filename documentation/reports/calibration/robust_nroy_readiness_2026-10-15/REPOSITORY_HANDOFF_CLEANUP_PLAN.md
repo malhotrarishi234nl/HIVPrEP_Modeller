@@ -27,8 +27,10 @@ enumerated.
    7 GB of redundant conference restore trees/archive copies.
 7. Root-level code and documents are too flat to identify current entry points
    and authoritative guidance.
-8. The 68 configuration files have no central current/proposed/historical/
-   diagnostic/test-only registry.
+8. All 73 tracked files under `configs/` now have a conservative central
+   current/proposed/historical/diagnostic/test-only classification, hash, and
+   safe-use note. The separate signed, plan-bound production registry remains
+   outstanding.
 
 ## Preservation-first sequence
 
@@ -41,7 +43,9 @@ enumerated.
    the real dependency or archive the helper that used it.
 5. Add an external-input manifest with logical path, source, hash,
    acquisition/licensing status, and consuming workflow.
-6. Add a configuration registry before moving or renaming any config.
+6. **Completed at inventory level:** add `CONFIG_REGISTRY.csv` and its read-only
+   drift checker before moving or renaming any config. The production-evidence
+   registry remains a later signed-plan gate.
 7. Split tests into:
    - portable source/unit gate;
    - external-data integration gate;
