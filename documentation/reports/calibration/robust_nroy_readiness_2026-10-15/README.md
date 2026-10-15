@@ -19,6 +19,10 @@
 
 ## Package contents
 
+- `PRODUCTION_READINESS_CLOSURE_MATRIX.md`: every requirement in the initiating
+  ten-item brief mapped to its evidence, current state, and exact closure
+  condition. This is the completeness index; a headline test result cannot
+  override an open row.
 - `DECISION_REGISTER.csv`: all 45 decisions, split 39 proposal-backed / 6
   evidence-dependent, with ranges,
   dependencies, consequences, evidence needs, suggested owner role and status.
@@ -54,6 +58,10 @@
   artifact cleanup sequence for a reproducible researcher handoff.
 - `MODEL_OPERATOR_GUIDE.md`: parameter-focused, no-Python-edit commands for
   explicit standalone M0/M1 validation and execution, with protected fields.
+- `COLLABORATOR_ANALYSIS_RUN_SHEET.json.template`: deliberately incomplete
+  typed authorization record binding one reviewed config, model, p/null, seed
+  set, scientific code, operator requirements, scientific approval, and the
+  later dispatch authorization. Actual runs seal a byte-exact copy.
 
 ## Acceptance-input provenance
 
