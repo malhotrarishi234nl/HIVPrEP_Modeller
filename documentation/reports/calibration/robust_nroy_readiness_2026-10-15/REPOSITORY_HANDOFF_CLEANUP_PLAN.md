@@ -21,7 +21,8 @@ The current tracked source has been separated from machine-local research
 artifacts without deleting evidence:
 
 - A fresh no-hardlink checkout, `hiv-prep-model-interface`, is clean, contains
-  699 files, occupies about 34 MB including Git history, and contains no
+  590 tracked working-tree files, occupies about 34 MB including Git history,
+  and contains no
   `outputs/` directory. This is the recommended starting point for interface
   work and collaborator-facing source changes.
 - The completed bounded Option-B rehearsal remains preserved under
