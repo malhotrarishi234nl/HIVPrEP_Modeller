@@ -373,6 +373,35 @@ def test_strict_json_rejects_duplicate_keys_and_nonfinite_numbers(text):
         audit.strict_json_loads(text)
 
 
+def test_seed_control_artifacts_cannot_self_reference_scanned_sources(
+    tmp_path, monkeypatch,
+):
+    tracked = tmp_path / "evidence" / "historical_seed_audit.json"
+    tracked.parent.mkdir()
+    tracked.write_text("{}")
+    scope = {
+        "tracked_repository": {"pathspecs": ["."]},
+        "outputs": {"root": "outputs"},
+    }
+    monkeypatch.setattr(audit, "git_tracked_paths", lambda root, pathspecs: [tracked])
+
+    with pytest.raises(ValueError, match="Git-tracked scanned source"):
+        audit.ensure_control_path_outside_scanned_sources(
+            tmp_path, scope, tracked, label="audit output"
+        )
+    with pytest.raises(ValueError, match="mounted-output scan"):
+        audit.ensure_control_path_outside_scanned_sources(
+            tmp_path,
+            scope,
+            tmp_path / "outputs" / "seed_audit.json",
+            label="audit output",
+        )
+    safe = tmp_path / "evidence" / "robust_nroy" / "seed_audit.json"
+    assert audit.ensure_control_path_outside_scanned_sources(
+        tmp_path, scope, safe, label="audit output"
+    ) == safe.resolve()
+
+
 @pytest.mark.parametrize(("text", "message"), [
     ('{"seed": 1, "seed": 2}', "duplicate JSON object key"),
     ('{"seed": NaN}', "non-finite JSON numeric literal"),

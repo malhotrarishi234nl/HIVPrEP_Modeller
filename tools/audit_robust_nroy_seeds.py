@@ -1489,12 +1489,63 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def ensure_control_path_outside_scanned_sources(
+    root: Path,
+    scope: Mapping[str, Any],
+    path: Path,
+    *,
+    label: str,
+) -> Path:
+    """Refuse audit-control artifacts that would become their own source.
+
+    The tracked-repository and mounted-output scans are evidence inputs. An
+    audit, resolution document, or candidate-block declaration inside either
+    scan would change the next deterministic rebuild and could present its own
+    candidate seeds as prior use.
+    """
+    root = root.resolve()
+    target = path.resolve()
+    tracked = {
+        candidate.resolve()
+        for candidate in git_tracked_paths(
+            root, scope["tracked_repository"]["pathspecs"]
+        )
+    }
+    if target in tracked:
+        raise ValueError(
+            f"{label} is itself a Git-tracked scanned source: {target}; place "
+            "production seed-control artifacts at an untracked path outside "
+            "the declared outputs root"
+        )
+    output_root = (root / str(scope["outputs"]["root"])).resolve()
+    if target == output_root or target.is_relative_to(output_root):
+        raise ValueError(
+            f"{label} is inside the declared mounted-output scan: {target}; place "
+            "production seed-control artifacts at an untracked path outside "
+            "the declared outputs root"
+        )
+    return target
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        scope_path = args.scope.resolve()
+        scope = load_scope(scope_path, root=ROOT)
+        controls = (
+            ("audit output", args.out),
+            ("audit check target", args.check),
+            ("finding resolutions", args.resolutions),
+            ("candidate seed blocks", args.candidate_blocks),
+        )
+        for label, control_path in controls:
+            if control_path is not None:
+                ensure_control_path_outside_scanned_sources(
+                    ROOT, scope, control_path, label=label
+                )
         artifact = build_audit(
             ROOT,
-            args.scope.resolve(),
+            scope_path,
             args.candidate_blocks.resolve() if args.candidate_blocks else None,
             plan_path=args.plan.resolve() if args.plan else None,
             resolution_path=args.resolutions.resolve() if args.resolutions else None,

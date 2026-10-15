@@ -1273,6 +1273,34 @@ def test_measured_pilot_rejects_hash_consistent_out_of_bounds_vector(
     )
 
 
+def test_measured_pilot_rejects_hash_consistent_joint_constraint_violation(
+    tmp_path,
+):
+    plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    model = runner._model_spaces(plan)[nc.MODEL_M0]
+
+    def violate_declared_joint_constraint(raw):
+        row = next(row for row in raw["rows"] if row["model"] == nc.MODEL_M0)
+        row["parameter_vector"]["seed_msm_aids_share"] = 0.08
+        row["parameter_vector"]["seed_non_msm_aids_share"] = 0.0
+        values = model.space.as_vector(row["parameter_vector"])
+        assert any(
+            "violates declared draw constraints" in reason
+            for reason in ccs.invalid_reasons(model.space, values)
+        )
+        row["parameter_vector_sha256"] = nc.vector_hash(
+            row["parameter_vector"], names=model.names
+        )
+
+    # All enclosing raw/pilot/pricing hashes are recomputed by this helper.
+    _mutate_raw_pilot(paths, violate_declared_joint_constraint)
+    assert any(
+        "violate its declared joint constraints" in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
 def test_measured_pilot_rejects_parameter_space_identity_drift(tmp_path):
     plan = nc.FrozenPlan.load(fx.write_signed_plan(tmp_path), root=ROOT)
     paths = _write_final_production_evidence(tmp_path, plan)

@@ -377,7 +377,7 @@ def _pilot_measurement_facts(
     malformed = False
     failed = False
     duplicate_vector_seed = False
-    out_of_bounds_rows: list[str] = []
+    inadmissible_space_rows: list[str] = []
     for row in rows:
         if not isinstance(row, Mapping):
             malformed = True
@@ -397,7 +397,7 @@ def _pilot_measurement_facts(
         vector_sha = row.get("parameter_vector_sha256")
         config_sha = row.get("scientific_config_sha256")
         vector_identity_valid = isinstance(vector, Mapping)
-        vector_bounds_valid = False
+        vector_space_valid = False
         if vector_identity_valid:
             try:
                 vector_identity_valid = (
@@ -406,22 +406,19 @@ def _pilot_measurement_facts(
                 )
                 if vector_identity_valid:
                     vector_values = model_spaces[model].space.as_vector(vector)
-                    below = vector_values < model_spaces[model].space.lower
-                    above = vector_values > model_spaces[model].space.upper
-                    vector_bounds_valid = not bool(np.any(below) or np.any(above))
-                    if not vector_bounds_valid:
-                        violated = [
-                            model_spaces[model].names[index]
-                            for index in np.flatnonzero(below | above)
-                        ]
-                        out_of_bounds_rows.append(
-                            f"{trajectory_id!r}/{model}: {violated}"
+                    invalid_reasons = ccs.invalid_reasons(
+                        model_spaces[model].space, vector_values
+                    )
+                    vector_space_valid = not invalid_reasons
+                    if invalid_reasons:
+                        inadmissible_space_rows.append(
+                            f"{trajectory_id!r}/{model}: {invalid_reasons}"
                         )
             except (ContractError, KeyError, TypeError, ValueError):
                 vector_identity_valid = False
         if seed is None or seed not in plan.seeds.discovery \
                 or not _is_sha256(vector_sha) or not vector_identity_valid \
-                or not vector_bounds_valid \
+                or not vector_space_valid \
                 or config_sha != expected_config_sha[model]:
             row_malformed = True
         if row.get("status") != "SUCCESS":
@@ -452,11 +449,11 @@ def _pilot_measurement_facts(
     if malformed or len(trajectory_ids) != len(rows) or sum(
         len(model_rows) for model_rows in parsed_rows.values()
     ) != len(rows):
-        if out_of_bounds_rows:
+        if inadmissible_space_rows:
             problems.append(
                 "the measured-pilot raw measurement contains parameter vectors outside "
-                "the exact signed model-specific space bounds: "
-                + "; ".join(out_of_bounds_rows)
+                "the exact signed model-specific space bounds or violate its declared "
+                "joint constraints: " + "; ".join(inadmissible_space_rows)
             )
         problems.append(
             "the measured-pilot raw rows require model, non-empty trajectory_id, exact "

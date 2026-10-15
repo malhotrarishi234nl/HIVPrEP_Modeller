@@ -99,22 +99,23 @@ separately required.
 
 ## Ordinary commands
 
-Regenerate the current incomplete artifact without running the model:
+Generate the plan-bound production prerequisite without running the model:
 
 ```bash
 .venv/bin/python tools/audit_robust_nroy_seeds.py \
   --scope documentation/reports/calibration/robust_nroy_readiness_2026-10-15/seed_source_scope.json \
   --resolutions <reviewed-seed-finding-resolutions.json> \
-  --out evidence/robust_nroy_seed_audit_20261015.json
+  --out evidence/robust_nroy/seed_audit.json
 ```
 
-Verify that the committed artifact still matches the mounted evidence:
+Verify that the untracked production prerequisite still matches the mounted
+evidence:
 
 ```bash
 .venv/bin/python tools/audit_robust_nroy_seeds.py \
   --scope documentation/reports/calibration/robust_nroy_readiness_2026-10-15/seed_source_scope.json \
   --resolutions <reviewed-seed-finding-resolutions.json> \
-  --check evidence/robust_nroy_seed_audit_20261015.json
+  --check evidence/robust_nroy/seed_audit.json
 ```
 
 After the owner has approved a complete scope and separately supplied candidate
@@ -123,8 +124,15 @@ blocks, add
 <candidate-seed-blocks.json> --plan <signed-plan.json>
 --generated-utc <ISO-8601-UTC> --require-pass`. A production-eligible `FINAL`
 is generated only when those blocks exactly match the fully signed plan and the
-complete scan has no unresolved ambiguous/unparseable finding, resolution, or
-overlap findings.
+complete scan has no unresolved ambiguous/unparseable finding, resolution,
+excluded-output disposition, or overlap finding. The audit output,
+reviewed-resolution document,
+and candidate-block document must remain at untracked paths outside the
+declared `outputs/` scan. The CLI refuses self-referential control paths because
+rewriting one would change the next inventory and could count its candidate
+seeds as prior use. The tracked
+`evidence/robust_nroy_seed_audit_20261015.json` is retained only as historical
+v1.0 evidence; never overwrite or promote it.
 The candidate document must have schema
 `robust_nroy_candidate_seed_blocks/1.0.0` and explicit integer arrays
 `discovery`, `confirmation`, plus one integer `proposal_rng`. The scanner never
