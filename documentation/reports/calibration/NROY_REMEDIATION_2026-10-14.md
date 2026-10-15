@@ -389,8 +389,9 @@ Result: both passed with no output.
 These require scientific/user decisions or missing external evidence and were
 not fabricated during code remediation:
 
-1. Sign all 42 production-plan decisions.
-2. Select and freeze a stochastic M1-capable production base configuration.
+1. Sign all 43 production-plan decisions and the separate three-field sign-off.
+2. Recalibrate and independently review the selected Option B 1980 stochastic
+   M0/M1 candidate before freezing a production-eligible fitted configuration.
 3. Produce a plan-bound `CONFIG_REGISTRY.md` and schema-valid measured-pilot,
    priced-budget and production seed-disjointness artifacts. Placeholder or
    generic `{passed: true}` evidence is deliberately rejected.

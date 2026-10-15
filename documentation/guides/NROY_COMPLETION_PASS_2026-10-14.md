@@ -225,9 +225,9 @@ No production simulation may start.
 ```
 
 This is the preserved 2026-10-14 transcript. After the 2026-10-15 graph
-simplification removed the non-load-bearing graph neighbour count, current
-validation reports 42 unsigned values (28 proposal-backed, 14 without a
-proposal).
+simplification removed the non-load-bearing graph neighbour count and the
+target-register content hash became an explicit decision, current validation
+reports 43 unsigned values (29 proposal-backed, 14 without a proposal).
 
 ```bash
 # 2. The production-relevant suite. No engine, no trajectories.
@@ -384,8 +384,8 @@ diagnosis mechanism carries production results, and the M0/M1 gate's
 
 Stated as gaps, not as work in progress.
 
-1. **42 required decisions are unsigned.** Current `validate` splits them:
-   **28 have a proposal** recorded in one of the specifications, and **14 have none** —
+1. **43 required decisions are unsigned.** Current `validate` splits them:
+   **29 have a proposal** recorded in one of the specifications, and **14 have none** —
    those need a decision, not a transcription. Both specifications are still
    DRAFT and the sign-off table in the production spec is blank. Five further
    decisions become required if the correlated-output diagnostic is enabled.
@@ -393,11 +393,11 @@ Stated as gaps, not as work in progress.
    specification also requires a measured pilot, a priced trajectory budget,
    `CONFIG_REGISTRY.md` with frozen candidate identities, and a confirmation
    that the production seed block is disjoint from earlier runs. None exists.
-3. **The frozen production base config does not carry the
-   `stage_structured_diagnosis` block**, so M1 cannot be launched against the
-   currently proposed `models.base_config` as it stands. Injection fails loudly
-   rather than silently discarding `p`, which is the behaviour we want, but it
-   is a prerequisite rather than a detail.
+3. **The Option B 1980 candidate now carries the complete
+   `stage_structured_diagnosis` block**, so the shared M0/M1 route is
+   mechanically available. It remains an unfitted, unvalidated recalibration
+   candidate rather than a production configuration; calibration and
+   independent scientific review are still prerequisites.
 4. **The identity is demonstrated on a truncated 1980→1990 run**, not on the
    full production horizon, and for the recorded vectors and seeds only. The
    gate artifact records that limitation.
