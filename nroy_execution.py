@@ -322,12 +322,15 @@ def read_jsonl_records(
             if not payload.strip():
                 raise ValueError("blank journal record")
             decoded = payload.decode("utf-8")
-            record = json.loads(decoded)
+            record = nc.strict_json_loads(
+                decoded,
+                what=f"attempt journal {journal} line {index}",
+            )
             if not isinstance(record, dict):
                 raise ValueError(
                     f"journal record is {type(record).__name__}, expected an object"
                 )
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, ContractError) as exc:
             is_final = index == len(lines)
             if is_final and not terminated:
                 # The only safe recovery: bytes from the final event never

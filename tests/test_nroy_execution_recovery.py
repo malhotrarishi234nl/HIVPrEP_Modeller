@@ -98,6 +98,39 @@ def test_jsonl_reader_refuses_interior_or_terminated_corruption(tmp_path, payloa
         ne.read_jsonl_records(journal)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"attempt_id":"a1","status":"running","status":"success"}\n',
+        b'{"attempt_id":"a1","started_utc":NaN}\n',
+        b'{"attempt_id":"a1","started_utc":Infinity}\n',
+        b'{"attempt_id":"a1","started_utc":-Infinity}\n',
+        b'{"attempt_id":"a1","started_utc":1e999}\n',
+    ],
+)
+def test_jsonl_reader_rejects_ambiguous_durable_authority_records(
+    tmp_path, payload,
+):
+    journal = tmp_path / "attempts.jsonl"
+    journal.write_bytes(payload)
+    with pytest.raises(ContractError, match="corrupt at durable line 1"):
+        ne.read_jsonl_records(journal)
+
+
+def test_jsonl_reader_keeps_unterminated_invalid_tail_as_only_repairable_case(
+    tmp_path,
+):
+    journal = tmp_path / "attempts.jsonl"
+    first = {"attempt_id": "a1", "status": ne.ATTEMPT_RUNNING}
+    journal.write_bytes(
+        (json.dumps(first) + "\n").encode()
+        + b'{"attempt_id":"torn","status":NaN'
+    )
+    assert ne.read_jsonl_records(journal) == [first]
+    assert ne.read_jsonl_records(journal, repair_truncated_tail=True) == [first]
+    assert journal.read_bytes() == (json.dumps(first) + "\n").encode()
+
+
 def test_truncated_tail_can_be_repaired_then_running_attempt_becomes_lost(tmp_path):
     ledger = _ledger()
     unit = ledger.units[0]
