@@ -532,9 +532,15 @@ def scan_scope(root: Path, scope: Mapping[str, Any], *,
         relative = path.relative_to(root).as_posix()
         current_hash = sha256_file(path)
         source_hashes[relative] = current_hash
+        kind = _parser_kind(path, output=False, output_rules=tracked_rules)
         if relative in exclusions:
             exclusion = exclusions[relative]
             seen_exclusions.add(relative)
+            if kind != "excluded":
+                raise ValueError(
+                    "tracked_repository.explicit_exclusions cannot suppress a "
+                    f"parser-supported tracked file: {relative} ({kind})"
+                )
             kind = "excluded_declared"
             inventory.append(_path_record(root, path, f"tracked:{kind}"))
             counts[f"tracked:{kind}"] = counts.get(f"tracked:{kind}", 0) + 1
@@ -544,7 +550,6 @@ def scan_scope(root: Path, scope: Mapping[str, Any], *,
                     f"{relative} expected {exclusion['sha256']} but found {current_hash}"
                 )
             continue
-        kind = _parser_kind(path, output=False, output_rules=tracked_rules)
         inventory.append(_path_record(root, path, f"tracked:{kind}"))
         counts[f"tracked:{kind}"] = counts.get(f"tracked:{kind}", 0) + 1
         if kind == "json":

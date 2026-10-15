@@ -51,7 +51,7 @@ Those appear as ambiguous or unparseable evidence.
 
 ## Reviewed resolution contract
 
-The v1.2 scanner accepts an optional `--resolutions` document with schema
+The v1.3 scanner accepts an optional `--resolutions` document with schema
 `robust_nroy_seed_finding_resolutions/1.1.0`. The incomplete starting template
 and JSON Schema are:
 

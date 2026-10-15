@@ -520,16 +520,56 @@ def test_scope_resolution_and_candidate_control_json_are_strict(tmp_path):
 
 
 def test_stale_tracked_exclusion_hash_is_fatal(tmp_path, monkeypatch):
-    scope_path = _write_inputs(tmp_path, monkeypatch)
-    payload = json.loads(scope_path.read_text())
+    (tmp_path / "outputs").mkdir()
+    source = tmp_path / "data" / "prior.bin"
+    source.parent.mkdir()
+    source.write_bytes(b"not a parsed format")
+    scope_path = tmp_path / "scope.json"
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
     payload["tracked_repository"]["explicit_exclusions"] = [{
-        "path": "configs/prior.json",
+        "path": "data/prior.bin",
         "sha256": "0" * 64,
         "reason": "Test exclusion.",
         "coverage_status": "REVIEWED_NON_SEED",
     }]
     scope_path.write_text(json.dumps(payload))
+    monkeypatch.setattr(
+        audit, "git_tracked_paths", lambda root, pathspecs: [source]
+    )
     with pytest.raises(ValueError, match="exclusion is stale"):
+        audit.build_audit(tmp_path, scope_path)
+
+
+@pytest.mark.parametrize(
+    ("relative", "content"),
+    [
+        ("configs/prior.json", '{"seed":77}'),
+        ("configs/prior.csv", "seed\n77\n"),
+        ("notes/prior.txt", "seed 77\n"),
+    ],
+)
+def test_tracked_exclusion_cannot_suppress_parser_supported_seed_source(
+        tmp_path, monkeypatch, relative, content):
+    (tmp_path / "outputs").mkdir()
+    source = tmp_path / relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(content)
+    scope_path = tmp_path / "scope.json"
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
+    payload["tracked_repository"]["explicit_exclusions"] = [{
+        "path": relative,
+        "sha256": audit.sha256_file(source),
+        "reason": "Attempted exact-hash exclusion of a parseable source.",
+        "coverage_status": "REVIEWED_NON_SEED",
+    }]
+    scope_path.write_text(json.dumps(payload))
+    monkeypatch.setattr(
+        audit, "git_tracked_paths", lambda root, pathspecs: [source]
+    )
+
+    with pytest.raises(ValueError, match="cannot suppress a parser-supported"):
         audit.build_audit(tmp_path, scope_path)
 
 
