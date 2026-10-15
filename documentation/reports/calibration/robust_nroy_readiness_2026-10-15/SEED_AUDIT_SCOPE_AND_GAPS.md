@@ -2,7 +2,7 @@
 
 ## Current verdict
 
-`robust_nroy_seed_audit/1.2.0` is **INCOMPLETE** and cannot authorize a run.
+`robust_nroy_seed_audit/1.3.0` is **INCOMPLETE** and cannot authorize a run.
 The implementation advances the gate by making the inventory reproducible and
 reviewable; it does not choose, allocate, recommend, or reserve any seed.
 
@@ -87,13 +87,20 @@ byte changes, a stale aggregate, or an unbound file fail closed.
 
 An external execution-location row may move from `UNRESOLVED` only when it
 names its reviewer and UTC review time and cites exactly one distinct, typed,
-hash-bound `robust_nroy_external_seed_location_review/1.0.0` record. That
+hash-bound `robust_nroy_external_seed_location_review/1.1.0` record. That
 record must match the location class, status, reviewer, and time; name the
 locations and accounts or owners checked; state the search method; and either
-index source hashes for `COVERED` or give an explicit no-source basis for
-`REVIEWED_NONE`. The four location classes cannot reuse one evidence file. A
-bare note such as `"checked HPC"`, an unhashed URL, or reviewer recollection is
-not accepted. Start from the deliberately incomplete template and schema in
+index sources for `COVERED` or give an explicit no-source basis for
+`REVIEWED_NONE`. Every indexed row has an explicit disposition. An `IN_SCOPE`
+row must name an exact repository-relative `materialized_path`; the audit
+requires the local bytes to match the indexed SHA-256 and requires that same
+path and hash to appear in the parsed scan content index. Thus those recovered
+RNG values enter the prior-seed collision checks. A remote path plus a
+syntactically valid hash is not coverage. A `REVIEWED_NON_SEED` row remains an
+explicit reviewed disposition and must use `materialized_path: null`. The four
+location classes cannot reuse one evidence file. A bare note such as
+`"checked HPC"`, an unhashed URL, or reviewer recollection is not accepted.
+Start from the deliberately incomplete template and schema in
 `templates/external_seed_location_review.*`; global owner approval remains
 separately required.
 
@@ -140,6 +147,15 @@ creates that document. The audit records both its exact input path and raw-file
 SHA-256, plus the canonical payload SHA-256; the production validator reloads
 the strict JSON file and rechecks all three seed blocks.
 
+The exact active signed plan remains inventoried and content-hash-bound, but
+its three candidate declaration pointers (`/seeds/discovery`,
+`/seeds/confirmation`, and `/seeds/proposal_rng`) are omitted from prior-use
+extraction. They describe proposed future use and would otherwise make every
+valid plan collide with itself. The audit records the exact active plan path,
+SHA-256, and those three pointers. No other field or file is omitted: the same
+integer in any historical plan, run manifest, result, or other scanned source
+remains prior use and fails the collision gate.
+
 ## Fail-closed proof rule
 
 Candidate comparisons are `NOT_EVALUATED` when candidate blocks are absent.
@@ -148,8 +164,10 @@ is only `PROVEN` when all of the following are true:
 
 1. owner scope is `APPROVED` with reviewer and date;
 2. source coverage is `COMPLETE`, every external location has its own valid
-   typed review record, and every mounted-output exclusion has a byte-exact
-   disposition or exact content-index review;
+   typed review record, every external `IN_SCOPE` source is locally
+   materialized under parsed scan coverage at the indexed SHA-256, and every
+   mounted-output exclusion has a byte-exact disposition or exact
+   content-index review;
 3. every ambiguous or unparseable reference has an exact, current, reviewed
    RNG or NON_RNG disposition;
 4. explicit candidate discovery and confirmation blocks are internally unique;
@@ -172,8 +190,10 @@ simulation or a cached assertion.
   scope exhausts every historical run location.
 - Deleted work, remote/cloud/HPC work, collaborator-held artifacts, and prior
   machines each have an explicit unresolved coverage decision in the scope
-  manifest; they are not represented unless copied into an approved source
-  scope or reviewed with evidence.
+  manifest. Recovered `IN_SCOPE` bytes must be copied into the declared parsed
+  scan at their reviewed hash; sources may instead close only through an
+  explicit `REVIEWED_NON_SEED` disposition or an evidence-based no-source
+  conclusion.
 - Excluded raw and binary formats need an explicit owner disposition; file
   inventory alone does not prove that they contain no additional RNG evidence.
 - Textual and seed-like references require review so epidemiological seed-state

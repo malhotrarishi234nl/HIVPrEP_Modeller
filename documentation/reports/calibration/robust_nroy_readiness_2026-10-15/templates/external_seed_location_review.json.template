@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_external_seed_location_review/1.0.0",
+  "schema": "robust_nroy_external_seed_location_review/1.1.0",
   "location_kind": "<REMOTE_HPC|CLOUD|DELETED_LOCAL|COLLABORATOR_HELD>",
   "review_status": "<COVERED|REVIEWED_NONE>",
   "reviewer": null,

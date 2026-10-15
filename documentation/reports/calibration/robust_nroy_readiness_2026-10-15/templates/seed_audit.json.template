@@ -1,5 +1,5 @@
 {
-  "schema": "robust_nroy_seed_audit/1.2.0",
+  "schema": "robust_nroy_seed_audit/1.3.0",
   "status": "INCOMPLETE",
   "production_eligible": false,
   "deterministic": true,
@@ -22,7 +22,8 @@
     "excluded_output_files": 0,
     "excluded_output_bytes": 0,
     "excluded_output_index_sha256": null,
-    "excluded_output_index": []
+    "excluded_output_index": [],
+    "active_plan_candidate_declaration_exclusion": null
   },
   "finding_resolutions": {
     "path": null,

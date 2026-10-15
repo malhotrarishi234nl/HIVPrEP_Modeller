@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "robust_nroy_external_seed_location_review/1.0.0",
+  "$id": "robust_nroy_external_seed_location_review/1.1.0",
   "title": "External seed-location review",
   "type": "object",
   "additionalProperties": false,
@@ -11,7 +11,7 @@
     "no_additional_source_basis"
   ],
   "properties": {
-    "schema": {"const": "robust_nroy_external_seed_location_review/1.0.0"},
+    "schema": {"const": "robust_nroy_external_seed_location_review/1.1.0"},
     "location_kind": {
       "enum": ["REMOTE_HPC", "CLOUD", "DELETED_LOCAL", "COLLABORATOR_HELD"]
     },
@@ -34,13 +34,30 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["source_id", "sha256", "disposition", "description"],
+        "required": [
+          "source_id", "sha256", "disposition", "description", "materialized_path"
+        ],
         "properties": {
           "source_id": {"type": "string", "minLength": 1},
           "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "disposition": {"enum": ["IN_SCOPE", "REVIEWED_NON_SEED"]},
-          "description": {"type": "string", "minLength": 1}
-        }
+          "description": {"type": "string", "minLength": 1},
+          "materialized_path": {"type": ["string", "null"]}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"disposition": {"const": "IN_SCOPE"}}},
+            "then": {
+              "properties": {
+                "materialized_path": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          {
+            "if": {"properties": {"disposition": {"const": "REVIEWED_NON_SEED"}}},
+            "then": {"properties": {"materialized_path": {"type": "null"}}}
+          }
+        ]
       }
     },
     "no_additional_source_basis": {"type": ["string", "null"]}

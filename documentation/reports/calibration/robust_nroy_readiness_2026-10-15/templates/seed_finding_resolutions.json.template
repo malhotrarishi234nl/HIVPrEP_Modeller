@@ -1,7 +1,7 @@
 {
   "schema": "robust_nroy_seed_finding_resolutions/1.1.0",
   "status": "INCOMPLETE",
-  "scope_manifest_sha256": "3b6fcb5528fea13427ceeab26aa268f521409bce13e91176c177bac3eaebc87c",
+  "scope_manifest_sha256": "6d3c448b95712c9be35923ae67348489c106efb634e824869fba11f2dd8ab315",
   "exact_resolutions": [],
   "reviewed_rules": [],
   "excluded_output_dispositions": [],

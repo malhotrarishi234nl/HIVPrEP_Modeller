@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -9,6 +11,9 @@ from tools import audit_robust_nroy_seeds as audit
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tests"))
+import nroy_fixtures as fx  # noqa: E402
+
 SCOPE = ROOT / (
     "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/"
     "seed_source_scope.json"
@@ -192,6 +197,88 @@ def test_complete_approved_scope_and_disjoint_candidates_can_prove_gate(
     assert first["overlaps"] == []
     assert first["generated_utc"] is None
     assert "signed production plan was not supplied" in first["unresolved"]
+
+
+def test_active_signed_plan_candidate_declarations_do_not_self_collide(
+        tmp_path, monkeypatch):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = audit.nc.FrozenPlan.load(plan_path, root=ROOT)
+    candidate_path = _candidate(
+        tmp_path,
+        discovery=plan.seeds.discovery,
+        confirmation=plan.seeds.confirmation,
+        proposal=plan.seeds.proposal_rng,
+    )
+    (tmp_path / "outputs").mkdir(exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", plan_path.name], cwd=tmp_path, check=True)
+    scope_payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, scope_payload)
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(json.dumps(scope_payload))
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(scope_path)))
+
+    current = audit.build_audit(
+        tmp_path,
+        scope_path,
+        candidate_path,
+        plan_path=plan_path,
+        resolution_path=resolution_path,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert current["passed"] is False
+    assert current["overlaps"] == []
+    for comparison in (
+        "discovery_vs_prior", "confirmation_vs_prior", "proposal_vs_prior"
+    ):
+        assert current["disjointness"]["checks"][comparison] == []
+    assert current["source_inventory"][
+        "active_plan_candidate_declaration_exclusion"
+    ] == {
+        "path": plan_path.name,
+        "sha256": audit.sha256_file(plan_path),
+        "excluded_json_pointers": list(audit.ACTIVE_PLAN_CANDIDATE_POINTERS),
+        "reason": (
+            "candidate declarations in this exact active signed plan are proposed "
+            "future use, not evidence of prior RNG use"
+        ),
+    }
+
+    monkeypatch.chdir(tmp_path)
+    generated_from_relative_plan = audit.build_audit(
+        tmp_path,
+        scope_path,
+        candidate_path,
+        plan_path=Path(plan_path.name),
+        resolution_path=resolution_path,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert generated_from_relative_plan == current
+    assert generated_from_relative_plan["plan_path"] == str(plan_path.resolve())
+
+    historical = tmp_path / "historical_plan.json"
+    historical.write_bytes(plan_path.read_bytes())
+    subprocess.run(["git", "add", historical.name], cwd=tmp_path, check=True)
+    collided = audit.build_audit(
+        tmp_path,
+        scope_path,
+        candidate_path,
+        plan_path=plan_path,
+        resolution_path=resolution_path,
+        generated_utc="2026-10-15T00:00:00Z",
+    )
+    assert collided["passed"] is False
+    assert collided["disjointness"]["status"] == "COMPUTED_NOT_PROVEN"
+    assert collided["disjointness"]["checks"]["discovery_vs_prior"] == list(
+        plan.seeds.discovery
+    )
+    assert collided["disjointness"]["checks"]["confirmation_vs_prior"] == list(
+        plan.seeds.confirmation
+    )
+    assert collided["disjointness"]["checks"]["proposal_vs_prior"] == [
+        plan.seeds.proposal_rng
+    ]
 
 
 def test_overlap_is_computed_but_never_proven(tmp_path, monkeypatch):
@@ -616,7 +703,7 @@ def test_external_location_review_must_match_its_location_class(tmp_path):
         audit.load_scope(scope_path, root=tmp_path)
 
 
-def test_covered_external_location_requires_and_accepts_hash_indexed_sources(tmp_path):
+def test_covered_external_location_rejects_remote_only_in_scope_source(tmp_path):
     payload = _scope(complete=True)
     _write_external_reviews(tmp_path, payload)
     first = payload["external_execution_locations"][0]
@@ -629,15 +716,96 @@ def test_covered_external_location_requires_and_accepts_hash_indexed_sources(tmp
         "sha256": "a" * 64,
         "disposition": "IN_SCOPE",
         "description": "Exact recovered run-manifest identity.",
+        "materialized_path": None,
     }]
     review["no_additional_source_basis"] = None
     review_path.write_text(json.dumps(review))
     first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
     scope_path = tmp_path / "scope.json"
     scope_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="exact locally materialized path"):
+        audit.load_scope(scope_path, root=tmp_path)
+
+
+def test_external_in_scope_source_must_join_scanned_collision_index(
+        tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    payload = json.loads(scope_path.read_text())
+    first = payload["external_execution_locations"][0]
+    first["status"] = "COVERED"
+    recovered = tmp_path / "recovered_remote.json"
+    recovered.write_text(json.dumps({"seed": 77}))
+    review_path = tmp_path / first["evidence"][0]["path"]
+    review = json.loads(review_path.read_text())
+    review["review_status"] = "COVERED"
+    review["indexed_sources"] = [{
+        "source_id": "snellius:/project/run-001/manifest.json",
+        "sha256": audit.sha256_file(recovered),
+        "disposition": "IN_SCOPE",
+        "description": "Exact recovered run-manifest identity.",
+        "materialized_path": recovered.name,
+    }]
+    review["no_additional_source_basis"] = None
+    review_path.write_text(json.dumps(review))
+    first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
+    scope_path.write_text(json.dumps(payload))
+
     assert audit.load_scope(scope_path, root=tmp_path)[
-        "external_execution_locations"
-    ][0]["status"] == "COVERED"
+        "_external_in_scope_sources"
+    ][0]["materialized_path"] == recovered.name
+    with pytest.raises(ValueError, match="not included in seed collision checks"):
+        audit.build_audit(tmp_path, scope_path)
+
+
+def test_external_in_scope_source_is_parsed_when_materialized_under_scan(
+        tmp_path, monkeypatch):
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    payload = json.loads(scope_path.read_text())
+    first = payload["external_execution_locations"][0]
+    first["status"] = "COVERED"
+    scanned = tmp_path / "configs" / "prior.json"
+    review_path = tmp_path / first["evidence"][0]["path"]
+    review = json.loads(review_path.read_text())
+    review["review_status"] = "COVERED"
+    review["indexed_sources"] = [{
+        "source_id": "snellius:/project/run-001/manifest.json",
+        "sha256": audit.sha256_file(scanned),
+        "disposition": "IN_SCOPE",
+        "description": "Recovered source copied into the declared scan.",
+        "materialized_path": "configs/prior.json",
+    }]
+    review["no_additional_source_basis"] = None
+    review_path.write_text(json.dumps(review))
+    first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
+    scope_path.write_text(json.dumps(payload))
+
+    result = audit.build_audit(tmp_path, scope_path)
+    assert {row["seed"] for row in result["parsed_prior_seeds"]} >= {1, 2, 3, 9}
+
+
+def test_external_reviewed_non_seed_source_is_an_explicit_disposition(tmp_path):
+    payload = _scope(complete=True)
+    _write_external_reviews(tmp_path, payload)
+    first = payload["external_execution_locations"][0]
+    first["status"] = "COVERED"
+    review_path = tmp_path / first["evidence"][0]["path"]
+    review = json.loads(review_path.read_text())
+    review["review_status"] = "COVERED"
+    review["indexed_sources"] = [{
+        "source_id": "snellius:/project/run-001/readme.txt",
+        "sha256": "a" * 64,
+        "disposition": "REVIEWED_NON_SEED",
+        "description": "Reviewed documentation without RNG values.",
+        "materialized_path": None,
+    }]
+    review["no_additional_source_basis"] = None
+    review_path.write_text(json.dumps(review))
+    first["evidence"][0]["sha256"] = audit.sha256_file(review_path)
+    scope_path = tmp_path / "scope.json"
+    scope_path.write_text(json.dumps(payload))
+
+    loaded = audit.load_scope(scope_path, root=tmp_path)
+    assert loaded["_external_in_scope_sources"] == []
 
 
 @pytest.mark.parametrize("field,value", [

@@ -34,11 +34,11 @@ if str(ROOT) not in sys.path:
 
 import nroy_contract as nc  # noqa: E402
 
-SCHEMA = "robust_nroy_seed_audit/1.2.0"
+SCHEMA = "robust_nroy_seed_audit/1.3.0"
 SCOPE_SCHEMA = "robust_nroy_seed_source_scope/1.2.0"
 CANDIDATE_SCHEMA = "robust_nroy_candidate_seed_blocks/1.0.0"
 RESOLUTION_SCHEMA = "robust_nroy_seed_finding_resolutions/1.1.0"
-EXTERNAL_REVIEW_SCHEMA = "robust_nroy_external_seed_location_review/1.0.0"
+EXTERNAL_REVIEW_SCHEMA = "robust_nroy_external_seed_location_review/1.1.0"
 
 INTEGER = re.compile(r"^[+-]?\d+$")
 SPLIT_INTEGER_LIST = re.compile(r"^[+-]?\d+(?:\s*[,;]\s*[+-]?\d+)+$")
@@ -68,6 +68,11 @@ OTHER_RNG_FIELDS = {
     "master_seed", "numpy_seed", "torch_seed", "confirmation_seed",
 }
 CONTAINER_FIELDS = {"seeds", "seed_blocks", "random_seeds"}
+ACTIVE_PLAN_CANDIDATE_POINTERS = (
+    "/seeds/discovery",
+    "/seeds/confirmation",
+    "/seeds/proposal_rng",
+)
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -292,12 +297,15 @@ class Findings:
 
 
 def scan_structured(value: Any, *, source: str, findings: Findings,
-                    parts: tuple[str, ...] = ()) -> None:
+                    parts: tuple[str, ...] = (),
+                    ignored_locations: frozenset[str] = frozenset()) -> None:
     if isinstance(value, Mapping):
         for raw_key in sorted(value, key=lambda item: str(item)):
             key = str(raw_key)
             child = value[raw_key]
             child_parts = (*parts, key)
+            if _json_pointer(child_parts) in ignored_locations:
+                continue
             role = _role_for(child_parts)
             if role is not None and not isinstance(child, Mapping):
                 parsed, rejected = _parse_integer_values(child)
@@ -318,15 +326,23 @@ def scan_structured(value: Any, *, source: str, findings: Findings,
                     child,
                 )
                 continue
-            scan_structured(child, source=source, findings=findings, parts=child_parts)
+            scan_structured(
+                child,
+                source=source,
+                findings=findings,
+                parts=child_parts,
+                ignored_locations=ignored_locations,
+            )
         return
     if isinstance(value, list):
         for index, child in enumerate(value):
             scan_structured(child, source=source, findings=findings,
-                            parts=(*parts, str(index)))
+                            parts=(*parts, str(index)),
+                            ignored_locations=ignored_locations)
 
 
-def scan_json(path: Path, relative: str, findings: Findings) -> None:
+def scan_json(path: Path, relative: str, findings: Findings, *,
+              ignored_locations: frozenset[str] = frozenset()) -> None:
     try:
         payload = strict_json_load(path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
@@ -334,7 +350,12 @@ def scan_json(path: Path, relative: str, findings: Findings) -> None:
             relative, "/", f"JSON parse failed: {exc}", {"parse_error": str(exc)}
         )
         return
-    scan_structured(payload, source=relative, findings=findings)
+    scan_structured(
+        payload,
+        source=relative,
+        findings=findings,
+        ignored_locations=ignored_locations,
+    )
 
 
 def scan_json_lines(path: Path, relative: str, findings: Findings) -> None:
@@ -481,7 +502,9 @@ def _excluded_output_record(root: Path, path: Path, kind: str) -> dict[str, Any]
     return record
 
 
-def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str, Any]]:
+def scan_scope(root: Path, scope: Mapping[str, Any], *,
+               active_plan_path: Path | None = None,
+               active_plan_sha256: str | None = None) -> tuple[Findings, dict[str, Any]]:
     findings = Findings(
         example_limit=int(scope.get("evidence_example_limit", 2000)),
         source_limit=int(scope.get("parsed_seed_source_limit", 40)),
@@ -497,6 +520,13 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
         "explicit_exclusions", ())}
     seen_exclusions: set[str] = set()
     source_hashes: dict[str, str] = {}
+    active_plan_relative: str | None = None
+    active_plan_exclusion: dict[str, Any] | None = None
+    if active_plan_path is not None:
+        resolved_plan = active_plan_path.resolve()
+        resolved_root = root.resolve()
+        if resolved_plan.is_relative_to(resolved_root):
+            active_plan_relative = resolved_plan.relative_to(resolved_root).as_posix()
     tracked = git_tracked_paths(root, tracked_rules["pathspecs"])
     for path in sorted(tracked):
         relative = path.relative_to(root).as_posix()
@@ -518,7 +548,28 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
         inventory.append(_path_record(root, path, f"tracked:{kind}"))
         counts[f"tracked:{kind}"] = counts.get(f"tracked:{kind}", 0) + 1
         if kind == "json":
-            scan_json(path, relative, findings)
+            ignored_locations = frozenset()
+            if relative == active_plan_relative:
+                if current_hash != active_plan_sha256:
+                    raise ValueError(
+                        "active signed plan changed between validation and seed scan"
+                    )
+                ignored_locations = frozenset(ACTIVE_PLAN_CANDIDATE_POINTERS)
+                active_plan_exclusion = {
+                    "path": relative,
+                    "sha256": current_hash,
+                    "excluded_json_pointers": list(ACTIVE_PLAN_CANDIDATE_POINTERS),
+                    "reason": (
+                        "candidate declarations in this exact active signed plan are "
+                        "proposed future use, not evidence of prior RNG use"
+                    ),
+                }
+            scan_json(
+                path,
+                relative,
+                findings,
+                ignored_locations=ignored_locations,
+            )
         elif kind == "json_lines":
             scan_json_lines(path, relative, findings)
         elif kind == "csv_text":
@@ -591,6 +642,18 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
 
     findings.bind_source_hashes(source_hashes)
 
+    scanned_by_path = {
+        item["path"]: item["sha256"] for item in scanned_hashes
+    }
+    for item in scope.get("_external_in_scope_sources", ()):
+        materialized_path = item["materialized_path"]
+        if scanned_by_path.get(materialized_path) != item["sha256"]:
+            raise ValueError(
+                "external IN_SCOPE source is not included in seed collision checks: "
+                f"{item['source_id']} must map to scanned path {materialized_path} "
+                f"with SHA-256 {item['sha256']}"
+            )
+
     inventory_digest = canonical_sha256(inventory)
     scanned_digest = canonical_sha256(scanned_hashes)
     excluded_output_index.sort(key=lambda item: item["path"])
@@ -604,13 +667,14 @@ def scan_scope(root: Path, scope: Mapping[str, Any]) -> tuple[Findings, dict[str
         "excluded_output_bytes": excluded_output_bytes,
         "excluded_output_index_sha256": canonical_sha256(excluded_output_index),
         "excluded_output_index": excluded_output_index,
+        "active_plan_candidate_declaration_exclusion": active_plan_exclusion,
     }
 
 
 def _validate_external_evidence(
         values: object, *, label: str, root: Path | None, location_kind: str,
         location_status: str, reviewer: object, reviewed_utc: object,
-        used_paths: set[str]) -> None:
+        used_paths: set[str], in_scope_sources: list[dict[str, str]]) -> None:
     if not isinstance(values, list):
         raise ValueError(f"{label} must be a list")
     if location_status == "UNRESOLVED":
@@ -711,19 +775,60 @@ def _validate_external_evidence(
         for source_index, indexed_source in enumerate(indexed):
             item_label = f"{source}.indexed_sources[{source_index}]"
             if not isinstance(indexed_source, Mapping) or set(indexed_source) != {
-                "source_id", "sha256", "disposition", "description"
+                "source_id", "sha256", "disposition", "description",
+                "materialized_path",
             }:
                 raise ValueError(f"{item_label} has an invalid typed shape")
-            source_id = str(indexed_source["source_id"])
-            if not source_id.strip() or source_id in indexed_ids:
+            source_id = indexed_source["source_id"]
+            if (not isinstance(source_id, str) or not source_id.strip()
+                    or source_id in indexed_ids):
                 raise ValueError(f"{item_label}.source_id is empty or duplicated")
             indexed_ids.add(source_id)
             if not SHA256.fullmatch(str(indexed_source["sha256"])):
                 raise ValueError(f"{item_label}.sha256 must be a lowercase SHA-256")
             if indexed_source["disposition"] not in {"IN_SCOPE", "REVIEWED_NON_SEED"}:
                 raise ValueError(f"{item_label}.disposition is invalid")
-            if not str(indexed_source["description"]).strip():
+            if (not isinstance(indexed_source["description"], str)
+                    or not indexed_source["description"].strip()):
                 raise ValueError(f"{item_label}.description is required")
+            materialized_path = indexed_source["materialized_path"]
+            if indexed_source["disposition"] == "REVIEWED_NON_SEED":
+                if materialized_path is not None:
+                    raise ValueError(
+                        f"{item_label}.materialized_path must be null for "
+                        "REVIEWED_NON_SEED"
+                    )
+                continue
+            if materialized_path is None:
+                raise ValueError(
+                    f"{item_label} IN_SCOPE source requires an exact locally "
+                    "materialized path"
+                )
+            if not isinstance(materialized_path, str):
+                raise ValueError(
+                    f"{item_label}.materialized_path must be a string for IN_SCOPE"
+                )
+            local_source = _validate_exact_source(
+                materialized_path, f"{item_label}.materialized_path"
+            )
+            resolved_root = root.resolve()
+            local_path = (resolved_root / local_source).resolve()
+            if not local_path.is_relative_to(resolved_root) or not local_path.is_file():
+                raise ValueError(
+                    f"{item_label} IN_SCOPE source is not locally materialized: "
+                    f"{local_source}"
+                )
+            actual = sha256_file(local_path)
+            if actual != indexed_source["sha256"]:
+                raise ValueError(
+                    f"{item_label} locally materialized source hash is stale: "
+                    f"{local_source} expected {indexed_source['sha256']} but found {actual}"
+                )
+            in_scope_sources.append({
+                "source_id": source_id,
+                "materialized_path": local_source,
+                "sha256": str(indexed_source["sha256"]),
+            })
         basis = review["no_additional_source_basis"]
         if location_status == "COVERED":
             if not indexed or basis is not None:
@@ -796,6 +901,7 @@ def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
             "DELETED_LOCAL, and COLLABORATOR_HELD"
         )
     used_external_evidence_paths: set[str] = set()
+    external_in_scope_sources: list[dict[str, str]] = []
     for item in locations:
         if set(item) != {
             "kind", "status", "coverage_decision", "evidence", "reviewer", "reviewed_utc"
@@ -814,6 +920,7 @@ def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
             reviewer=item["reviewer"],
             reviewed_utc=item["reviewed_utc"],
             used_paths=used_external_evidence_paths,
+            in_scope_sources=external_in_scope_sources,
         )
         if item["status"] != "UNRESOLVED":
             if not item["evidence"]:
@@ -852,6 +959,7 @@ def load_scope(path: Path, *, root: Path | None = None) -> dict[str, Any]:
     max_bytes = outputs.get("max_scanned_file_bytes")
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
         raise ValueError("outputs.max_scanned_file_bytes must be a positive integer")
+    payload["_external_in_scope_sources"] = external_in_scope_sources
     return payload
 
 
@@ -1270,7 +1378,22 @@ def build_audit(root: Path, scope_path: Path,
                 generated_utc: str | None = None) -> dict[str, Any]:
     scope = load_scope(scope_path, root=root)
     candidates = load_candidate_blocks(candidate_path)
-    findings, inventory = scan_scope(root, scope)
+    plan: nc.FrozenPlan | None = None
+    plan_error: str | None = None
+    canonical_plan_path = plan_path.resolve() if plan_path is not None else None
+    if canonical_plan_path is None:
+        plan_error = "signed production plan was not supplied"
+    else:
+        try:
+            plan = nc.FrozenPlan.load(canonical_plan_path, root=ROOT)
+        except (OSError, ValueError, nc.ContractError, json.JSONDecodeError) as exc:
+            plan_error = f"signed production plan is invalid: {exc}"
+    findings, inventory = scan_scope(
+        root,
+        scope,
+        active_plan_path=canonical_plan_path if plan is not None else None,
+        active_plan_sha256=plan.plan_sha256 if plan is not None else None,
+    )
     resolution_payload = (
         load_resolutions(resolution_path, scope_sha256=sha256_file(scope_path))
         if resolution_path is not None else None
@@ -1362,15 +1485,6 @@ def build_audit(root: Path, scope_path: Path,
         if overlap_rows:
             unresolved.append("candidate seed blocks overlap internally or with parsed prior seeds")
 
-    plan: nc.FrozenPlan | None = None
-    plan_error: str | None = None
-    if plan_path is None:
-        plan_error = "signed production plan was not supplied"
-    else:
-        try:
-            plan = nc.FrozenPlan.load(plan_path, root=ROOT)
-        except (OSError, ValueError, nc.ContractError, json.JSONDecodeError) as exc:
-            plan_error = f"signed production plan is invalid: {exc}"
     plan_matches = False
     if plan is not None and candidates is not None:
         plan_matches = (
@@ -1414,10 +1528,10 @@ def build_audit(root: Path, scope_path: Path,
             f"python tools/audit_robust_nroy_seeds.py --scope {scope_relative}"
             + (f" --resolutions {resolution_relative}" if resolution_relative else "")
             + (f" --candidate-blocks {candidate_relative}" if candidate_relative else "")
-            + (f" --plan {plan_path}" if plan_path else "")
+            + (f" --plan {canonical_plan_path}" if canonical_plan_path else "")
             + (f" --generated-utc {generated_utc}" if generated_utc else "")
         ),
-        "plan_path": str(plan_path) if plan_path is not None else None,
+        "plan_path": str(canonical_plan_path) if canonical_plan_path is not None else None,
         "plan_sha256": plan.plan_sha256 if plan is not None else None,
         "scope_manifest": {
             "path": scope_relative,

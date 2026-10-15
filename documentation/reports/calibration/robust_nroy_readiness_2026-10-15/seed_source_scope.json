@@ -55,7 +55,7 @@
     {
       "kind": "REMOTE_HPC",
       "status": "UNRESOLVED",
-      "coverage_decision": "Create a distinct typed REMOTE_HPC review naming the Snellius or other locations/accounts searched, method and time; hash-index every recovered source or document the evidence-based no-source conclusion.",
+      "coverage_decision": "Create a distinct typed REMOTE_HPC review naming the Snellius or other locations/accounts searched, method and time; locally materialize every IN_SCOPE recovered source under declared parsed scan coverage at its indexed SHA-256, explicitly dispose reviewed non-seed sources, or document the evidence-based no-source conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -63,7 +63,7 @@
     {
       "kind": "CLOUD",
       "status": "UNRESOLVED",
-      "coverage_decision": "Create a distinct typed CLOUD review naming every cloud/VM location/account searched, method and time; hash-index every recovered source or document the evidence-based no-source conclusion.",
+      "coverage_decision": "Create a distinct typed CLOUD review naming every cloud/VM location/account searched, method and time; locally materialize every IN_SCOPE recovered source under declared parsed scan coverage at its indexed SHA-256, explicitly dispose reviewed non-seed sources, or document the evidence-based no-source conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -71,7 +71,7 @@
     {
       "kind": "DELETED_LOCAL",
       "status": "UNRESOLVED",
-      "coverage_decision": "Create a distinct typed DELETED_LOCAL review naming backups, provenance records and owners searched, method and time; hash-index recovered sources or document the evidence-based no-recovery conclusion.",
+      "coverage_decision": "Create a distinct typed DELETED_LOCAL review naming backups, provenance records and owners searched, method and time; locally materialize every IN_SCOPE recovered source under declared parsed scan coverage at its indexed SHA-256, explicitly dispose reviewed non-seed sources, or document the evidence-based no-recovery conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
@@ -79,7 +79,7 @@
     {
       "kind": "COLLABORATOR_HELD",
       "status": "UNRESOLVED",
-      "coverage_decision": "Create a distinct typed COLLABORATOR_HELD review naming the collaborators or custodians checked, method and time; hash-index supplied sources or document the evidence-based no-source conclusion.",
+      "coverage_decision": "Create a distinct typed COLLABORATOR_HELD review naming the collaborators or custodians checked, method and time; locally materialize every IN_SCOPE supplied source under declared parsed scan coverage at its indexed SHA-256, explicitly dispose reviewed non-seed sources, or document the evidence-based no-source conclusion.",
       "evidence": [],
       "reviewer": null,
       "reviewed_utc": null
