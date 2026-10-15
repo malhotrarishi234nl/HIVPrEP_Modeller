@@ -111,15 +111,19 @@ not authorizations.
   --plan <signed-plan.json> --out <identity-evidence-dir> <reviewed gate args>
 
 # M1 discovery preparation after positive-p confirmation exists; preparation
-# validates the typed evidence before consuming the anchor CSV.
+# consumes the identity and anchor-confirmation paths signed in
+# production_prerequisites, seals their exact contents (including the
+# independent-anchor and per-seed files), and revalidates them at dispatch.
 .venv/bin/python run_robust_nroy_freeze.py prepare \
   --plan <signed-plan.json> --model M1 --stage discovery \
-  --identity-gate <identity-evidence-dir>/m0_m1_identity_gate.json \
   --m0-confirmed-dir <sealed-m0-confirmation> \
   --anchors <confirmed-positive-p-m1.csv> \
-  --m1-anchor-evidence <m1-anchor-confirmation.json> \
   --out <new-m1-discovery-dir>
 ```
+
+Optional `--identity-gate` and `--m1-anchor-evidence` arguments are compatibility
+assertions only: each must resolve to the exact corresponding signed prerequisite
+path. They cannot substitute another otherwise-valid certificate at prepare time.
 
 Pilot and pricing generation remain intentionally unimplemented as automatic
 “passed” commands: pilot measurements require authorization and real hardware,

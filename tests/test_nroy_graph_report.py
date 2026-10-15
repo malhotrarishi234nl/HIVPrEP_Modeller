@@ -853,6 +853,56 @@ def test_production_readiness_fails_on_load_bearing_evidence_drift(
     )
 
 
+@pytest.mark.parametrize(
+    ("artifact", "mutation", "expected_problem"),
+    (
+        (
+            "identity_gate",
+            lambda value: value["route_evidence"].update(plan_sha256="0" * 64),
+            "not bound to this signed run plan",
+        ),
+        (
+            "identity_gate",
+            lambda value: value.update(environment={}),
+            "different scientific runtime",
+        ),
+        (
+            "m1_anchor_confirmation",
+            lambda value: value.update(schema="robust_nroy_m1_anchor_confirmation/1.0.0"),
+            "schema does not match",
+        ),
+        (
+            "m1_anchor_confirmation",
+            lambda value: value.update(scientific_code_sha256="0" * 64),
+            "scientific_code_sha256 does not match",
+        ),
+    ),
+)
+def test_production_readiness_validates_signed_m1_prerequisite_bindings(
+        tmp_path, artifact, mutation, expected_problem):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    payload = json.loads(paths[artifact].read_text())
+    mutation(payload)
+    paths[artifact].write_text(json.dumps(payload))
+    assert any(
+        expected_problem in problem
+        for problem in runner._production_readiness_problems(plan)
+    )
+
+
+def test_production_readiness_requires_both_signed_m1_prerequisites(tmp_path):
+    plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    paths = _write_final_production_evidence(tmp_path, plan)
+    paths["identity_gate"].unlink()
+    paths["m1_anchor_confirmation"].unlink()
+    problems = runner._production_readiness_problems(plan)
+    assert "production prerequisite 'identity_gate' is missing" in problems
+    assert "production prerequisite 'm1_anchor_confirmation' is missing" in problems
+
+
 def test_production_readiness_rejects_registry_field_omission(tmp_path):
     plan_path = fx.write_signed_plan(tmp_path)
     plan = nc.FrozenPlan.load(plan_path, root=ROOT)

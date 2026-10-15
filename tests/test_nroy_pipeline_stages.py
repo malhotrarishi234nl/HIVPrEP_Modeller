@@ -143,13 +143,6 @@ class Harness:
         self.observed, self.variance = _acceptance_inputs(
             tmp_path, confirming=self.confirming
         )
-        self.plan_path = fx.write_signed_plan(
-            tmp_path,
-            acceptance_observed=self.observed,
-            acceptance_variance=self.variance,
-            **overrides,
-        )
-        self.plan = nc.FrozenPlan.load(self.plan_path, root=ROOT)
         self.space = fx.m1_space() if model == nc.MODEL_M1 else fx.m0_space()
         self.anchors = (
             Path(anchors) if anchors is not None
@@ -158,6 +151,14 @@ class Harness:
                 prefix="M1P" if model == nc.MODEL_M1 else "A",
             )
         )
+        self.plan_path = fx.write_signed_plan(
+            tmp_path,
+            acceptance_observed=self.observed,
+            acceptance_variance=self.variance,
+            m1_anchors=self.anchors if model == nc.MODEL_M1 else None,
+            **overrides,
+        )
+        self.plan = nc.FrozenPlan.load(self.plan_path, root=ROOT)
         self.dirs: dict[str, Path] = {}
         self.m0_source: Harness | None = None
 
@@ -170,7 +171,9 @@ class Harness:
         if stage == nc.STAGE_DISCOVERY and self.model == nc.MODEL_M0:
             argv += ["--anchors", str(self.anchors)]
         if self.model == nc.MODEL_M1:
-            argv += ["--identity-gate", str(fx.write_identity_gate(self.tmp_path))]
+            prerequisites = self.plan.get("production_prerequisites")
+            if "--identity-gate" not in extra:
+                argv += ["--identity-gate", str(prerequisites["identity_gate"])]
             if stage == nc.STAGE_DISCOVERY:
                 source_root = self.tmp_path / "m0_embedding_source"
                 source_root.mkdir(exist_ok=True)
@@ -189,10 +192,7 @@ class Harness:
                 if "--m1-anchor-evidence" not in extra:
                     argv += [
                         "--m1-anchor-evidence",
-                        str(fx.write_m1_anchor_evidence(
-                            self.tmp_path, plan_path=self.plan_path,
-                            anchors_path=self.anchors,
-                        )),
+                        str(prerequisites["m1_anchor_confirmation"]),
                     ]
         if parent is not None:
             argv += ["--parent-dir", str(self.dirs[parent])]
@@ -1874,8 +1874,10 @@ def test_a_plan_that_unpins_the_routine_hazard_scale_never_loads(tmp_path):
 # ==========================================================================
 
 def test_m1_prepare_refuses_without_the_identity_gate(tmp_path, capsys):
-    """A green full suite does not establish the identity, so M1 demands the gate."""
+    """A green full suite does not establish the signed identity certificate."""
     plan_path = fx.write_signed_plan(tmp_path)
+    plan = nc.FrozenPlan.load(plan_path, root=ROOT)
+    Path(plan.get("production_prerequisites")["identity_gate"]).unlink()
     anchors = _write_anchors(tmp_path / "anchors.csv", fx.m1_space())
     code = runner.main([
         "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "m1"),
@@ -1883,10 +1885,7 @@ def test_m1_prepare_refuses_without_the_identity_gate(tmp_path, capsys):
     ])
     assert code == 1
     assert not (tmp_path / "m1" / "manifest.json").exists()
-    assert (
-        "identity-gate --plan <signed-plan.json> --out <dir>"
-        in capsys.readouterr().err
-    )
+    assert "identity gate artifact does not exist" in capsys.readouterr().err
 
 
 def test_m0_prepare_does_not_require_the_gate(tmp_path):
@@ -1897,6 +1896,42 @@ def test_m0_prepare_does_not_require_the_gate(tmp_path):
         "prepare", "--plan", str(plan_path), "--out", str(tmp_path / "m0"),
         "--anchors", str(anchors), "--model", nc.MODEL_M0,
     ]) == 0
+
+
+def test_m1_prepare_rejects_valid_but_unsigned_certificate_paths(tmp_path, capsys):
+    """Certificate validity cannot replace the plan's signed path authority."""
+    harness = Harness(tmp_path, model=nc.MODEL_M1)
+    prerequisites = harness.plan.get("production_prerequisites")
+    alternate_gate = tmp_path / "alternate_gate.json"
+    alternate_gate.write_bytes(Path(prerequisites["identity_gate"]).read_bytes())
+    assert runner.main([
+        "prepare", "--plan", str(harness.plan_path),
+        "--out", str(tmp_path / "wrong_gate_stage"),
+        "--model", nc.MODEL_M1,
+        "--anchors", str(harness.anchors),
+        "--identity-gate", str(alternate_gate),
+    ]) == 1
+    assert "exact path signed" in capsys.readouterr().err
+
+    source_root = tmp_path / "signed_path_m0_source"
+    source = Harness(source_root, model=nc.MODEL_M0)
+    source.plan_path = harness.plan_path
+    source.plan = harness.plan
+    source.chain_to_confirmation()
+    alternate_evidence = tmp_path / "alternate_confirmation.json"
+    alternate_evidence.write_bytes(
+        Path(prerequisites["m1_anchor_confirmation"]).read_bytes()
+    )
+    assert runner.main([
+        "prepare", "--plan", str(harness.plan_path),
+        "--out", str(tmp_path / "wrong_evidence_stage"),
+        "--model", nc.MODEL_M1, "--stage", nc.STAGE_DISCOVERY,
+        "--anchors", str(harness.anchors),
+        "--identity-gate", str(prerequisites["identity_gate"]),
+        "--m1-anchor-evidence", str(alternate_evidence),
+        "--m0-confirmed-dir", str(source.dirs[nc.STAGE_CONFIRMATION]),
+    ]) == 1
+    assert "exact path signed" in capsys.readouterr().err
 
 
 def test_the_gate_check_refuses_a_missing_failed_incomplete_or_stale_artifact(tmp_path):
@@ -1970,7 +2005,8 @@ def test_the_gate_command_is_documented_and_explicit():
         ROOT / "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/README.md"
     ).read_text()
     assert "run_robust_nroy_freeze.py identity-gate" in readiness
-    assert "--identity-gate <identity-evidence-dir>/m0_m1_identity_gate.json" in readiness
+    assert "compatibility" in readiness and "assertions only" in readiness
+    assert "exact corresponding signed prerequisite" in readiness
     assert "--m0-confirmed-dir" in readiness
     assert "--m0-confirmation-dir" not in readiness
 
@@ -2038,7 +2074,9 @@ def test_m1_discovery_requires_independent_strictly_positive_p_anchors(
     assert "strictly positive p" in capsys.readouterr().err
 
 
-def test_m1_discovery_unions_independent_positive_p_and_embedded_m0_anchors(tmp_path):
+def test_m1_discovery_unions_independent_positive_p_and_embedded_m0_anchors(
+    tmp_path, monkeypatch,
+):
     """M1 evidence is additive; embedding M0 may never erase confirmed M1."""
     space = fx.m1_space()
     rows = []
@@ -2077,7 +2115,18 @@ def test_m1_discovery_unions_independent_positive_p_and_embedded_m0_anchors(tmp_
     assert int(extra["n_anchors"]) == len(frozen)
 
     sealed_evidence = stage / runner.M1_ANCHOR_EVIDENCE_FILENAME
+    sealed_gate = stage / runner.nig.GATE_FILENAME
+    sealed_independent = stage / runner.M1_INDEPENDENT_ANCHORS_FILENAME
+    assert sealed_gate.is_file()
+    assert sealed_independent.read_bytes() == independent_path.read_bytes()
+    indexed = {
+        row["path"] for row in json.loads((stage / "artifacts.json").read_text())["files"]
+    }
+    assert runner.nig.GATE_FILENAME in indexed
+    assert runner.M1_ANCHOR_EVIDENCE_FILENAME in indexed
+    assert runner.M1_INDEPENDENT_ANCHORS_FILENAME in indexed
     packaged = json.loads(sealed_evidence.read_text())
+    assert packaged["anchors_path"] == runner.M1_INDEPENDENT_ANCHORS_FILENAME
     packaged_files = []
     for row in packaged["candidates"]:
         relative = Path(row["seed_result_artifact_path"])
@@ -2085,7 +2134,24 @@ def test_m1_discovery_unions_independent_positive_p_and_embedded_m0_anchors(tmp_
         packaged_result = stage / relative
         assert packaged_result.is_file()
         assert ccs.sha256_file(packaged_result) == row["seed_result_artifact_sha256"]
+        assert relative.as_posix() in indexed
         packaged_files.append(packaged_result)
+
+    validations = []
+    real_validator = runner._validate_m1_anchor_evidence
+
+    def record_semantic_validation(*args, **kwargs):
+        validations.append(Path(args[0]))
+        return real_validator(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runner, "_validate_m1_anchor_evidence", record_semantic_validation
+    )
+    assert runner.main([
+        "evaluate", "--plan", str(harness.plan_path), "--stage-dir", str(stage),
+        "--shard", "9999", "--of", "10000", "--evaluator", "surrogate",
+    ]) == 0
+    assert validations == [sealed_evidence]
     original_seed_result = packaged_files[0].read_bytes()
     packaged_files[0].write_bytes(original_seed_result + b"\nmutated\n")
     assert runner.main([

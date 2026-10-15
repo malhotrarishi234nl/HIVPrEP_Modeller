@@ -130,6 +130,7 @@ def write_signed_plan(
     *,
     acceptance_observed: Path | Mapping[str, float] | None = None,
     acceptance_variance: Path | Mapping[str, float] | None = None,
+    m1_anchors: Path | None = None,
     **overrides,
 ) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -151,6 +152,8 @@ def write_signed_plan(
         "measured_pilot": str(tmp_path / "measured_pilot.json"),
         "priced_budget": str(tmp_path / "priced_budget.json"),
         "seed_disjointness_audit": str(tmp_path / "seed_disjointness_audit.json"),
+        "identity_gate": str(tmp_path / nig.GATE_FILENAME),
+        "m1_anchor_confirmation": str(tmp_path / "m1_anchor_confirmation.json"),
     }
     overrides = {
         "models.base_config": str(base_path),
@@ -167,6 +170,28 @@ def write_signed_plan(
         observed=acceptance_observed,
         variance=acceptance_variance,
     )
+    if m1_anchors is None:
+        model = m1_space()
+        rows = []
+        for index, vector in enumerate(valid_interior_vectors(model, 3, seed=9191)):
+            vector[P_NAME] = 0.1 + 0.1 * index
+            rows.append({"candidate_id": f"SIGNED_M1_{index}", **vector})
+        m1_anchors = tmp_path / "signed_m1_anchors.csv"
+        pd.DataFrame(rows).to_csv(m1_anchors, index=False)
+    declared_base = Path(str(raw["models"]["base_config"]))
+    if not declared_base.is_absolute():
+        declared_base = ROOT / declared_base
+    if declared_base.is_file():
+        write_identity_gate(tmp_path)
+        write_m1_anchor_evidence(
+            tmp_path, plan_path=path, anchors_path=Path(m1_anchors)
+        )
+    else:
+        # Some negative tests deliberately sign a missing base config and
+        # assert that the production adapter refuses it.  Keep fixture setup
+        # reachable without fabricating a certificate for a nonexistent file.
+        (tmp_path / nig.GATE_FILENAME).write_text("{}")
+        (tmp_path / "m1_anchor_confirmation.json").write_text("{}")
     (tmp_path / "CONFIG_REGISTRY.md").write_text(
         "# Verification fixture only\n\n"
         f"plan: {plan_sha}\n"

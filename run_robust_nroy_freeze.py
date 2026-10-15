@@ -102,6 +102,7 @@ QUESTION = (
 M1_ANCHOR_EVIDENCE_SCHEMA = "robust_nroy_m1_anchor_confirmation/2.0.0"
 M1_SEED_RESULT_SCHEMA = "robust_nroy_m1_anchor_seed_results/1.0.0"
 M1_ANCHOR_EVIDENCE_FILENAME = "m1_anchor_confirmation_evidence.json"
+M1_INDEPENDENT_ANCHORS_FILENAME = "m1_independent_anchors.csv"
 FROZEN_ACCEPTANCE_IDENTITY_SCHEMA = "robust_nroy_frozen_acceptance_identity/1.0.0"
 FROZEN_ACCEPTANCE_IDENTITY_FILENAME = "frozen_acceptance_input_identity.json"
 
@@ -147,6 +148,43 @@ def _portable_evidence_file(evidence_path: Path, recorded: object) -> Path | Non
     except ValueError:
         return None
     return resolved
+
+
+def _referenced_evidence_file(evidence_path: Path, recorded: object) -> Path | None:
+    """Resolve an evidence reference before and after it is packaged.
+
+    Source evidence may name a repository-relative or absolute file.  A sealed
+    stage instead rewrites the reference to a package-local path.  Prefer the
+    package-local interpretation when that file exists, then fall back to the
+    repository-relative convention used by signed production evidence.
+    """
+    text = str(recorded or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    if path.is_absolute():
+        return path
+    packaged = _portable_evidence_file(evidence_path, recorded)
+    if packaged is not None and packaged.exists():
+        return packaged
+    return ROOT / path
+
+
+def _signed_prerequisite_path(plan: nc.FrozenPlan, key: str) -> Path:
+    """Return one prerequisite path from the signed plan, fail-closed."""
+    prerequisites = plan.get("production_prerequisites")
+    if not isinstance(prerequisites, Mapping) or not str(
+        prerequisites.get(key) or ""
+    ).strip():
+        raise ContractError(
+            f"the signed plan declares no production_prerequisites.{key}"
+        )
+    path = _evidence_path(prerequisites[key])
+    if path is None:
+        raise ContractError(
+            f"the signed plan declares no production_prerequisites.{key}"
+        )
+    return path
 
 
 def _registry_bindings(text: str) -> tuple[str, dict[str, str], set[str]]:
@@ -255,7 +293,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
     paths: dict[str, Path] = {}
     for key in (
         "config_registry", "acceptance_inputs", "measured_pilot", "priced_budget",
-        "seed_disjointness_audit",
+        "seed_disjointness_audit", "identity_gate", "m1_anchor_confirmation",
     ):
         declared = prerequisites.get(key)
         candidate = Path(str(declared)) if declared else None
@@ -325,9 +363,10 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 problems.append("CONFIG_REGISTRY.md review date is missing or invalid")
 
     acceptance_path = paths.get("acceptance_inputs")
+    validated_acceptance: dict | None = None
     if acceptance_path is not None:
         try:
-            nai.validate_package(
+            validated_acceptance = nai.validate_package(
                 plan,
                 acceptance_path,
                 root=ROOT,
@@ -336,6 +375,68 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             )
         except ContractError as exc:
             problems.append(f"production prerequisite 'acceptance_inputs' failed: {exc}")
+
+    m1_model: nc.ModelSpace | None = None
+    try:
+        m1_model = _model_spaces(plan)[nc.MODEL_M1]
+    except (ContractError, OSError, KeyError, TypeError, ValueError) as exc:
+        problems.append(f"the production M1 model space could not be loaded: {exc}")
+
+    identity_gate_path = paths.get("identity_gate")
+    if identity_gate_path is not None and m1_model is not None:
+        try:
+            nig.assert_gate_satisfied(
+                identity_gate_path,
+                root=ROOT,
+                expected_base_config=str(plan.require("models.base_config")),
+                expected_plan_sha256=plan.plan_sha256,
+                expected_scientific_config_sha256=_scientific_config_sha256(
+                    plan, m1_model
+                ),
+            )
+        except (ContractError, OSError, json.JSONDecodeError) as exc:
+            problems.append(f"production prerequisite 'identity_gate' failed: {exc}")
+
+    m1_confirmation_path = paths.get("m1_anchor_confirmation")
+    if (
+        m1_confirmation_path is not None
+        and m1_model is not None
+        and validated_acceptance is not None
+    ):
+        try:
+            confirmation_payload = json.loads(m1_confirmation_path.read_text())
+            if not isinstance(confirmation_payload, Mapping):
+                raise ContractError(
+                    "M1 anchor-confirmation evidence must be a JSON object"
+                )
+            anchors_path = _referenced_evidence_file(
+                m1_confirmation_path, confirmation_payload.get("anchors_path")
+            )
+            if anchors_path is None or not anchors_path.is_file():
+                raise ContractError(
+                    "M1 anchor-confirmation evidence references no existing anchor table"
+                )
+            anchors = _load_anchors(anchors_path, m1_model)
+            _validate_m1_anchor_evidence(
+                m1_confirmation_path,
+                anchors_path=anchors_path,
+                anchors=anchors,
+                plan=plan,
+                model=m1_model,
+                acceptance_identity=validated_acceptance[
+                    "acceptance_input_identity"
+                ],
+                observed=json.loads(
+                    Path(validated_acceptance["observed_path"]).read_text()
+                ),
+                base_variance=json.loads(
+                    Path(validated_acceptance["base_variance_path"]).read_text()
+                ),
+            )
+        except (ContractError, OSError, json.JSONDecodeError) as exc:
+            problems.append(
+                f"production prerequisite 'm1_anchor_confirmation' failed: {exc}"
+            )
 
     loaded: dict[str, Mapping] = {}
     for key in ("measured_pilot", "priced_budget", "seed_disjointness_audit"):
@@ -1008,11 +1109,16 @@ def _validate_stage_artifacts(
         FROZEN_ACCEPTANCE_IDENTITY_FILENAME,
     }
     manifest = json.loads((Path(stage_dir) / "manifest.json").read_text())
+    if str(manifest.get("model") or "") == nc.MODEL_M1:
+        immutable.add(nig.GATE_FILENAME)
     if (
         str(manifest.get("model") or "") == nc.MODEL_M1
         and str(manifest.get("stage") or "") == nc.STAGE_DISCOVERY
     ):
-        immutable.add(M1_ANCHOR_EVIDENCE_FILENAME)
+        immutable.update({
+            M1_ANCHOR_EVIDENCE_FILENAME,
+            M1_INDEPENDENT_ANCHORS_FILENAME,
+        })
     if bool(manifest.get("parent_manifest_sha256")) or \
        nc.STAGE_PARENT.get(str(manifest.get("stage") or "")) not in (None, nc.STAGE_PREPARE):
         immutable.add(PARENT_IDENTITY_FILENAME)
@@ -1070,6 +1176,75 @@ def _validate_stage_artifacts(
             raise ContractError(
                 f"{what}: packaged M1 seed-result validation failed: {exc}"
             ) from exc
+
+
+def _validate_frozen_m1_prerequisites(
+    stage_dir: Path,
+    *,
+    plan: nc.FrozenPlan,
+    manifest: Mapping,
+    acceptance_package_identity: Mapping,
+    what: str,
+) -> None:
+    """Re-run the scientific M1 certificate validators before dispatch."""
+    if str(manifest.get("model") or "") != nc.MODEL_M1:
+        return
+    model = _model_spaces(plan)[nc.MODEL_M1]
+    extra = manifest.get("extra") or {}
+    gate_path = Path(stage_dir) / nig.GATE_FILENAME
+    gate = nig.assert_gate_satisfied(
+        gate_path,
+        root=ROOT,
+        expected_base_config=str(plan.require("models.base_config")),
+        expected_plan_sha256=plan.plan_sha256,
+        expected_scientific_config_sha256=_scientific_config_sha256(plan, model),
+    )
+    gate_sha = ccs.sha256_file(gate_path)
+    if str(extra.get("identity_gate_sha256", "")) != gate_sha:
+        raise ContractError(
+            f"{what}: manifest identity_gate_sha256 does not match the sealed gate"
+        )
+    if str(extra.get("identity_gate_source_sha256", "")) != gate_sha:
+        raise ContractError(
+            f"{what}: sealed identity gate differs from its signed source identity"
+        )
+    if extra.get("identity_gate_schema") != gate.get("schema"):
+        raise ContractError(
+            f"{what}: manifest identity_gate_schema does not match the sealed gate"
+        )
+
+    if str(manifest.get("stage") or "") != nc.STAGE_DISCOVERY:
+        return
+    anchors_path = Path(stage_dir) / M1_INDEPENDENT_ANCHORS_FILENAME
+    anchors = _load_anchors(anchors_path, model)
+    evidence_path = Path(stage_dir) / M1_ANCHOR_EVIDENCE_FILENAME
+    evidence = _validate_m1_anchor_evidence(
+        evidence_path,
+        anchors_path=anchors_path,
+        anchors=anchors,
+        plan=plan,
+        model=model,
+        acceptance_identity=acceptance_package_identity[
+            "acceptance_input_identity"
+        ],
+        observed=json.loads(
+            (Path(stage_dir) / nai.OBSERVED_FILENAME).read_text()
+        ),
+        base_variance=json.loads(
+            (Path(stage_dir) / nai.BASE_VARIANCE_FILENAME).read_text()
+        ),
+    )
+    if str(extra.get("independently_confirmed_m1_evidence_sha256", "")) != \
+            ccs.sha256_file(evidence_path):
+        raise ContractError(
+            f"{what}: manifest M1 confirmation SHA-256 does not match sealed evidence"
+        )
+    if extra.get("independently_confirmed_m1_evidence_schema") != evidence.get(
+        "schema"
+    ):
+        raise ContractError(
+            f"{what}: manifest M1 confirmation schema does not match sealed evidence"
+        )
 
 
 # ==========================================================================
@@ -1153,7 +1328,8 @@ def _validate_m1_anchor_evidence(
     for field, expected in expected_scalars.items():
         if payload.get(field) != expected:
             problems.append(f"{field} does not match the frozen {field}")
-    if not _paths_match(payload.get("anchors_path"), anchors_path):
+    recorded_anchors = _referenced_evidence_file(path, payload.get("anchors_path"))
+    if recorded_anchors is None or recorded_anchors.resolve() != anchors_path.resolve():
         problems.append("anchors_path does not match the supplied anchor table")
     if payload.get("passed") is not True:
         problems.append("passed is not the Boolean true")
@@ -1457,10 +1633,19 @@ def _package_m1_anchor_evidence(
     payload: Mapping,
     *,
     source_path: Path,
+    anchors_source: Path,
     stage_dir: Path,
 ) -> dict:
-    """Copy validated seed-level evidence into the prepared stage package."""
+    """Copy the exact independent anchors and seed evidence into the stage."""
     packaged = dict(payload)
+    anchors_destination = stage_dir / M1_INDEPENDENT_ANCHORS_FILENAME
+    if anchors_destination.exists():
+        raise ContractError(
+            f"refusing to replace existing frozen M1 anchors: {anchors_destination}"
+        )
+    shutil.copyfile(anchors_source, anchors_destination)
+    packaged["anchors_path"] = M1_INDEPENDENT_ANCHORS_FILENAME
+    packaged["anchors_sha256"] = ccs.sha256_file(anchors_destination)
     packaged_rows: list[dict] = []
     destination_dir = stage_dir / "m1_anchor_seed_results"
     destination_dir.mkdir(parents=True, exist_ok=False)
@@ -1841,6 +2026,8 @@ def command_prepare(args: argparse.Namespace) -> int:
     is_bridges = args.stage == nc.STAGE_BRIDGES
     embedded_m0_anchors: list[nd.Anchor] | None = None
     m0_source_manifest: dict | None = None
+    identity_gate_source: Path | None = None
+    identity_gate_payload: dict | None = None
 
     if model.model == nc.MODEL_M1:
         nc.assert_m1_identity_preconditions(
@@ -1848,29 +2035,31 @@ def command_prepare(args: argparse.Namespace) -> int:
                 "p_parameter.routine_hazard_scale_identity_value")),
             required_value=1.0,
         )
-        # The identity is a production prerequisite, and the pytests that check
-        # it are SKIPPED under the no-engine guard, so a green full suite does
-        # not establish it. An M1 design therefore requires the gate artifact,
-        # and `assert_gate_satisfied` refuses a missing, failed, incomplete or
-        # stale one.
-        if not args.identity_gate:
+        # The signed prerequisite is authoritative.  A CLI path is only a
+        # compatibility assertion: accepting another valid certificate would
+        # silently replace a signed scientific input at prepare time.
+        identity_gate_source = _signed_prerequisite_path(plan, "identity_gate")
+        if args.identity_gate and not _paths_match(
+            args.identity_gate, identity_gate_source
+        ):
             raise ContractError(
-                "preparing an M1 design requires --identity-gate pointing at a passing "
-                f"{nig.GATE_FILENAME}. Produce it with\n"
-                "  .venv/bin/python run_robust_nroy_freeze.py identity-gate "
-                "--plan <signed-plan.json> --out <dir>\n"
-                "ROBUST_NROY_FREEZE_SPEC section 2 requires the multi-vector, multi-seed "
-                "identity before M1 is launched, and the pytests that check it are "
-                "skipped under the no-engine guard."
+                "--identity-gate may only assert the exact path signed at "
+                "production_prerequisites.identity_gate; arbitrary replacement "
+                "certificates are not accepted"
             )
-        gate = nig.assert_gate_satisfied(
-            args.identity_gate,
+        identity_gate_payload = nig.assert_gate_satisfied(
+            identity_gate_source,
+            root=ROOT,
             expected_base_config=str(plan.require("models.base_config")),
             expected_plan_sha256=plan.plan_sha256,
             expected_scientific_config_sha256=_scientific_config_sha256(plan, model),
         )
-        print(f"M0/M1 identity gate: PASSED ({gate['n_passed']}/{gate['n_checks']} checks, "
-              f"{gate['generated_utc']})")
+        print(
+            "M0/M1 identity gate: PASSED "
+            f"({identity_gate_payload['n_passed']}/"
+            f"{identity_gate_payload['n_checks']} checks, "
+            f"{identity_gate_payload['generated_utc']})"
+        )
         if args.stage == nc.STAGE_DISCOVERY:
             if not args.m0_confirmed_dir:
                 raise ContractError(
@@ -1937,6 +2126,19 @@ def command_prepare(args: argparse.Namespace) -> int:
                 f"declared parent manifest hash {args.parent_manifest_sha256} does not "
                 f"match the validated parent ({parent_manifest_sha256})"
             )
+        if model.model == nc.MODEL_M1 and str(
+            parent_manifest.get("model") or ""
+        ) == nc.MODEL_M1:
+            if identity_gate_source is None:
+                raise ContractError("M1 child preparation has no signed identity gate")
+            parent_gate = _stage_directory(args.parent_dir) / nig.GATE_FILENAME
+            if not parent_gate.is_file() or ccs.sha256_file(
+                parent_gate
+            ) != ccs.sha256_file(identity_gate_source):
+                raise ContractError(
+                    "the M1 child identity gate differs from its sealed parent; "
+                    "one M1 lineage must preserve one exact gate certificate"
+                )
     elif args.parent_dir:
         raise ContractError(
             f"stage {args.stage!r} has no parent, but --parent-dir was supplied"
@@ -1957,6 +2159,30 @@ def command_prepare(args: argparse.Namespace) -> int:
     )
 
     extra: dict = {}
+    if identity_gate_source is not None and identity_gate_payload is not None:
+        frozen_gate = out / nig.GATE_FILENAME
+        if frozen_gate.exists():
+            raise ContractError(
+                f"refusing to replace existing frozen identity gate: {frozen_gate}"
+            )
+        source_gate_sha = ccs.sha256_file(identity_gate_source)
+        shutil.copyfile(identity_gate_source, frozen_gate)
+        frozen_gate_sha = ccs.sha256_file(frozen_gate)
+        if frozen_gate_sha != source_gate_sha:
+            raise ContractError("the identity gate changed while it was being frozen")
+        frozen_gate_payload = nig.assert_gate_satisfied(
+            frozen_gate,
+            root=ROOT,
+            expected_base_config=str(plan.require("models.base_config")),
+            expected_plan_sha256=plan.plan_sha256,
+            expected_scientific_config_sha256=_scientific_config_sha256(plan, model),
+        )
+        extra.update({
+            "identity_gate_source": str(identity_gate_source),
+            "identity_gate_source_sha256": source_gate_sha,
+            "identity_gate_sha256": frozen_gate_sha,
+            "identity_gate_schema": frozen_gate_payload["schema"],
+        })
     if is_bridges:
         # The bridges stage takes its node set from the parent's completed
         # local assessment, not from a hand-supplied anchor file: the graph
@@ -2030,10 +2256,16 @@ def command_prepare(args: argparse.Namespace) -> int:
                         "embedding source. An M0-only boundary design cannot establish "
                         "support for the scientifically distinct M1 mechanism."
                     )
-                if not args.m1_anchor_evidence:
+                evidence_source = _signed_prerequisite_path(
+                    plan, "m1_anchor_confirmation"
+                )
+                if args.m1_anchor_evidence and not _paths_match(
+                    args.m1_anchor_evidence, evidence_source
+                ):
                     raise ContractError(
-                        "M1 discovery requires --m1-anchor-evidence: an anchor CSV alone "
-                        "does not prove independent confirmation on the reserved seed block"
+                        "--m1-anchor-evidence may only assert the exact path signed at "
+                        "production_prerequisites.m1_anchor_confirmation; arbitrary "
+                        "replacement evidence is not accepted"
                     )
                 independent_path = Path(args.anchors)
                 independent_m1 = _load_anchors(independent_path, model)
@@ -2047,7 +2279,6 @@ def command_prepare(args: argparse.Namespace) -> int:
                         f"exact-p=0 controls come only from the sealed M0 embedding: "
                         f"{non_positive}"
                     )
-                evidence_source = Path(args.m1_anchor_evidence)
                 evidence = _validate_m1_anchor_evidence(
                     evidence_source, anchors_path=independent_path,
                     anchors=independent_m1, plan=plan, model=model,
@@ -2087,19 +2318,44 @@ def command_prepare(args: argparse.Namespace) -> int:
                 evidence = _package_m1_anchor_evidence(
                     evidence,
                     source_path=evidence_source,
+                    anchors_source=independent_path,
                     stage_dir=out,
                 )
                 ne.atomic_write_json(out / M1_ANCHOR_EVIDENCE_FILENAME, evidence)
+                _validate_m1_anchor_evidence(
+                    out / M1_ANCHOR_EVIDENCE_FILENAME,
+                    anchors_path=out / M1_INDEPENDENT_ANCHORS_FILENAME,
+                    anchors=_load_anchors(
+                        out / M1_INDEPENDENT_ANCHORS_FILENAME, model
+                    ),
+                    plan=plan,
+                    model=model,
+                    acceptance_identity=acceptance_package_identity[
+                        "acceptance_input_identity"
+                    ],
+                    observed=json.loads(
+                        (out / nai.OBSERVED_FILENAME).read_text()
+                    ),
+                    base_variance=json.loads(
+                        (out / nai.BASE_VARIANCE_FILENAME).read_text()
+                    ),
+                )
                 extra["m0_embedding_source"] = str(_stage_directory(args.m0_confirmed_dir))
                 extra["m0_embedding_exact_p"] = 0.0
                 extra["m0_embedding_source_manifest_sha256"] = parent_manifest_sha256
                 extra["n_independently_confirmed_m1_anchors"] = len(independent_m1)
-                extra["independently_confirmed_m1_source"] = str(Path(args.anchors))
+                extra["independently_confirmed_m1_source"] = str(independent_path)
                 extra["independently_confirmed_m1_source_sha256"] = ccs.sha256_file(
-                    Path(args.anchors)
+                    independent_path
                 )
-                extra["independently_confirmed_m1_evidence"] = str(
-                    out / M1_ANCHOR_EVIDENCE_FILENAME
+                extra["independently_confirmed_m1_evidence_source"] = str(
+                    evidence_source
+                )
+                extra["independently_confirmed_m1_evidence_source_sha256"] = (
+                    ccs.sha256_file(evidence_source)
+                )
+                extra["independently_confirmed_m1_evidence"] = (
+                    M1_ANCHOR_EVIDENCE_FILENAME
                 )
                 extra["independently_confirmed_m1_evidence_sha256"] = ccs.sha256_file(
                     out / M1_ANCHOR_EVIDENCE_FILENAME
@@ -2226,6 +2482,7 @@ def command_prepare(args: argparse.Namespace) -> int:
                 "acceptance_package_identity": acceptance_package_identity,
                 "selected_parent_candidate_ids": [p.design_id for p in proposals],
                 "selected_parent_vector_hashes": [p.vector_hash for p in proposals],
+                **extra,
             },
         )
         print(f"PROMOTED {len(proposals)} candidate(s) by frozen allocation only; "
@@ -2702,8 +2959,15 @@ def _command_evaluate_locked(args: argparse.Namespace) -> int:
     manifest = json.loads((stage_dir / "manifest.json").read_text())
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
     _assert_plan_matches_manifest(plan, manifest, what="evaluate")
-    _validate_frozen_acceptance_package(
+    acceptance_package_identity = _validate_frozen_acceptance_package(
         stage_dir, plan, what="evaluate", manifest=manifest
+    )
+    _validate_frozen_m1_prerequisites(
+        stage_dir,
+        plan=plan,
+        manifest=manifest,
+        acceptance_package_identity=acceptance_package_identity,
+        what="evaluate",
     )
     shard_label = f"shard_{args.shard:03d}_of_{args.of:03d}"
     # We now own this shard for the full command lifetime.  Repair only its
@@ -4004,18 +4268,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--parent-manifest-sha256", default="",
                    help="optional: assert the validated parent's manifest hash")
     p.add_argument("--identity-gate", default="",
-                   help=f"path to a passing {nig.GATE_FILENAME}; REQUIRED for "
-                        "--model M1, because the pytests that check the identity are "
-                        "skipped under the no-engine guard")
+                   help=f"optional compatibility assertion: must be the exact "
+                        f"production_prerequisites.identity_gate path; M1 consumes "
+                        f"and seals the signed {nig.GATE_FILENAME}")
     p.add_argument("--m0-confirmed-dir", default="",
                    help="COMPLETE M0 confirmation stage; required for M1 discovery so "
                         "every confirmed M0 vector is embedded at exact p=0")
     p.add_argument(
         "--m1-anchor-evidence", default="",
         help=(
-            f"typed {M1_ANCHOR_EVIDENCE_SCHEMA} JSON proving that every supplied "
-            "positive-p M1 anchor passed the reserved confirmation block; required "
-            "for M1 discovery"
+            f"optional compatibility assertion: must be the exact signed "
+            "production_prerequisites.m1_anchor_confirmation path containing typed "
+            f"{M1_ANCHOR_EVIDENCE_SCHEMA} evidence"
         ),
     )
     p.set_defaults(func=command_prepare)
