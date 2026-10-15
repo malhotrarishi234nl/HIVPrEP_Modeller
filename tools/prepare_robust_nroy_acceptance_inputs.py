@@ -78,7 +78,7 @@ def write_json(path: Path, payload: object) -> None:
 
 def generate(args: argparse.Namespace) -> int:
     plan_path = resolve(args.plan)
-    raw = json.loads(plan_path.read_text())
+    raw = nc.load_plan_json(plan_path, root=ROOT)
     if args.draft:
         plan = None
         register_path = resolve(proposal(raw, "target_contract.register_path"))
@@ -107,7 +107,9 @@ def generate(args: argparse.Namespace) -> int:
             f"plan declares {list(target_order)}"
         )
     wave_plan_path = resolve(args.wave_plan)
-    wave_plan = json.loads(wave_plan_path.read_text())
+    wave_plan = nc.strict_json_load(wave_plan_path, what="history-matching wave plan")
+    if not isinstance(wave_plan, dict):
+        raise nc.ContractError("history-matching wave plan must be a JSON object")
     targets = ccs.load_frozen_targets(register_path, wave_plan)
 
     out = Path(args.out)
@@ -129,7 +131,9 @@ def generate(args: argparse.Namespace) -> int:
         writer.writeheader()
         writer.writerows(target.as_row() for target in targets)
 
-    register_raw = json.loads(register_path.read_text())
+    register_raw = nc.strict_json_load(register_path, what="target register")
+    if not isinstance(register_raw, dict):
+        raise nc.ContractError("target register must be a JSON object")
     workbook_path = resolve(register_raw["source_workbook"])
     command = " ".join(shlex.quote(value) for value in [sys.executable, *sys.argv])
     provenance = {

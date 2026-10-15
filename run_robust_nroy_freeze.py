@@ -144,37 +144,9 @@ def _is_finite_json_number(value: object) -> bool:
         return False
 
 
-def _strict_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    """Reject duplicate object keys instead of silently keeping the last one."""
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ContractError(f"duplicate JSON key {key!r}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    """Reject Python's non-standard NaN/Infinity JSON extensions."""
-    raise ContractError(f"non-finite JSON token {value!r}")
-
-
-def _strict_json_float(value: str) -> float:
-    """Parse one JSON float while refusing values that overflow to infinity."""
-    parsed = float(value)
-    if not math.isfinite(parsed):
-        raise ContractError(f"non-finite JSON number {value!r}")
-    return parsed
-
-
 def _load_strict_json(path: Path) -> object:
-    """Load JSON with no duplicate keys or non-finite numeric values."""
-    return json.loads(
-        path.read_text(),
-        object_pairs_hook=_strict_json_pairs,
-        parse_constant=_reject_json_constant,
-        parse_float=_strict_json_float,
-    )
+    """Load authority-bearing JSON through the shared fail-closed policy."""
+    return nc.strict_json_load(path)
 
 
 def _evidence_path(value: object) -> Path | None:
@@ -873,7 +845,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         base_sha = ""
     else:
         base_sha = ccs.sha256_file(base)
-        payload = json.loads(base.read_text())
+        payload = _load_strict_json(base)
         deterministic = payload.get("run_control", {}).get("deterministic_mode", False)
         if isinstance(deterministic, Mapping):
             deterministic = deterministic.get("value", False)
@@ -957,8 +929,10 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             }
             for label, expected in json_bindings.items():
                 try:
-                    actual = json.loads(bindings.get(label, ""))
-                except (TypeError, json.JSONDecodeError):
+                    actual = nc.strict_json_loads(
+                        bindings.get(label, ""), what=f"CONFIG_REGISTRY.md {label}"
+                    )
+                except (TypeError, ContractError):
                     actual = None
                 if actual != expected:
                     problems.append(f"CONFIG_REGISTRY.md {label} does not match current evidence")
@@ -1012,7 +986,7 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         and validated_acceptance is not None
     ):
         try:
-            confirmation_payload = json.loads(m1_confirmation_path.read_text())
+            confirmation_payload = _load_strict_json(m1_confirmation_path)
             if not isinstance(confirmation_payload, Mapping):
                 raise ContractError(
                     "M1 anchor-confirmation evidence must be a JSON object"
@@ -1034,11 +1008,11 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 acceptance_identity=validated_acceptance[
                     "acceptance_input_identity"
                 ],
-                observed=json.loads(
-                    Path(validated_acceptance["observed_path"]).read_text()
+                observed=_load_strict_json(
+                    Path(validated_acceptance["observed_path"])
                 ),
-                base_variance=json.loads(
-                    Path(validated_acceptance["base_variance_path"]).read_text()
+                base_variance=_load_strict_json(
+                    Path(validated_acceptance["base_variance_path"])
                 ),
             )
         except (ContractError, OSError, json.JSONDecodeError) as exc:
@@ -1381,7 +1355,7 @@ def command_validate(args: argparse.Namespace) -> int:
     path = Path(args.plan)
     if not path.is_absolute():
         path = ROOT / path
-    raw = json.loads(path.read_text())
+    raw = nc.load_plan_json(path)
     pending = nc.unsigned_values(raw)
     sign_off = raw.get("sign_off") if isinstance(raw, Mapping) else None
     unsigned_sign_off = [
@@ -1532,8 +1506,8 @@ def _validate_frozen_acceptance_package(
     expected = _normalised_acceptance_package(validated)
     identity_path = stage_dir / FROZEN_ACCEPTANCE_IDENTITY_FILENAME
     try:
-        frozen = json.loads(identity_path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        frozen = _load_strict_json(identity_path)
+    except (OSError, UnicodeDecodeError, ContractError) as exc:
         raise ContractError(
             f"{what}: frozen acceptance identity is missing or invalid: "
             f"{identity_path}: {exc}"
@@ -1543,7 +1517,7 @@ def _validate_frozen_acceptance_package(
             f"{what}: {identity_path.name} does not match the sealed acceptance files"
         )
     if manifest is None:
-        manifest = json.loads((stage_dir / "manifest.json").read_text())
+        manifest = _load_strict_json(stage_dir / "manifest.json")
     recorded = _recorded_acceptance_package_identity(manifest)
     if recorded is None:
         raise ContractError(
@@ -1631,7 +1605,7 @@ def _frozen_parent_acceptance_identity(stage_dir: Path) -> dict | None:
     """The parent identity this stage froze at prepare, if it has a parent."""
     path = Path(stage_dir) / PARENT_IDENTITY_FILENAME
     manifest_path = Path(stage_dir) / "manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    manifest = _load_strict_json(manifest_path) if manifest_path.exists() else {}
     has_parent = bool(manifest.get("parent_manifest_sha256")) or (
         nc.STAGE_PARENT.get(str(manifest.get("stage") or ""))
         not in (None, nc.STAGE_PREPARE)
@@ -1643,7 +1617,7 @@ def _frozen_parent_acceptance_identity(stage_dir: Path) -> dict | None:
                 "refusing to discard the frozen parent acceptance identity"
             )
         return None
-    payload = json.loads(path.read_text())
+    payload = _load_strict_json(path)
     identity = payload.get("acceptance_input_identity")
     if not identity:
         raise ContractError(
@@ -1658,7 +1632,7 @@ def _frozen_parent_acceptance_package_identity(stage_dir: Path) -> dict | None:
     path = Path(stage_dir) / PARENT_IDENTITY_FILENAME
     if not path.exists():
         return None
-    payload = json.loads(path.read_text())
+    payload = _load_strict_json(path)
     identity = payload.get("acceptance_package_identity")
     if not identity:
         raise ContractError(
@@ -1729,7 +1703,7 @@ def _validate_stage_artifacts(
         nai.BASE_VARIANCE_FILENAME, nai.COMPONENT_FILENAME,
         FROZEN_ACCEPTANCE_IDENTITY_FILENAME,
     }
-    manifest = json.loads((Path(stage_dir) / "manifest.json").read_text())
+    manifest = _load_strict_json(Path(stage_dir) / "manifest.json")
     if str(manifest.get("model") or "") == nc.MODEL_M1:
         immutable.add(nig.GATE_FILENAME)
     if (
@@ -1769,7 +1743,7 @@ def _validate_stage_artifacts(
         and str(manifest.get("stage") or "") == nc.STAGE_DISCOVERY
     ):
         evidence_path = Path(stage_dir) / M1_ANCHOR_EVIDENCE_FILENAME
-        evidence = json.loads(evidence_path.read_text())
+        evidence = _load_strict_json(evidence_path)
         seed_result_paths: list[str] = []
         for row in evidence.get("candidates", ()):
             candidate_id = str(row.get("candidate_id", "<unknown>"))
@@ -1848,11 +1822,9 @@ def _validate_frozen_m1_prerequisites(
         acceptance_identity=acceptance_package_identity[
             "acceptance_input_identity"
         ],
-        observed=json.loads(
-            (Path(stage_dir) / nai.OBSERVED_FILENAME).read_text()
-        ),
-        base_variance=json.loads(
-            (Path(stage_dir) / nai.BASE_VARIANCE_FILENAME).read_text()
+        observed=_load_strict_json(Path(stage_dir) / nai.OBSERVED_FILENAME),
+        base_variance=_load_strict_json(
+            Path(stage_dir) / nai.BASE_VARIANCE_FILENAME
         ),
     )
     if str(extra.get("independently_confirmed_m1_evidence_sha256", "")) != \
@@ -1924,8 +1896,8 @@ def _validate_m1_anchor_evidence(
     if not path.exists():
         raise ContractError(f"M1 anchor-confirmation evidence does not exist: {path}")
     try:
-        payload = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = _load_strict_json(path)
+    except (OSError, ContractError) as exc:
         raise ContractError(f"{path}: invalid M1 anchor-confirmation JSON: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise ContractError(f"{path}: M1 anchor-confirmation evidence must be a JSON object")
@@ -2134,8 +2106,8 @@ def _recompute_m1_anchor_seed_result(
 ) -> dict:
     """Parse one typed seed artifact and recompute its nominal verdict."""
     try:
-        payload = json.loads(path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        payload = _load_strict_json(path)
+    except (OSError, UnicodeDecodeError, ContractError) as exc:
         raise ContractError(f"seed-result artifact is not valid JSON: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise ContractError("seed-result artifact must be a JSON object")
@@ -2382,7 +2354,7 @@ def _model_spaces(plan: nc.FrozenPlan) -> dict[str, nc.ModelSpace]:
     m0_path = Path(str(plan.require("models.m0.calib_space")))
     if not m0_path.is_absolute():
         m0_path = ROOT / m0_path
-    m0_raw = json.loads(m0_path.read_text())
+    m0_raw = _load_strict_json(m0_path)
     spaces = {nc.MODEL_M0: nc.load_model_space(m0_raw, model=nc.MODEL_M0)}
     p_name = str(plan.require("p_parameter.name"))
     p_min = float(plan.require("p_parameter.min"))
@@ -2400,7 +2372,7 @@ def _model_spaces(plan: nc.FrozenPlan) -> dict[str, nc.ModelSpace]:
         m1_path = Path(str(m1_declared))
         if not m1_path.is_absolute():
             m1_path = ROOT / m1_path
-        m1_raw = json.loads(m1_path.read_text())
+        m1_raw = _load_strict_json(m1_path)
     spaces[nc.MODEL_M1] = nc.load_model_space(
         m1_raw, model=nc.MODEL_M1, p_name=p_name, p_min=p_min, p_max=p_max
     )
@@ -2909,9 +2881,9 @@ def command_prepare(args: argparse.Namespace) -> int:
                     acceptance_identity=acceptance_package_identity[
                         "acceptance_input_identity"
                     ],
-                    observed=json.loads((out / nai.OBSERVED_FILENAME).read_text()),
-                    base_variance=json.loads(
-                        (out / nai.BASE_VARIANCE_FILENAME).read_text()
+                    observed=_load_strict_json(out / nai.OBSERVED_FILENAME),
+                    base_variance=_load_strict_json(
+                        out / nai.BASE_VARIANCE_FILENAME
                     ),
                 )
                 by_id = {anchor.anchor_id: anchor for anchor in independent_m1}
@@ -2957,11 +2929,9 @@ def command_prepare(args: argparse.Namespace) -> int:
                     acceptance_identity=acceptance_package_identity[
                         "acceptance_input_identity"
                     ],
-                    observed=json.loads(
-                        (out / nai.OBSERVED_FILENAME).read_text()
-                    ),
-                    base_variance=json.loads(
-                        (out / nai.BASE_VARIANCE_FILENAME).read_text()
+                    observed=_load_strict_json(out / nai.OBSERVED_FILENAME),
+                    base_variance=_load_strict_json(
+                        out / nai.BASE_VARIANCE_FILENAME
                     ),
                 )
                 extra["m0_embedding_source"] = str(_stage_directory(args.m0_confirmed_dir))
@@ -3328,17 +3298,22 @@ class ProductionEvaluator:
                 f"the declared production model config does not exist: {config_path}"
             )
         self.config_path = config_path
-        self.base_config = json.loads(config_path.read_text())
+        self.base_config = _load_strict_json(config_path)
         self.config_sha256 = ccs.sha256_file(config_path)
 
         space_path = Path(str(plan.require("models.m0.calib_space")))
         if not space_path.is_absolute():
             space_path = root / space_path
-        self.m0_calib_space = json.loads(space_path.read_text())
+        self.m0_calib_space = _load_strict_json(space_path)
 
         register_path = Path(plan.targets.register_path)
         if not register_path.is_absolute():
             register_path = root / register_path
+        register_payload = _load_strict_json(register_path)
+        if not isinstance(register_payload, Mapping):
+            raise ContractError(
+                f"the frozen target register must be a JSON object: {register_path}"
+            )
         register = tr.load_register(register_path)
         by_key = {target.key: target for target in register.targets}
         missing = [key for key in plan.targets.frozen_order if key not in by_key]
@@ -3593,7 +3568,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
 def _command_evaluate_locked(args: argparse.Namespace) -> int:
     stage_dir = _stage_directory(args.stage_dir)
     _validate_stage_artifacts(stage_dir, what="evaluate")
-    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    manifest = _load_strict_json(stage_dir / "manifest.json")
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
     _assert_plan_matches_manifest(plan, manifest, what="evaluate")
     acceptance_package_identity = _validate_frozen_acceptance_package(
@@ -3685,7 +3660,7 @@ def _command_evaluate_locked(args: argparse.Namespace) -> int:
             "plan_sha256": plan.plan_sha256,
         }
         if execution_layout_path.exists():
-            recorded_layout = json.loads(execution_layout_path.read_text())
+            recorded_layout = _load_strict_json(execution_layout_path)
             if recorded_layout != expected_layout:
                 raise ContractError(
                     "this stage already froze a different execution layout; "
@@ -3695,7 +3670,7 @@ def _command_evaluate_locked(args: argparse.Namespace) -> int:
         else:
             ne.atomic_write_json(execution_layout_path, expected_layout)
         if budget_state_path.exists():
-            budget_state = json.loads(budget_state_path.read_text())
+            budget_state = _load_strict_json(budget_state_path)
         else:
             budget_state = {
                 "started_utc": time.time(),
@@ -3984,7 +3959,7 @@ def _read_shards(stage_dir: Path, targets: nc.TargetContract) -> list[ne.SeedRes
     durable = stage_dir / "results"
     if durable.exists():
         for path in sorted(durable.glob("*.json")):
-            add(json.loads(path.read_text()), source=path)
+            add(_load_strict_json(path), source=path)
     return list(out.values())
 
 
@@ -4071,7 +4046,7 @@ def _handoff_audit_for_complete_stage(
 
 def command_merge(args: argparse.Namespace) -> int:
     stage_dir = _stage_directory(args.stage_dir)
-    existing_manifest = json.loads((stage_dir / "manifest.json").read_text())
+    existing_manifest = _load_strict_json(stage_dir / "manifest.json")
     if (stage_dir / "seed_results.csv").exists() or (stage_dir / "candidate_scores.csv").exists():
         _validate_stage_artifacts(
             stage_dir, what="repeat merge",
@@ -4151,8 +4126,8 @@ def command_merge(args: argparse.Namespace) -> int:
                 "base_variance_sha256 compatibility assertion failed: --base-variance "
                 "contains different base variances than the package sealed at prepare"
             )
-    observed = json.loads(observed_path.read_text())
-    base_variance = json.loads(variance_path.read_text())
+    observed = _load_strict_json(observed_path)
+    base_variance = _load_strict_json(variance_path)
     plan.targets.assert_order(
         sorted(observed, key=lambda name: list(plan.targets.frozen_order).index(name))
         if set(observed) == set(plan.targets.frozen_order) else list(observed),
@@ -4379,7 +4354,7 @@ def _stage_context(
     args: argparse.Namespace,
 ) -> tuple[Path, dict, nc.FrozenPlan, nc.ModelSpace, ne.Ledger]:
     stage_dir = _stage_directory(args.stage_dir)
-    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    manifest = _load_strict_json(stage_dir / "manifest.json")
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
     model = _model_spaces(plan)[str(manifest["model"])]
     return stage_dir, manifest, plan, model, ne.Ledger.load(stage_dir)
@@ -4402,7 +4377,7 @@ def command_classify(args: argparse.Namespace) -> int:
     _validate_stage_artifacts(
         stage_dir, what="classification", validate_all_indexed=True,
     )
-    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    manifest = _load_strict_json(stage_dir / "manifest.json")
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
     model = _model_spaces(plan)[str(manifest["model"])]
     identity = _assert_acceptance_basis(
@@ -4551,7 +4526,7 @@ def command_regions(args: argparse.Namespace) -> int:
     consolidated tables.
     """
     parent_dir = _stage_directory(args.parent_dir)
-    parent_manifest = json.loads((parent_dir / "manifest.json").read_text())
+    parent_manifest = _load_strict_json(parent_dir / "manifest.json")
     plan = nc.FrozenPlan.load(args.plan or parent_manifest["contract"]["plan_path"])
     validated_acceptance = _validate_declared_acceptance_package(plan)
     model = _model_spaces(plan)[str(parent_manifest["model"])]
@@ -4809,7 +4784,7 @@ def command_report(args: argparse.Namespace) -> int:
     _validate_stage_artifacts(
         stage_dir, what="report", validate_all_indexed=True,
     )
-    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    manifest = _load_strict_json(stage_dir / "manifest.json")
     plan_path = args.plan or manifest["contract"]["plan_path"]
     plan = nc.FrozenPlan.load(plan_path)
     _assert_plan_matches_manifest(plan, manifest, what="report")
@@ -4881,7 +4856,7 @@ def command_report(args: argparse.Namespace) -> int:
 def command_resume(args: argparse.Namespace) -> int:
     stage_dir = _stage_directory(args.stage_dir)
     _validate_stage_artifacts(stage_dir, what="resume")
-    manifest = json.loads((stage_dir / "manifest.json").read_text())
+    manifest = _load_strict_json(stage_dir / "manifest.json")
     plan = nc.FrozenPlan.load(args.plan or manifest["contract"]["plan_path"])
     _assert_plan_matches_manifest(plan, manifest, what="resume")
     ledger = ne.Ledger.load(stage_dir)

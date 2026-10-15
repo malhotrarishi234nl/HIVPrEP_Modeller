@@ -50,7 +50,6 @@ from __future__ import annotations
 
 import copy
 import importlib.metadata
-import json
 import platform
 import time
 from dataclasses import dataclass, field
@@ -156,7 +155,9 @@ def gate_config(
         path = root / path
     if not path.exists():
         raise ContractError(f"identity-gate base config does not exist: {path}")
-    config = json.loads(path.read_text())
+    config = nc.strict_json_load(path, what="identity-gate base config")
+    if not isinstance(config, Mapping):
+        raise ContractError(f"identity-gate base config must be a JSON object: {path}")
     config["run_control"]["end_year"] = {"value": int(end_year)}
     config["run_control"]["deterministic_mode"] = {"value": False}
     return config
@@ -598,7 +599,9 @@ def assert_gate_satisfied(
             "(ROBUST_NROY_FREEZE_SPEC section 2) and the pytests that check it are "
             "SKIPPED under the no-engine guard, so a green suite does not establish it."
         )
-    artifact = json.loads(gate_path.read_text())
+    artifact = nc.strict_json_load(gate_path, what="identity-gate certificate")
+    if not isinstance(artifact, Mapping):
+        raise ContractError("identity-gate certificate must be a JSON object")
     if artifact.get("schema") != GATE_VERSION:
         raise ContractError(
             f"identity gate artifact has schema {artifact.get('schema')!r}, this code "

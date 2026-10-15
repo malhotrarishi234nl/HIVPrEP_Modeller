@@ -733,7 +733,7 @@ class Ledger:
     def load(cls, directory: str | Path) -> "Ledger":
         """Restore a frozen ledger.  Never regenerates proposals."""
         base = Path(directory)
-        meta = json.loads((base / "ledger_meta.json").read_text())
+        meta = nc.strict_json_load(base / "ledger_meta.json", what="ledger metadata")
         # keep_default_na=False: an empty string must round-trip as "", not as
         # NaN. Otherwise str(NaN) == "nan" silently changes a hashed field and
         # the frozen-hash check fails on a ledger nobody touched.
@@ -1586,9 +1586,11 @@ def validate_artifact_index(
     if not index_path.exists():
         raise ContractError(f"stage has no artifact index: {index_path}")
     try:
-        manifest = json.loads(manifest_path.read_text())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ContractError(f"stage manifest is not valid JSON: {manifest_path}: {exc}") from exc
+        manifest = nc.strict_json_load(manifest_path, what="stage manifest")
+    except (UnicodeDecodeError, ContractError) as exc:
+        raise ContractError(
+            f"stage manifest is not valid strict JSON: {manifest_path}: {exc}"
+        ) from exc
     expected_index_hash = str(manifest.get("artifacts_sha256") or "")
     if not expected_index_hash:
         raise ContractError(
@@ -1602,9 +1604,11 @@ def validate_artifact_index(
             f"(manifest {expected_index_hash}, found {actual_index_hash})"
         )
     try:
-        index = json.loads(index_path.read_text())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ContractError(f"artifact index is not valid JSON: {index_path}: {exc}") from exc
+        index = nc.strict_json_load(index_path, what="artifact index")
+    except (UnicodeDecodeError, ContractError) as exc:
+        raise ContractError(
+            f"artifact index is not valid strict JSON: {index_path}: {exc}"
+        ) from exc
     if index.get("schema") != ARTIFACT_INDEX_SCHEMA_VERSION:
         raise ContractError(
             f"artifact index schema is {index.get('schema')!r}, expected "

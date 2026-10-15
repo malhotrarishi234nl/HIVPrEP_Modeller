@@ -71,6 +71,26 @@ def test_signed_plan_loads(tmp_path):
     assert plan.cutoff == ccs.IMPLAUSIBILITY_CUTOFF
 
 
+@pytest.mark.parametrize(
+    ("suffix", "problem"),
+    [
+        (', "acceptance": {"cutoff": 3.0}}', "duplicate JSON object key"),
+        (', "adversarial": NaN}', "non-finite JSON token"),
+        (', "adversarial": Infinity}', "non-finite JSON token"),
+        (', "adversarial": -Infinity}', "non-finite JSON token"),
+        (', "adversarial": 1e999}', "overflows to a non-finite value"),
+    ],
+)
+def test_frozen_plan_strict_json_rejects_ambiguous_or_nonfinite_values(
+    tmp_path, suffix, problem,
+):
+    raw = json.dumps(fx.signed_plan_dict())
+    path = tmp_path / "adversarial_plan.json"
+    path.write_text(raw[:-1] + suffix)
+    with pytest.raises(ContractError, match=problem):
+        nc.FrozenPlan.load(path, root=ROOT)
+
+
 def test_plan_may_not_change_the_acceptance_cutoff(tmp_path):
     with pytest.raises(ContractError, match="may not change the primary acceptance cutoff"):
         fx.signed_plan(tmp_path, **{"acceptance.cutoff": 4.0})

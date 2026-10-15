@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -67,6 +68,79 @@ CURRENT_SPEC_PATH = (
     "documentation/reports/calibration/ROBUST_NROY_FREEZE_SPEC_2026-10-14.md"
 )
 CURRENT_SPEC_VERSION = Path(CURRENT_SPEC_PATH).stem
+
+
+def _strict_json_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one JSON object while refusing ambiguous duplicate keys."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ContractError(f"duplicate JSON object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json_constant(value: str) -> None:
+    """Reject Python's non-standard NaN and Infinity JSON extensions."""
+    raise ContractError(
+        f"non-finite JSON token {value!r}; non-finite JSON numeric literal is "
+        "forbidden and must be a finite native JSON number"
+    )
+
+
+def _parse_finite_json_float(value: str) -> float:
+    """Parse a JSON float while refusing finite syntax that overflows binary64."""
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ContractError(
+            f"non-finite JSON number {value!r}; numeric literal overflows to a "
+            "non-finite value and must be a finite native JSON number"
+        )
+    return parsed
+
+
+def strict_json_loads(text: str, *, what: str = "JSON input") -> object:
+    """Parse authority-bearing JSON without ambiguity or non-finite values."""
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_strict_json_object_pairs,
+            parse_constant=_reject_nonfinite_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
+    except json.JSONDecodeError as exc:
+        raise ContractError(f"{what} is not valid strict JSON: {exc}") from exc
+
+
+def strict_json_load(path: str | Path, *, what: str | None = None) -> object:
+    """Read an authority-bearing JSON file through :func:`strict_json_loads`."""
+    json_path = Path(path)
+    return strict_json_loads(
+        json_path.read_text(encoding="utf-8"),
+        what=what or f"JSON file {json_path}",
+    )
+
+
+def load_plan_json(path: str | Path, *, root: Path = ROOT) -> dict[str, Any]:
+    """Load one production plan using the single fail-closed JSON policy.
+
+    Every production-plan consumer must use this function, including callers
+    that need to inspect an unsigned draft before :class:`FrozenPlan` can be
+    constructed.  Standard-library ``json.loads`` otherwise accepts duplicate
+    object keys by keeping the last value and accepts ``NaN``/``Infinity``;
+    finite-looking exponents such as ``1e999`` also overflow to infinity.
+    Those spellings cannot be allowed to acquire different meanings across
+    review, validation and execution paths.
+    """
+    plan_path = Path(path)
+    if not plan_path.is_absolute():
+        plan_path = root / plan_path
+    if not plan_path.exists():
+        raise ContractError(f"run plan does not exist: {path}")
+    raw = strict_json_load(plan_path, what="run plan")
+    if not isinstance(raw, Mapping):
+        raise ContractError("run plan must be a JSON object")
+    return dict(raw)
 
 
 # ==========================================================================
@@ -1869,11 +1943,7 @@ class FrozenPlan:
         plan_path = Path(path)
         if not plan_path.is_absolute():
             plan_path = root / plan_path
-        if not plan_path.exists():
-            raise ContractError(f"run plan does not exist: {path}")
-        raw = json.loads(plan_path.read_text())
-        if not isinstance(raw, Mapping):
-            raise ContractError("run plan must be a JSON object")
+        raw = load_plan_json(plan_path, root=root)
 
         # Fail closed BEFORE anything else is interpreted.
         assert_fully_signed(raw)

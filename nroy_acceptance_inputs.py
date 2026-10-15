@@ -10,7 +10,6 @@ stage directory.
 from __future__ import annotations
 
 import csv
-import json
 import math
 from pathlib import Path
 from typing import Mapping
@@ -40,9 +39,9 @@ def _output_path(directory: Path, value: object, *, label: str) -> Path:
 
 def _read_mapping(path: Path, *, label: str) -> dict:
     try:
-        payload = json.loads(path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise nc.ContractError(f"{label} is not valid JSON: {path}: {exc}") from exc
+        payload = nc.strict_json_load(path, what=label)
+    except (OSError, UnicodeDecodeError, nc.ContractError) as exc:
+        raise nc.ContractError(f"{label} is not valid strict JSON: {path}: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise nc.ContractError(f"{label} must be a JSON object: {path}")
     return dict(payload)

@@ -645,6 +645,25 @@ def test_validate_subcommand_fails_closed_on_the_shipped_plan(capsys):
     assert "sign_off.signed_by" in out
 
 
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ('{"schema": "first", "schema": "second"}', "duplicate JSON object key"),
+        ('{"schema": NaN}', "non-finite JSON token"),
+        ('{"schema": Infinity}', "non-finite JSON token"),
+        ('{"schema": -Infinity}', "non-finite JSON token"),
+        ('{"schema": 1e999}', "overflows to a non-finite value"),
+    ],
+)
+def test_validate_subcommand_uses_strict_plan_json(tmp_path, capsys, text, problem):
+    plan_path = tmp_path / "adversarial_plan.json"
+    plan_path.write_text(text)
+    assert runner.main(["validate", "--plan", str(plan_path)]) == 1
+    captured = capsys.readouterr()
+    assert "CONTRACT ERROR" in captured.err
+    assert problem in captured.err
+
+
 def _write_final_production_evidence(tmp_path: Path, plan: nc.FrozenPlan) -> dict[str, Path]:
     base = Path(str(plan.require("models.base_config")))
     if not base.is_absolute():

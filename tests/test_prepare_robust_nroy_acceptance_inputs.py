@@ -61,3 +61,19 @@ def test_generator_refuses_to_overwrite_an_existing_package(tmp_path):
     assert prep.generate(args(out, draft=True)) == 0
     with pytest.raises(nc.ContractError, match="refusing to overwrite"):
         prep.generate(args(out, draft=True))
+
+
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        ('{"schema": "first", "schema": "second"}', "duplicate JSON object key"),
+        ('{"schema": NaN}', "non-finite JSON token"),
+    ],
+)
+def test_draft_generator_uses_the_strict_plan_loader(tmp_path, text, problem):
+    plan_path = tmp_path / "adversarial_plan.json"
+    plan_path.write_text(text)
+    generate_args = args(tmp_path / "out", draft=True)
+    generate_args.plan = str(plan_path)
+    with pytest.raises(nc.ContractError, match=problem):
+        prep.generate(generate_args)
