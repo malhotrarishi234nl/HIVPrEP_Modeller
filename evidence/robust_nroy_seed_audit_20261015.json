@@ -1255,7 +1255,7 @@
     ],
     "examples_truncated": 75347
   },
-  "artifact_sha256": "8a3b7acf80b7ff7d8e7bd206144b4a545944f11c8288b3251e162d8c4e9f8ace",
+  "artifact_sha256": "f709f2b04549ed8f7dfeb6c364c11a839a05b1ebd364b3bd78e30c8ca25b0cda",
   "candidate_blocks": {
     "confirmation": [],
     "discovery": [],
@@ -17085,7 +17085,7 @@
     },
     "excluded_output_files": 71531,
     "inventory_sha256": "f00fd60368ee87f98a5bca8e54b95edc3da2939f3604cb37e3032acad99b7716",
-    "scanned_content_index_sha256": "8313634ccc2b2a48d352fb8cc15365b8917d2194c0dc4727c4b5adc7fdb0fe7d",
+    "scanned_content_index_sha256": "c28b8163dfdb873b6b5194f1bb0026311b5e8353cdcd983c68129a9769053ba5",
     "scanned_files": 2905
   },
   "status": "INCOMPLETE",

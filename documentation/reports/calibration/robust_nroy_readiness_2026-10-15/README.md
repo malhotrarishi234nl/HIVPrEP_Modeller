@@ -11,8 +11,8 @@
   and 14 requiring new decisions.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
   run. No historical result was resealed.
-- Final isolated no-engine suite: **2865 passed, 285 skipped, 0 failed, 0
-  errors, 0 warnings** in 456.87 seconds.
+- Final isolated no-engine suite: **2866 passed, 285 skipped, 0 failed, 0
+  errors, 0 warnings** in 461.29 seconds.
 
 ## Package contents
 

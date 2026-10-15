@@ -547,7 +547,7 @@ scientific result.
 Final isolated no-engine verification, with warnings promoted to errors:
 
 ```text
-2865 passed, 285 skipped, 0 failed, 0 errors, 0 warnings in 456.87 s
+2866 passed, 285 skipped, 0 failed, 0 errors, 0 warnings in 461.29 s
 ```
 
 The current plan SHA-256 is
