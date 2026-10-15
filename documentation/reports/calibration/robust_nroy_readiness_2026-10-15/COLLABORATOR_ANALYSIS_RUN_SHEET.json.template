@@ -1,0 +1,14 @@
+{
+  "schema": "collaborator_analysis_run_sheet/1.0.0",
+  "analysis_config_sha256": "",
+  "collaborator_parameter_contract_sha256": "",
+  "model": null,
+  "p": null,
+  "seeds": [],
+  "scientific_files_sha256": "",
+  "requirements_operator_sha256": "",
+  "scientific_approved_by": "",
+  "scientific_approved_utc": "",
+  "dispatch_authorized_by": "",
+  "dispatch_authorized_utc": ""
+}

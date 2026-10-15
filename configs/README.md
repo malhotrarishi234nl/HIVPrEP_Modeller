@@ -22,9 +22,13 @@ An actual collaborator simulation additionally requires a protected canonical
 `production_approval` block with exact schema, `APPROVED` status, both
 `approved` and `production_eligible` set to true, and a named approver plus
 timezone-qualified approval time. The approval must also bind the exact SHA-256
-of `collaborator_parameter_contract.json`, so a copied approval cannot expand
-the editable parameter surface. No current candidate has that approval and
-there is no CLI bypass.
+of `collaborator_parameter_contract.json`, the aggregate SHA-256 of the
+scientific `MODEL_CODE_FILES`, and the SHA-256 of `requirements-operator.txt`.
+This prevents a copied approval from expanding the editable parameter surface
+or silently changing code/runtime inputs. Every actual invocation additionally
+requires `--run-sheet` with an exact config/model/`p`/seed binding and separate
+scientific-approval and dispatch-authorization records. No current candidate
+has those approvals and there is no CLI bypass.
 
 ## Current robust-NROY inputs
 
@@ -90,11 +94,14 @@ For an edited value, the validator enforces the contract's closed interval plus
 co-located numeric bounds when present. Passing this mechanical check does not
 make an edit scientifically accepted. Actual runs require an explicit uint32
 command-line seed, an exact protected production approval inherited from the
-canonical config, and produce an effective-config snapshot plus a
-reproducibility manifest in the new output directory. The approval binds the
-exact editable contract; binding it means the approver reviewed the whole
-listed parameter domain. A collaborator cannot promote a copied config by
-adding or editing the approval.
+canonical config, an exact approved analysis run sheet, and produce an
+effective-config snapshot plus a reproducibility manifest in the new output
+directory. The approval binds the exact editable contract, scientific source
+aggregate, and operator requirements; binding the contract means the approver
+reviewed the whole listed parameter domain. The run sheet binds the exact
+analysis config, M0/M1 choice, M1 `p`/M0 `null`, and complete seed list, with a
+separate dispatch record. A collaborator cannot promote a copied config by
+adding or editing either approval artifact.
 
 After a maintainer promotes the canonical config, discard any copy made before
 promotion. Make a fresh copy of the approved canonical, reapply only the

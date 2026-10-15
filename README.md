@@ -41,14 +41,21 @@ code interface, not production authorization: the shared config is unsigned
 and the identity, pilot, scientific-review, and dispatch gates remain open.
 Real runs require an explicit seed and a new output directory; the runner saves
 the exact effective config and a SHA-bound runtime/code reproducibility
-manifest alongside the results. Validation-only constructs no engine and
-writes no run files. Actual simulations additionally require the canonical
-config's protected machine-readable production approval; no current candidate
-has it, and the collaborator CLI has no bypass. This leaves mechanical
-validation usable while calibration and scientific acceptance are completed.
+manifest alongside the results, and it refuses to mark a run complete unless
+the protected `baseline_run_001.csv` is a nonempty regular file. Validation-only
+constructs no engine and writes no run files. Actual simulations additionally
+require the canonical config's protected machine-readable production approval
+and a SHA-bound `collaborator_analysis_run_sheet/1.0.0` carrying both scientific
+approval and separate dispatch authorization; no current candidate has these,
+and the collaborator CLI has no bypass. This leaves mechanical validation
+usable while calibration and scientific acceptance are completed.
+The runner seals a byte-exact fixed-name copy of that sheet beside every
+prepared run so later loss of the operator's source path cannot erase the
+approval and dispatch record.
 Collaborator edits are limited to the numeric paths and closed intervals in
 `configs/collaborator_parameter_contract.json`; production approval must bind
-that file's exact SHA-256. Seeds must be uint32 integers, and the approved
+that file's exact SHA-256, the scientific source aggregate, and the exact
+operator-requirements file. Seeds must be uint32 integers, and the approved
 analysis run sheet—not the operator—defines their pairing and replication.
 
 ## Safety boundary
@@ -107,7 +114,9 @@ calibration, robust-NROY, and long-running/external experiment lanes use their
 own documented dependencies; `requirements.txt` and
 `requirements-overnight.txt` are not the ordinary operator contract. Record
 Python, NumPy, pandas, SciPy, platform, and machine versions with every
-production artifact.
+production artifact. Actual `run_model.py` invocations independently enforce
+CPython 3.11 and every exact operator pin before importing the engine;
+validation-only remains usable without crossing that execution boundary.
 
 ## External inputs
 

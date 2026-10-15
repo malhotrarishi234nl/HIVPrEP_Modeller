@@ -17,6 +17,7 @@ import json
 import math
 import platform
 from pathlib import Path
+import stat
 import subprocess
 import sys
 from typing import Any, Mapping, Sequence
@@ -32,6 +33,7 @@ DEFAULT_CONFIG = ROOT / "configs" / (
 )
 PARAMETER_CONTRACT_PATH = ROOT / "configs" / "collaborator_parameter_contract.json"
 PARAMETER_CONTRACT_SCHEMA = "collaborator_parameter_contract/1.0.0"
+REQUIREMENTS_OPERATOR_PATH = ROOT / "requirements-operator.txt"
 CANONICAL_CONFIG_RELATIVE = (
     "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json"
 )
@@ -47,15 +49,27 @@ PROTECTED_ROOTS = {
     "calibration_metadata", "production_approval",
 }
 
-PRODUCTION_APPROVAL_SCHEMA = "model_config_production_approval/1.1.0"
+PRODUCTION_APPROVAL_SCHEMA = "model_config_production_approval/1.2.0"
 PRODUCTION_APPROVAL_FIELDS = {
     "schema", "status", "production_eligible", "approved", "approved_by",
     "approved_utc", "collaborator_parameter_contract_sha256",
+    "scientific_files_sha256", "requirements_operator_sha256",
+}
+
+ANALYSIS_RUN_SHEET_SCHEMA = "collaborator_analysis_run_sheet/1.0.0"
+ANALYSIS_RUN_SHEET_FIELDS = {
+    "schema", "analysis_config_sha256",
+    "collaborator_parameter_contract_sha256", "model", "p", "seeds",
+    "scientific_files_sha256", "requirements_operator_sha256",
+    "scientific_approved_by", "scientific_approved_utc",
+    "dispatch_authorized_by", "dispatch_authorized_utc",
 }
 
 EFFECTIVE_CONFIG_FILENAME = "effective_config.json"
 RUN_MANIFEST_FILENAME = "run_reproducibility_manifest.json"
-RUN_MANIFEST_SCHEMA = "model_run_reproducibility/1.0.0"
+RUN_SHEET_SNAPSHOT_FILENAME = "approved_analysis_run_sheet.json"
+RUN_MANIFEST_SCHEMA = "model_run_reproducibility/1.1.0"
+PROTECTED_SCIENTIFIC_OUTPUT = "baseline_run_001.csv"
 
 # Direct scientific implementation inputs for the ordinary model route.  The
 # sidecar hashes every file, rather than treating a Git commit as sufficient
@@ -69,6 +83,61 @@ MODEL_CODE_FILES = (
     "counter_based_rng.py",
 )
 
+OPERATOR_REQUIREMENT_DISTRIBUTIONS = ("numpy", "pandas", "scipy")
+
+
+class _DuplicateJSONKey(ValueError):
+    def __init__(self, key: str):
+        super().__init__(key)
+        self.key = key
+
+
+class _NonstandardJSONConstant(ValueError):
+    def __init__(self, value: str):
+        super().__init__(value)
+        self.value = value
+
+
+def _strict_json_loads(raw: str | bytes, *, label: str) -> Any:
+    """Parse RFC-style JSON, rejecting duplicate keys and NaN/Infinity.
+
+    Python's default decoder silently keeps the last duplicate object key and
+    accepts non-standard numeric constants. Neither behaviour is safe for a
+    signed/approved operator input.
+    """
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise _DuplicateJSONKey(key)
+            result[key] = value
+        return result
+
+    def strict_constant(value: str) -> Any:
+        raise _NonstandardJSONConstant(value)
+
+    try:
+        return json.loads(
+            raw,
+            object_pairs_hook=unique_object,
+            parse_constant=strict_constant,
+        )
+    except _DuplicateJSONKey as exc:
+        raise OperatorConfigError(
+            f"{label} is not strict JSON: duplicate object key {exc.key!r}"
+        ) from exc
+    except _NonstandardJSONConstant as exc:
+        raise OperatorConfigError(
+            f"{label} is not strict JSON: non-standard constant {exc.value!r}"
+        ) from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        line = getattr(exc, "lineno", "unknown")
+        message = getattr(exc, "msg", str(exc))
+        raise OperatorConfigError(
+            f"{label} is not valid JSON (line {line}): {message}"
+        ) from exc
+
 
 def load_shared_config(path: str | Path) -> dict:
     """Load and validate the protected shared-config fields without an engine."""
@@ -81,23 +150,23 @@ def _load_shared_config_and_hash(path: str | Path) -> tuple[dict, str]:
     config_path = Path(path)
     try:
         raw = config_path.read_bytes()
-    except FileNotFoundError as exc:
-        raise OperatorConfigError(f"config file does not exist: {config_path}") from exc
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise OperatorConfigError(
-            f"config is not valid JSON ({config_path}, line {exc.lineno}): {exc.msg}"
-        ) from exc
+    except OSError as exc:
+        raise OperatorConfigError(f"cannot read config file: {config_path}") from exc
+    payload = _strict_json_loads(raw, label=f"operator config {config_path}")
     if not isinstance(payload, dict):
         raise OperatorConfigError("config must contain one JSON object")
 
     try:
-        canonical = json.loads(DEFAULT_CONFIG.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        canonical_raw = DEFAULT_CONFIG.read_bytes()
+    except OSError as exc:
         raise OperatorConfigError(
-            f"canonical config is unavailable or invalid: {DEFAULT_CONFIG}"
+            f"canonical config is unavailable or unreadable: {DEFAULT_CONFIG}"
         ) from exc
+    canonical = _strict_json_loads(
+        canonical_raw, label=f"canonical config {DEFAULT_CONFIG}"
+    )
+    if not isinstance(canonical, dict):
+        raise OperatorConfigError("canonical config must contain one JSON object")
     parameter_rules, _ = _load_parameter_contract(canonical)
     forbidden = _first_forbidden_edit(
         payload, canonical, editable_paths=frozenset(parameter_rules)
@@ -387,17 +456,12 @@ def _load_parameter_contract(
     """Validate and return the exact bounded collaborator-edit contract."""
     try:
         raw = PARAMETER_CONTRACT_PATH.read_bytes()
-    except FileNotFoundError as exc:
+    except OSError as exc:
         raise OperatorConfigError(
-            f"collaborator parameter contract is missing: {PARAMETER_CONTRACT_PATH}"
+            f"collaborator parameter contract is missing or unreadable: "
+            f"{PARAMETER_CONTRACT_PATH}"
         ) from exc
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise OperatorConfigError(
-            f"collaborator parameter contract is invalid JSON at line {exc.lineno}: "
-            f"{exc.msg}"
-        ) from exc
+    payload = _strict_json_loads(raw, label="collaborator parameter contract")
     if not isinstance(payload, dict):
         raise OperatorConfigError("collaborator parameter contract must be one JSON object")
     expected_top = {
@@ -515,11 +579,14 @@ def _load_parameter_contract(
 
 def collaborator_parameter_contract_sha256() -> str:
     try:
-        canonical = json.loads(DEFAULT_CONFIG.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raw = DEFAULT_CONFIG.read_bytes()
+    except OSError as exc:
         raise OperatorConfigError(
-            f"canonical config is unavailable or invalid: {DEFAULT_CONFIG}"
+            f"canonical config is unavailable or unreadable: {DEFAULT_CONFIG}"
         ) from exc
+    canonical = _strict_json_loads(raw, label=f"canonical config {DEFAULT_CONFIG}")
+    if not isinstance(canonical, dict):
+        raise OperatorConfigError("canonical config must contain one JSON object")
     _, digest = _load_parameter_contract(canonical)
     return digest
 
@@ -571,7 +638,59 @@ def _validate_seed(seed: Any, *, required: bool) -> int | None:
     return seed
 
 
-def _require_production_approval(config: Mapping[str, Any]) -> str:
+def _timezone_qualified_timestamp(value: Any, *, field: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise OperatorConfigError(f"{field} must be a timezone-qualified timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise OperatorConfigError(f"{field} must be a valid ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise OperatorConfigError(f"{field} must include a timezone")
+    return parsed
+
+
+def _operator_requirements_contract() -> tuple[dict[str, str], str]:
+    """Return the exact direct operator pins and requirements-file digest."""
+    try:
+        raw = REQUIREMENTS_OPERATOR_PATH.read_bytes()
+    except OSError as exc:
+        raise OperatorConfigError(
+            f"operator requirements file is missing or unreadable: "
+            f"{REQUIREMENTS_OPERATOR_PATH}"
+        ) from exc
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise OperatorConfigError(
+            f"operator requirements file is not UTF-8: {REQUIREMENTS_OPERATOR_PATH}"
+        ) from exc
+
+    versions: dict[str, str] = {}
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, version = line.partition("==")
+        if separator != "==" or not name or not version or "==" in version:
+            raise OperatorConfigError(
+                "requirements-operator.txt must contain only exact name==version "
+                f"pins (line {line_number})"
+            )
+        if name in versions:
+            raise OperatorConfigError(
+                f"requirements-operator.txt repeats distribution {name!r}"
+            )
+        versions[name] = version
+    if tuple(versions) != OPERATOR_REQUIREMENT_DISTRIBUTIONS:
+        raise OperatorConfigError(
+            "requirements-operator.txt must pin exactly, in order: "
+            + ", ".join(OPERATOR_REQUIREMENT_DISTRIBUTIONS)
+        )
+    return versions, hashlib.sha256(raw).hexdigest()
+
+
+def _require_production_approval(config: Mapping[str, Any]) -> dict[str, Any]:
     """Fail closed unless this canonical config is approved for real runs.
 
     Validation-only intentionally does not call this function.  The approval
@@ -615,40 +734,54 @@ def _require_production_approval(config: Mapping[str, Any]) -> str:
         raise OperatorConfigError(
             "production_approval.approved_by must name the approving owner"
         )
-    approved_utc = approval["approved_utc"]
-    if not isinstance(approved_utc, str) or not approved_utc.strip():
-        raise OperatorConfigError(
-            "production_approval.approved_utc must be a timezone-qualified timestamp"
-        )
-    try:
-        parsed = datetime.fromisoformat(approved_utc.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise OperatorConfigError(
-            "production_approval.approved_utc must be a valid ISO-8601 timestamp"
-        ) from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise OperatorConfigError(
-            "production_approval.approved_utc must include a timezone"
-        )
+    _timezone_qualified_timestamp(
+        approval["approved_utc"], field="production_approval.approved_utc"
+    )
     contract_sha256 = collaborator_parameter_contract_sha256()
     if approval["collaborator_parameter_contract_sha256"] != contract_sha256:
         raise OperatorConfigError(
             "production_approval.collaborator_parameter_contract_sha256 must match "
             f"the reviewed contract {PARAMETER_CONTRACT_PATH} ({contract_sha256})"
         )
-    return contract_sha256
+    requirements_versions, requirements_sha256 = _operator_requirements_contract()
+    if approval["requirements_operator_sha256"] != requirements_sha256:
+        raise OperatorConfigError(
+            "production_approval.requirements_operator_sha256 must match "
+            f"{REQUIREMENTS_OPERATOR_PATH} ({requirements_sha256})"
+        )
+    code_identity = _code_identity()
+    scientific_sha256 = code_identity["scientific_files_sha256"]
+    if approval["scientific_files_sha256"] != scientific_sha256:
+        raise OperatorConfigError(
+            "production_approval.scientific_files_sha256 must match the exact "
+            f"MODEL_CODE_FILES aggregate ({scientific_sha256})"
+        )
+    return {
+        "parameter_contract_sha256": contract_sha256,
+        "requirements_operator_sha256": requirements_sha256,
+        "requirements_versions": requirements_versions,
+        "code_identity": code_identity,
+        "production_approved_utc": approval["approved_utc"],
+    }
 
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError as exc:
+        raise OperatorConfigError(f"cannot hash file: {path}") from exc
     return digest.hexdigest()
 
 
 def _json_bytes(payload: Mapping[str, Any]) -> bytes:
-    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+    try:
+        text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise OperatorConfigError("cannot encode reproducibility data as strict JSON") from exc
+    return (text + "\n").encode()
 
 
 def _utc_now() -> str:
@@ -671,6 +804,36 @@ def _runtime_identity() -> dict[str, str]:
         "platform": platform.platform(),
         "machine": platform.machine(),
     }
+
+
+def _require_operator_runtime(
+    expected_versions: Mapping[str, str],
+) -> dict[str, str]:
+    """Require the pinned CPython/operator environment before engine import."""
+    identity = _runtime_identity()
+    if identity["python_implementation"] != "CPython":
+        raise OperatorConfigError(
+            "actual runs require CPython 3.11; found "
+            f"{identity['python_implementation']} {identity['python']}"
+        )
+    try:
+        major, minor = (int(part) for part in identity["python"].split(".")[:2])
+    except (TypeError, ValueError) as exc:
+        raise OperatorConfigError(
+            f"cannot verify the Python runtime version: {identity['python']!r}"
+        ) from exc
+    if (major, minor) != (3, 11):
+        raise OperatorConfigError(
+            f"actual runs require CPython 3.11.x; found {identity['python']}"
+        )
+    for distribution, expected in expected_versions.items():
+        actual = identity.get(distribution, "missing")
+        if actual != expected:
+            raise OperatorConfigError(
+                f"actual runs require {distribution}=={expected}; found {actual}. "
+                "Recreate the environment from requirements-operator.txt"
+            )
+    return identity
 
 
 def _code_identity() -> dict[str, Any]:
@@ -714,11 +877,131 @@ def _code_identity() -> dict[str, Any]:
     }
 
 
+def production_approval_binding_values() -> dict[str, str]:
+    """Compute the three file/content bindings required at promotion time."""
+    _, requirements_sha256 = _operator_requirements_contract()
+    return {
+        "collaborator_parameter_contract_sha256": (
+            collaborator_parameter_contract_sha256()
+        ),
+        "scientific_files_sha256": _code_identity()["scientific_files_sha256"],
+        "requirements_operator_sha256": requirements_sha256,
+    }
+
+
+def _load_analysis_run_sheet(
+    path: str | Path, *, input_config_sha256: str,
+    parameter_contract_sha256: str, scientific_files_sha256: str,
+    requirements_operator_sha256: str, model: str, p: float | None, seed: int,
+    production_approved_utc: str,
+) -> tuple[dict[str, Any], str]:
+    """Load one exact, scientifically approved and dispatched analysis sheet."""
+    sheet_path = Path(path)
+    try:
+        raw = sheet_path.read_bytes()
+    except OSError as exc:
+        raise OperatorConfigError(
+            f"analysis run sheet does not exist or is unreadable: {sheet_path}"
+        ) from exc
+    payload = _strict_json_loads(raw, label=f"analysis run sheet {sheet_path}")
+    if not isinstance(payload, dict):
+        raise OperatorConfigError("analysis run sheet must contain one JSON object")
+    fields = set(payload)
+    if fields != ANALYSIS_RUN_SHEET_FIELDS:
+        missing = sorted(ANALYSIS_RUN_SHEET_FIELDS - fields)
+        unexpected = sorted(fields - ANALYSIS_RUN_SHEET_FIELDS)
+        details = []
+        if missing:
+            details.append(f"missing={missing}")
+        if unexpected:
+            details.append(f"unexpected={unexpected}")
+        raise OperatorConfigError(
+            "analysis run sheet has the wrong fields (" + ", ".join(details) + ")"
+        )
+    if payload["schema"] != ANALYSIS_RUN_SHEET_SCHEMA:
+        raise OperatorConfigError(
+            f"analysis run sheet schema must be {ANALYSIS_RUN_SHEET_SCHEMA!r}"
+        )
+
+    exact_bindings = {
+        "analysis_config_sha256": input_config_sha256,
+        "collaborator_parameter_contract_sha256": parameter_contract_sha256,
+        "scientific_files_sha256": scientific_files_sha256,
+        "requirements_operator_sha256": requirements_operator_sha256,
+    }
+    for field, expected in exact_bindings.items():
+        if payload[field] != expected:
+            raise OperatorConfigError(
+                f"analysis run sheet {field} does not match the current run "
+                f"({payload[field]!r} != {expected!r})"
+            )
+    if payload["model"] != model:
+        raise OperatorConfigError(
+            f"analysis run sheet model {payload['model']!r} does not match --model {model}"
+        )
+    sheet_p = payload["p"]
+    if model == "M0":
+        if sheet_p is not None or p is not None:
+            raise OperatorConfigError("an M0 analysis run sheet must set p to null")
+    else:
+        if isinstance(sheet_p, bool) or not isinstance(sheet_p, (int, float)) \
+                or not math.isfinite(float(sheet_p)) or float(sheet_p) != p:
+            raise OperatorConfigError(
+                f"analysis run sheet p {sheet_p!r} does not match --p {p!r}"
+            )
+
+    seeds = payload["seeds"]
+    if not isinstance(seeds, list) or not seeds:
+        raise OperatorConfigError(
+            "analysis run sheet seeds must be a non-empty list of unique uint32 integers"
+        )
+    if any(type(value) is not int or not 0 <= value <= UINT32_MAX for value in seeds):
+        raise OperatorConfigError(
+            "analysis run sheet seeds must contain only uint32 integers"
+        )
+    if len(seeds) != len(set(seeds)):
+        raise OperatorConfigError("analysis run sheet seeds must be unique")
+    if seed not in seeds:
+        raise OperatorConfigError(
+            f"--seed {seed} is not authorized by the analysis run sheet"
+        )
+
+    for field in ("scientific_approved_by", "dispatch_authorized_by"):
+        value = payload[field]
+        if not isinstance(value, str) or not value.strip():
+            raise OperatorConfigError(f"analysis run sheet {field} must name an owner")
+    production_time = _timezone_qualified_timestamp(
+        production_approved_utc,
+        field="production_approval.approved_utc",
+    )
+    scientific_time = _timezone_qualified_timestamp(
+        payload["scientific_approved_utc"],
+        field="analysis run sheet scientific_approved_utc",
+    )
+    dispatch_time = _timezone_qualified_timestamp(
+        payload["dispatch_authorized_utc"],
+        field="analysis run sheet dispatch_authorized_utc",
+    )
+    if scientific_time < production_time:
+        raise OperatorConfigError(
+            "analysis run sheet scientific_approved_utc cannot precede "
+            "production_approval.approved_utc"
+        )
+    if dispatch_time < scientific_time:
+        raise OperatorConfigError(
+            "analysis run sheet dispatch_authorized_utc cannot precede "
+            "scientific_approved_utc"
+        )
+    return payload, hashlib.sha256(raw).hexdigest()
+
+
 def write_reproducibility_bundle(
     *, input_config_path: str | Path, input_config_sha256: str,
     effective_config: Mapping[str, Any], output_dir: str | Path,
     model: str, p: float | None, seed: int, command_argv: Sequence[str],
-    parameter_contract_sha256: str,
+    parameter_contract_sha256: str, scientific_files_sha256: str,
+    requirements_operator_sha256: str, runtime_identity: Mapping[str, str],
+    run_sheet_path: str | Path, run_sheet_sha256: str,
 ) -> Path:
     """Write the effective config and PREPARED sidecar before engine import."""
     input_path = Path(input_config_path)
@@ -731,15 +1014,36 @@ def write_reproducibility_bundle(
             f"collaborator parameter contract changed after approval validation: "
             f"{PARAMETER_CONTRACT_PATH}"
         )
+    _, current_requirements_sha256 = _operator_requirements_contract()
+    if current_requirements_sha256 != requirements_operator_sha256:
+        raise OperatorConfigError(
+            f"operator requirements changed after approval validation: "
+            f"{REQUIREMENTS_OPERATOR_PATH}"
+        )
+    sheet_path = Path(run_sheet_path)
+    try:
+        sheet_bytes = sheet_path.read_bytes()
+    except OSError as exc:
+        raise OperatorConfigError(
+            f"analysis run sheet became unreadable after validation: {sheet_path}"
+        ) from exc
+    if hashlib.sha256(sheet_bytes).hexdigest() != run_sheet_sha256:
+        raise OperatorConfigError(
+            f"analysis run sheet changed after validation: {sheet_path}"
+        )
 
     # Build all potentially failing provenance before creating the run directory.
     code_identity = _code_identity()
-    runtime_identity = _runtime_identity()
+    if code_identity["scientific_files_sha256"] != scientific_files_sha256:
+        raise OperatorConfigError(
+            "MODEL_CODE_FILES changed after production approval validation"
+        )
     effective_bytes = _json_bytes(dict(effective_config))
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     effective_path = output_path / EFFECTIVE_CONFIG_FILENAME
+    run_sheet_snapshot_path = output_path / RUN_SHEET_SNAPSHOT_FILENAME
     manifest_path = output_path / RUN_MANIFEST_FILENAME
     try:
         with effective_path.open("xb") as handle:
@@ -747,6 +1051,13 @@ def write_reproducibility_bundle(
     except FileExistsError as exc:
         raise OperatorConfigError(
             f"refusing to overwrite reproducibility file: {effective_path}"
+        ) from exc
+    try:
+        with run_sheet_snapshot_path.open("xb") as handle:
+            handle.write(sheet_bytes)
+    except FileExistsError as exc:
+        raise OperatorConfigError(
+            f"refusing to overwrite reproducibility file: {run_sheet_snapshot_path}"
         ) from exc
 
     manifest = {
@@ -767,10 +1078,20 @@ def write_reproducibility_bundle(
             "path": str(PARAMETER_CONTRACT_PATH.resolve()),
             "sha256": parameter_contract_sha256,
         },
+        "analysis_run_sheet": {
+            "source_path": str(sheet_path.resolve()),
+            "sealed_path": str(run_sheet_snapshot_path.resolve()),
+            "sha256": run_sheet_sha256,
+        },
+        "operator_requirements": {
+            "path": str(REQUIREMENTS_OPERATOR_PATH.resolve()),
+            "sha256": requirements_operator_sha256,
+        },
         "route": {"model": model, "p": p, "seed": int(seed)},
-        "runtime_identity": runtime_identity,
+        "runtime_identity": dict(runtime_identity),
         "code_identity": code_identity,
         "output_path": str(output_path.resolve()),
+        "scientific_output": None,
     }
     try:
         with manifest_path.open("xb") as handle:
@@ -784,20 +1105,61 @@ def write_reproducibility_bundle(
 
 def finalize_run_manifest(
     manifest_path: str | Path, *, status: str, failure_type: str | None = None,
+    scientific_output: Mapping[str, Any] | None = None,
 ) -> None:
     if status not in {"COMPLETE", "FAILED"}:
         raise OperatorConfigError(f"invalid run-manifest final status: {status}")
     path = Path(manifest_path)
-    payload = json.loads(path.read_text())
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise OperatorConfigError(f"cannot read run manifest: {path}") from exc
+    payload = _strict_json_loads(raw, label=f"run manifest {path}")
+    if not isinstance(payload, dict):
+        raise OperatorConfigError(f"run manifest must contain one JSON object: {path}")
     if payload.get("schema") != RUN_MANIFEST_SCHEMA or payload.get("status") != "PREPARED":
         raise OperatorConfigError(f"run manifest is not a prepared current artifact: {path}")
+    if status == "COMPLETE" and scientific_output is None:
+        raise OperatorConfigError(
+            "a run manifest cannot become COMPLETE without the protected scientific output"
+        )
+    if status == "FAILED" and scientific_output is not None:
+        raise OperatorConfigError(
+            "a FAILED run manifest cannot claim a protected scientific output"
+        )
     payload["status"] = status
     payload["completed_utc"] = _utc_now()
+    payload["scientific_output"] = (
+        dict(scientific_output) if scientific_output is not None else None
+    )
     if failure_type is not None:
         payload["failure_type"] = failure_type
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(_json_bytes(payload))
     temporary.replace(path)
+
+
+def _verify_protected_scientific_output(output_dir: str | Path) -> dict[str, Any]:
+    """Require the exact non-empty regular result from the protected route."""
+    path = Path(output_dir) / PROTECTED_SCIENTIFIC_OUTPUT
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        raise OperatorConfigError(
+            f"engine returned without required scientific output: "
+            f"{PROTECTED_SCIENTIFIC_OUTPUT}"
+        ) from exc
+    if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+        raise OperatorConfigError(
+            f"required scientific output is not a regular file: {path}"
+        )
+    if metadata.st_size <= 0:
+        raise OperatorConfigError(f"required scientific output is empty: {path}")
+    return {
+        "relative_path": PROTECTED_SCIENTIFIC_OUTPUT,
+        "size_bytes": metadata.st_size,
+        "sha256": _sha256_file(path),
+    }
 
 
 def config_for_model(
@@ -839,6 +1201,33 @@ def _set_value(block: dict, key: str, value: Any) -> None:
         block[key] = value
 
 
+def _require_protected_output_contract(
+    runtime: Mapping[str, Any], *, output_dir: str | Path,
+) -> None:
+    """Freeze the ordinary one-run output contract expected after execution."""
+    output = runtime.get("output")
+    if not isinstance(output, Mapping):
+        raise OperatorConfigError("runtime config has no protected output object")
+    expected = {
+        "enabled": True,
+        "format": "csv",
+        "run_tag": "baseline",
+        "write_per_run_files": True,
+    }
+    for field, expected_value in expected.items():
+        if field not in output or extract_value(output[field]) != expected_value:
+            raise OperatorConfigError(
+                f"protected output.{field} must remain {expected_value!r} for "
+                f"{PROTECTED_SCIENTIFIC_OUTPUT}"
+            )
+    if "directory" not in output or Path(
+        str(extract_value(output["directory"]))
+    ) != Path(output_dir):
+        raise OperatorConfigError(
+            "protected output.directory does not match --output-dir"
+        )
+
+
 def parser() -> argparse.ArgumentParser:
     out = argparse.ArgumentParser(
         description="Validate or run one explicit M0/M1 model configuration."
@@ -859,6 +1248,13 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument(
         "--output-dir", default=None,
         help="directory for model outputs; required unless --validate-only is used",
+    )
+    out.add_argument(
+        "--run-sheet", default=None,
+        help=(
+            "approved collaborator analysis run sheet; required for an actual run "
+            "and not needed for --validate-only"
+        ),
     )
     out.add_argument(
         "--validate-only", action="store_true",
@@ -902,7 +1298,35 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise OperatorConfigError(
                 f"output directory is not empty: {output_path}; choose a new run directory"
             )
-        parameter_contract_sha256 = _require_production_approval(base)
+        _require_protected_output_contract(runtime, output_dir=output_path)
+        approval_bindings = _require_production_approval(base)
+        if args.run_sheet is None:
+            raise OperatorConfigError(
+                "--run-sheet is required for an actual run; scientific approval "
+                "and dispatch authorization must be recorded separately"
+            )
+        _, run_sheet_sha256 = _load_analysis_run_sheet(
+            args.run_sheet,
+            input_config_sha256=input_config_sha256,
+            parameter_contract_sha256=(
+                approval_bindings["parameter_contract_sha256"]
+            ),
+            scientific_files_sha256=approval_bindings["code_identity"][
+                "scientific_files_sha256"
+            ],
+            requirements_operator_sha256=approval_bindings[
+                "requirements_operator_sha256"
+            ],
+            model=args.model,
+            p=args.p,
+            seed=args.seed,
+            production_approved_utc=approval_bindings[
+                "production_approved_utc"
+            ],
+        )
+        runtime_identity = _require_operator_runtime(
+            approval_bindings["requirements_versions"]
+        )
         manifest_path = write_reproducibility_bundle(
             input_config_path=args.config,
             input_config_sha256=input_config_sha256,
@@ -912,7 +1336,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             p=args.p,
             seed=args.seed,
             command_argv=command_argv,
-            parameter_contract_sha256=parameter_contract_sha256,
+            parameter_contract_sha256=(
+                approval_bindings["parameter_contract_sha256"]
+            ),
+            scientific_files_sha256=approval_bindings["code_identity"][
+                "scientific_files_sha256"
+            ],
+            requirements_operator_sha256=approval_bindings[
+                "requirements_operator_sha256"
+            ],
+            runtime_identity=runtime_identity,
+            run_sheet_path=args.run_sheet,
+            run_sheet_sha256=run_sheet_sha256,
         )
     except OperatorConfigError as exc:
         print(f"ERROR: {exc}")
@@ -923,12 +1358,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         engine = SimulationEngineV3(runtime, seed=args.seed)
         engine.run(run_number=1)
+        scientific_output = _verify_protected_scientific_output(args.output_dir)
     except Exception as exc:
         finalize_run_manifest(
             manifest_path, status="FAILED", failure_type=type(exc).__name__
         )
+        if isinstance(exc, OperatorConfigError):
+            print(f"ERROR: {exc}")
+            return 2
         raise
-    finalize_run_manifest(manifest_path, status="COMPLETE")
+    finalize_run_manifest(
+        manifest_path, status="COMPLETE", scientific_output=scientific_output
+    )
     print(
         f"COMPLETE: {args.model} results written to {args.output_dir}; "
         f"reproducibility manifest: {manifest_path}"

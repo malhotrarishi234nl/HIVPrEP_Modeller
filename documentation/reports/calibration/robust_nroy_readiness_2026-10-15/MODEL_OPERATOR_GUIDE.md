@@ -32,6 +32,10 @@ The first command must report Python `3.11.x`; the last must print that Python
 version followed by the exact NumPy, pandas, and SciPy versions pinned in
 `requirements-operator.txt`. If either check fails, stop and contact the
 **Model Maintainer** before validating or running the model.
+`--validate-only` remains usable for configuration review in another supported
+development environment, but an actual run independently enforces CPython
+3.11 and every exact pin in `requirements-operator.txt` before importing the
+engine.
 
 This ordinary `run_model.py` M0/M1 route is source-only once those dependencies
 are installed. It does not need the external validation workbooks,
@@ -145,11 +149,27 @@ the approved analysis run sheet; do not invent or casually reuse the example
 seed below. One command creates one stochastic trajectory, so repeat runs only
 as declared by that run sheet and give every trajectory a new output directory.
 
+The maintainer and approving owners must create the run sheet from
+[`COLLABORATOR_ANALYSIS_RUN_SHEET.json.template`](COLLABORATOR_ANALYSIS_RUN_SHEET.json.template).
+The template is deliberately incomplete and cannot authorize a run. Save the
+completed sheet with the reviewed analysis record, for example as
+`operator_configs/my_analysis_run_sheet.json`. It binds the exact analysis
+config, collaborator parameter contract, scientific source aggregate, operator
+requirements, M0/M1 choice, exact M1 `p` (or `null` for M0), and the complete
+nonempty unique uint32 seed list. It also requires a named, timezone-stamped
+scientific approval and a separate named, timezone-stamped dispatch
+authorization. These are separate records even if governance permits one
+person to hold both roles. An operator must not fill placeholders or change the
+sheet to make a rejected command run. Scientific approval cannot predate the
+canonical production approval, and dispatch authorization cannot predate the
+scientific approval.
+
 ```bash
 .venv/bin/python run_model.py \
   --config operator_configs/my_analysis_config.json \
   --model M0 \
   --seed 42001 \
+  --run-sheet operator_configs/my_analysis_run_sheet.json \
   --output-dir outputs/collaborator_runs/my_analysis_m0_seed42001
 ```
 
@@ -161,33 +181,42 @@ For M1:
   --model M1 \
   --p 0.20 \
   --seed 42001 \
+  --run-sheet operator_configs/my_analysis_run_sheet.json \
   --output-dir outputs/collaborator_runs/my_analysis_m1_p020_seed42001
 ```
 
-Before importing the engine, the runner creates two files in the new output
+Before importing the engine, the runner creates three files in the new output
 directory:
 
 - `effective_config.json`: the exact routed runtime config, including explicit
   M0/M1 choice, M1 `p` when applicable, and output route;
+- `approved_analysis_run_sheet.json`: a byte-exact fixed-name copy of the
+  approved and dispatched run sheet, so the run remains auditable if its source
+  path later disappears;
 - `run_reproducibility_manifest.json`: input-config path and SHA-256,
   effective-config path and SHA-256, model, `p`, explicit seed, output path,
-  parameter-contract path and SHA-256, Python/dependency/platform identity, Git
-  identity, and hashes of the direct model implementation files.
+  parameter-contract path and SHA-256, analysis-run-sheet source path, sealed
+  path and SHA-256, operator-requirements path and SHA-256,
+  Python/dependency/platform identity, Git identity, and hashes of the direct
+  model implementation files.
 
 With the protected canonical output settings, a completed one-run directory is:
 
 ```text
 outputs/collaborator_runs/<analysis-and-seed>/
+  approved_analysis_run_sheet.json
   baseline_run_001.csv
   effective_config.json
   run_reproducibility_manifest.json
 ```
 
-The manifest starts as `PREPARED`, becomes `COMPLETE` only after the run
-returns successfully, and becomes `FAILED` with the exception type if the
-engine raises. Do not relabel a `PREPARED` or `FAILED` directory as a completed
-result. The output-directory non-overwrite rule protects these sidecars along
-with the scientific outputs.
+The manifest starts as `PREPARED`. It becomes `COMPLETE` only after the engine
+returns and `baseline_run_001.csv` exists as a nonempty regular file; the
+manifest then records that file's relative path, byte size, and SHA-256. It
+becomes `FAILED` if the engine raises or returns without that exact protected
+scientific output. Do not relabel a `PREPARED` or `FAILED` directory as a
+completed result. The output-directory non-overwrite rule protects these
+sidecars along with the scientific output.
 
 ## Protected production approval
 
@@ -196,15 +225,27 @@ this exact maintainer-owned block:
 
 ```json
 "production_approval": {
-  "schema": "model_config_production_approval/1.1.0",
+  "schema": "model_config_production_approval/1.2.0",
   "status": "APPROVED",
   "production_eligible": true,
   "approved": true,
   "approved_by": "Named approving owner",
   "approved_utc": "2026-10-15T09:00:00Z",
-  "collaborator_parameter_contract_sha256": "<exact reviewed contract SHA-256>"
+  "collaborator_parameter_contract_sha256": "<exact reviewed contract SHA-256>",
+  "scientific_files_sha256": "<exact MODEL_CODE_FILES aggregate SHA-256>",
+  "requirements_operator_sha256": "<exact requirements-operator.txt SHA-256>"
 }
 ```
+
+After the reviewed files are frozen, a maintainer can print the three current
+binding values without constructing the engine:
+
+```bash
+.venv/bin/python -c 'import json, run_model; print(json.dumps(run_model.production_approval_binding_values(), indent=2, sort_keys=True))'
+```
+
+Printing hashes is not approval. The named owner must still review the frozen
+inputs and deliberately create the protected canonical block.
 
 The approver and timestamp must be non-empty and the timestamp must include a
 timezone. This block records a completed promotion; it must not be added merely
@@ -214,13 +255,19 @@ therefore requires a reviewed canonical-config change after calibration and
 scientific acceptance; collaborators continue to edit only permitted parameter
 values in copies of that promoted canonical config.
 
-The contract hash is essential: it means the approver reviewed the complete
-editable path-and-interval domain, not merely the canonical point values. A copy
-may vary only within that approved domain. Changing the contract, changing the
-canonical config outside `production_approval`, or copying an old approval into
-a different config invalidates the approval. The current contract is a
-fail-closed code contract, not scientific approval; it must be reviewed again
-after recalibration changes the canonical parameter vector.
+The three hashes are essential. The contract hash means the approver reviewed
+the complete editable path-and-interval domain, not merely the canonical point
+values. The scientific-files hash is the deterministic aggregate over the
+individual SHA-256 values for the `MODEL_CODE_FILES` list in `run_model.py`;
+the requirements hash binds the complete bytes of `requirements-operator.txt`.
+A copy may vary only within the approved parameter domain. Changing any bound
+file, changing the canonical config outside `production_approval`, or copying
+an old approval into a different config invalidates the approval. There is no
+Git-commit field in this block, avoiding a circular commit binding; the run
+manifest separately records commit, dirty state, scientific file hashes, and
+scientific diff hash. The current contract is a fail-closed code contract, not
+scientific approval; it must be reviewed again after recalibration changes the
+canonical parameter vector.
 
 This JSON block is a provenance record and an accidental-run guard, not a
 cryptographic authentication mechanism. Someone with write access to the
@@ -229,7 +276,9 @@ the maintainer must distribute the reviewed canonical config from the named
 reviewed commit/bundle and supply a separately approved analysis run sheet.
 Reviewers must reconcile the run manifest's config and Git hashes to that
 release. Neither the block alone nor possession of a runnable copy proves
-scientific acceptance or dispatch authorization.
+scientific acceptance or dispatch authorization. The separate run sheet is
+mandatory for every actual invocation and the chosen seed must appear in its
+exact approved seed list.
 
 ## Editable and protected inputs
 
@@ -257,7 +306,9 @@ Do not edit these protected shared-route fields:
   the canonical config exactly.
 
 The command fails with a plain `ERROR:` message if a protected field or model
-choice is invalid. For a forbidden copy edit, the error names the first path
+choice is invalid. JSON inputs on this route reject duplicate keys at any
+nested level and non-standard `NaN`/`Infinity` constants instead of silently
+normalizing them. For a forbidden copy edit, the error names the first path
 and directs the operator to start from a fresh canonical copy. M0 removes the
 optional M1 block from its runtime copy; M1 explicitly enables the block and
 injects `p`. Neither route mutates the saved JSON file.
@@ -271,11 +322,12 @@ disappear. Send the **Model Maintainer** this concise handoff:
 1. the exact command you ran, from the repository root;
 2. the config path and its hash
    (`shasum -a 256 operator_configs/my_analysis_config.json`);
-3. the complete `ERROR:` text or traceback;
-4. the requested output path, whether `run_reproducibility_manifest.json`
+3. the run-sheet path and its hash;
+4. the complete `ERROR:` text or traceback;
+5. the requested output path, whether `run_reproducibility_manifest.json`
    exists there, and its `status` (`PREPARED`, `FAILED`, or `COMPLETE`), attaching
    the manifest when present; and
-5. `git rev-parse HEAD` plus the version line printed by the environment check
+6. `git rev-parse HEAD` plus the version line printed by the environment check
    above.
 
 If no output directory or manifest was created, say that explicitly; it often

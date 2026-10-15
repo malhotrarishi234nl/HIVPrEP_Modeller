@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -10,6 +11,9 @@ OPERATOR_REQUIREMENTS = ROOT / "requirements-operator.txt"
 OPERATOR_GUIDE = ROOT / (
     "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/"
     "MODEL_OPERATOR_GUIDE.md"
+)
+RUN_SHEET_TEMPLATE = OPERATOR_GUIDE.parent / (
+    "COLLABORATOR_ANALYSIS_RUN_SHEET.json.template"
 )
 
 
@@ -45,6 +49,25 @@ def test_operator_setup_and_no_external_workbook_boundary_are_documented():
     assert "provenance record and an accidental-run guard" in guide
     assert "cryptographic authentication mechanism" in guide
     assert "separately approved analysis run sheet" in guide
+    assert "--run-sheet operator_configs/my_analysis_run_sheet.json" in guide
+    assert "model_config_production_approval/1.2.0" in guide
+    assert "scientific_files_sha256" in guide
+    assert "requirements_operator_sha256" in guide
+    assert "baseline_run_001.csv" in guide
+
+
+def test_run_sheet_template_is_typed_deliberately_incomplete_and_separates_dispatch():
+    payload = json.loads(RUN_SHEET_TEMPLATE.read_text(encoding="utf-8"))
+    assert payload["schema"] == "collaborator_analysis_run_sheet/1.0.0"
+    assert payload["analysis_config_sha256"] == ""
+    assert payload["model"] is None
+    assert payload["p"] is None
+    assert payload["seeds"] == []
+    assert payload["scientific_approved_by"] == ""
+    assert payload["scientific_approved_utc"] == ""
+    assert payload["dispatch_authorized_by"] == ""
+    assert payload["dispatch_authorized_utc"] == ""
+    assert "deliberately incomplete" in OPERATOR_GUIDE.read_text(encoding="utf-8")
 
 
 def test_operator_copy_lives_outside_the_controlled_config_registry():
