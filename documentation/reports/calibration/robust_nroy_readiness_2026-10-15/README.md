@@ -2,20 +2,54 @@
 
 ## Verdict
 
-- **Code acceptance: RE-VERIFICATION REQUIRED FOR THIS REVISION.** The prior
-  fail-closed baseline passed an independent adversarial audit. The current
-  methods-contract corrections have focused no-engine coverage, but the final
-  integrated branch must repeat the guarded repository suite before retaining
-  the earlier code-acceptance verdict.
+- **Collaborator source-code handoff: COMPLETE.** Exact commit
+  `68112bba96402dbbf43c4456289f4384b9635cbe` (tree
+  `bcc902476f507d745765e9d9835e341651e70d21`) passed the final
+  mounted-evidence guarded suite, clean-bundle/clone verification, and an
+  independent adversarial audit. This is code acceptance for ordinary M0/M1
+  use and the fail-closed preparation machinery; it is not scientific
+  acceptance of the unfitted Option-B candidate.
 - **Production readiness: NOT READY.** The exact current plan hash is
   `d147ec6c0422c28e1c2c885bcef2a83bac26f7c0630acf94469128cbdf760f27`
   and validation reports 45 unsigned required decisions: 39 proposal-backed
-  and 6 budget/seed decisions that correctly remain evidence-dependent.
-- No identity gate, pilot, positive-p confirmation, or production simulation was
-  run. No historical result was resealed.
-- Prior-revision isolated no-engine suite: **2866 passed, 285 skipped, 0
-  failed, 0 errors, 0 warnings** in 461.29 seconds. This is retained as baseline
-  evidence, not mislabelled as verification of the current revision.
+  and 6 budget/seed decisions that correctly remain evidence-derived.
+- The exact Option-B preparation plan has SHA-256
+  `6ad3198a5e252e4835361be85ea343a15055ea30c3f1ee2895810792266eb806`.
+  Its validation exits 2 after constructing zero engines, starting zero
+  simulations, and writing zero files because its seed decisions are unsigned
+  and execution remains `PREPARATION_ONLY_NOT_AUTHORIZED`.
+- No identity gate, calibration, measured pilot, positive-p confirmation, or
+  production simulation was run. No historical result was resealed.
+
+## Final code-handoff evidence
+
+- Mounted-evidence command:
+  `.venv/bin/python -m pytest -p pytest_no_engine_guard -W error -q`.
+  Result: **3,174 passed, 288 skipped, 0 failed/errors**, 471.17 seconds,
+  exit 0.
+- Independent final audit: **ACCEPT** at `68112bb`; its focused acceptance set
+  passed **160 tests** without an engine.
+- Conservative config registry: **78 files**, `CONFIG_REGISTRY.csv` SHA-256
+  `e21c290072f88708356798725204d0ec5c6f0afed6629d6f89c4dcfdeaa994bc`.
+- Verified complete-history bundle:
+  `/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /hiv-prep-model-deliverables-20261015/hiv-prep-model-code-68112bb.bundle`,
+  11,117,987 bytes, SHA-256
+  `4a9708dba8946277eadf21ecaef9ac0cdcb9c4c7837b88df8050642e4b3bd371`.
+  `git bundle verify` passed.
+- Clean clone `/private/tmp/hiv-prep-handoff.Feb1Qm/repo`: exact commit, clean
+  status, strict `git fsck`, no tracked symlinks, `.venv`, `node_modules`, or
+  `outputs`; M0 and M1-at-p=0 validate-only both passed without constructing an
+  engine; registry check returned 78 OK; robust validation reproduced the exact
+  45-decision refusal.
+- Source-only full suite, with external evidence deliberately omitted:
+  **3,019 passed, 327 skipped, 39 failed, 77 errors** in 232.99 seconds. This
+  lane is not called green. The failures/errors require historical output
+  trees and external validation workbooks that are intentionally absent from
+  the code bundle; see `EXTERNAL_INPUT_RECONCILIATION.md`.
+- Environment lock hashes: `requirements.txt`
+  `3a7ba47591451816350c1e4fb81e6e0e60dcf800bbdbb971eb43df01f2feaa74`;
+  `requirements-test.txt`
+  `8bacaf9e55cd3c00dea363cc3fe4b3a0e752c8b81b67c91e75c6a6770da7a26f`.
 
 ## Package contents
 
@@ -24,7 +58,7 @@
   condition. This is the completeness index; a headline test result cannot
   override an open row.
 - `DECISION_REGISTER.csv`: all 45 decisions, split 39 proposal-backed / 6
-  evidence-dependent, with ranges,
+  evidence-derived, with ranges,
   dependencies, consequences, evidence needs, suggested owner role and status.
 - `EXTERNAL_INPUT_RECONCILIATION.md`: exact locations/hashes and path fixes.
 - `HISTORICAL_ARTIFACT_DISPOSITION.md`: old/current code-map hashes,
@@ -232,28 +266,38 @@ and proposal blocks are supplied. See
 
 ## Exact remaining approvals
 
-1. The owner selected backbone Option B. Recalibrate the prepared V13.22-on-
-   1980 stochastic M0/M1 candidate and independently review the resulting fit
-   before selecting or signing any production base. The current candidate is
-   explicitly not fitted, validated, or production eligible; code-route tests
-   do not replace calibration, identity, or scientific review.
-2. Review and sign all 45 owner-assigned decision rows when their dependent
-   evidence exists, then complete the separate strict sign-off block. A signed
-   plan still does not authorize compute.
-3. Review `seed_source_scope.json`, reconcile any remote,
+1. Review and authorize the exact Option-B scientific inputs and seed blocks.
+   The current preparation plan is mechanically valid but deliberately refuses
+   execution because the seeds are unsigned and its status is
+   `PREPARATION_ONLY_NOT_AUTHORIZED`.
+2. Review `seed_source_scope.json`, reconcile any remote,
    deleted, collaborator-held, binary, or otherwise excluded sources, resolve
    the inventory's ambiguous/unparseable references, and approve the complete
    seed-source scope. Only afterward supply candidate blocks for collision
    checking; this task does not choose or reserve them.
-4. Separately authorize the identity gate.
-5. Separately authorize the measured pilot, approve its machine profile, and
-   approve the priced budget derived from it.
-6. Approve candidate-selection rules and separately authorize the 20-seed
+3. Separately authorize Option-B preparation and then its paired
+   production-versus-harness identity smoke. Passing the smoke authorizes no
+   later stage.
+4. Before coupled search or resume, provide a FINAL measured benchmark and an
+   owner-approved pricing artifact that binds the exact worker/trajectory/wall
+   scale, pricing source, conservative cost ceiling, and strict local-or-Slurm
+   execution profile. The profile must match the live environment.
+5. Recalibrate the V13.22-on-1980 stochastic M0/M1 candidate, independently
+   review its fit, and select the exact fitted config/space hashes. The current
+   candidate remains unfitted and not production eligible.
+6. Only against that fitted scientific base, review and sign all 45 robust-NROY
+   decision rows when their dependent evidence exists, then complete the
+   separate strict sign-off block. A signed plan still does not authorize
+   compute.
+7. Separately authorize the robust M0/M1 identity gate.
+8. Separately authorize the robust measured pilot, approve its machine profile,
+   and approve the priced budget derived from it.
+9. Approve candidate-selection rules and separately authorize the 20-seed
    positive-p M1 confirmation.
-7. Review and approve the regenerated observed/B_i evidence, including underivable
+10. Review and approve the regenerated observed/B_i evidence, including underivable
     V_obs limitations and the declared 10% discrepancy assumption.
-8. Generate and review the final signed-plan `CONFIG_REGISTRY.md`, then require
+11. Generate and review the final signed-plan `CONFIG_REGISTRY.md`, then require
    zero-blocker validation of every exact signed prerequisite path and hash.
-9. After scientific acceptance, promote the canonical collaborator config with
+12. After scientific acceptance, promote the canonical collaborator config with
    its protected production-approval record.
-10. Separately authorize production dispatch.
+13. Separately authorize production dispatch.

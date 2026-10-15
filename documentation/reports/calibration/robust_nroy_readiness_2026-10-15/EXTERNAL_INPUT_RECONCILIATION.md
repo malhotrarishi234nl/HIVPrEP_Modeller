@@ -15,27 +15,54 @@ was copied over a current source.
 
 ## Verification
 
-In a `git clone --no-hardlinks` snapshot with the current dirty source overlaid:
+Final accepted commit:
+`68112bba96402dbbf43c4456289f4384b9635cbe`, tree
+`bcc902476f507d745765e9d9835e341651e70d21`.
+
+With the canonical sibling inputs and historical artifact mount available:
 
 ```text
-.venv/bin/python -m pytest -p pytest_no_engine_guard \
-  tests/test_lhs_calibration.py \
-  tests/test_validation_data_loader.py \
-  tests/test_orientation_seed_stage_distribution.py \
-  tests/test_non_msm_diagnosis_pipeline_audit.py -q
-
-60 passed, 14 skipped
+.venv/bin/python -m pytest -p pytest_no_engine_guard -W error -q
+3174 passed, 288 skipped, 0 failed/errors in 471.17s; exit 0
 ```
 
-The skips are the no-engine guard doing its job; no production or identity
-trajectory ran.
+No engine was constructed. This is the complete mounted-evidence guarded lane.
 
-The current target-register lane has two separate external prerequisites:
-`../data/raw/validation/DiseaseData.xlsx` and the ignored retained candidate
-listed above. Mount and hash-check both for the external-data lane. A
-source-only clone intentionally carries neither and reports explicit skips.
+The verified code bundle was restored to the clean source-only clone
+`/private/tmp/hiv-prep-handoff.Feb1Qm/repo`. It reproduced the exact commit,
+had clean status, passed strict `git fsck`, and contained no tracked symlinks,
+`.venv`, `node_modules`, or `outputs`. M0 and M1-at-p=0 validate-only passed
+without constructing an engine, the config registry reported 78 OK, and the
+robust validator reproduced the exact 45-decision refusal.
 
-The final guarded repository-wide result with all canonical sibling inputs
-available was `2589 passed, 29 failed, 284 skipped` with no errors. The 29
-failures are the stale historical lineages itemized in
-`HISTORICAL_ARTIFACT_DISPOSITION.md`.
+The source-only full suite is deliberately reported separately:
+
+```text
+3019 passed, 327 skipped, 39 failed, 77 errors in 232.99s
+```
+
+It is **not** a green lane. The omitted evidence includes, at minimum:
+
+- `../data/raw/validation/DiseaseData.xlsx`;
+- `outputs/calibration/rivm_aids_vintage_audit_20260916/`
+  `candidate_newest_vetted_20260916.json`;
+- historical coupled smoke and calibration trees such as
+  `outputs/calibration/coupled_20260918_smoke/` and
+  `outputs/calibration/hm_focused_diagnoses_then_aids_20260916/`;
+- `outputs/abstract_evidence_20260923/` and the historical matched-deployment
+  calibration evidence;
+- retained HTA audit trees under `outputs/hta_results/`; and
+- prepared historical suite artifacts under `outputs/suites/`.
+
+These are evidence/data dependencies, not source files to copy into Git. Mount
+and hash-check the exact sources before interpreting their dependent tests.
+The collaborator source-code handoff is complete because ordinary M0/M1 use is
+source-only after environment installation; claims about historical or
+external-data evidence remain conditional on the corresponding mount.
+
+Environment lock hashes used for the handoff are:
+
+- `requirements.txt`:
+  `3a7ba47591451816350c1e4fb81e6e0e60dcf800bbdbb971eb43df01f2feaa74`;
+- `requirements-test.txt`:
+  `8bacaf9e55cd3c00dea363cc3fe4b3a0e752c8b81b67c91e75c6a6770da7a26f`.

@@ -2,33 +2,55 @@
 
 ## Audit verdict
 
-The repository is not handoff-ready. Its fail-closed scientific provenance is
-strong, but a new researcher cannot currently clone the repository, determine
-the current workflow, reconstruct its required inputs, or run one clearly
-defined verification gate.
+The collaborator **source-code handoff is complete** at commit
+`68112bba96402dbbf43c4456289f4384b9635cbe`. A new researcher can restore the
+complete Git history from the verified bundle, identify the current ordinary
+M0/M1 workflow, install hash-recorded requirements, and run the documented
+validation-only and guarded test lanes. Scientific production is still **not
+ready**: the Option-B candidate is unfitted, its preparation seeds are
+unsigned, and the robust plan retains 45 unsigned decisions plus separate
+sign-off.
 
-This plan is non-destructive. No file should be moved or deleted until the
-current dirty state is preserved and the relevant references have been
-enumerated.
+This plan remains non-destructive. The code bundle closes source delivery; it
+does not authorize movement or deletion of the external scientific artifact
+vault, raw data, or literature library.
 
 ### 2026-10-15 implementation update
 
-The code-facing handoff blockers identified below are substantially closed:
-the root README and documentation index are current; the machine-local
-dependency symlink is removed; external inputs have a path/hash manifest; test
-lanes are documented; all 76 config files are in a drift-checked conservative
-registry; and all 132 in-scope output directories have preservation-first
-terminal catalog dispositions with none labeled current validation. The
-guarded suite was green on the prior audited revision, but the final integrated
-revision must repeat that suite, a documentation-consistency audit, and a
-fresh source-only clone/bundle verification before the repository code-handoff
-gate can close. The flat Python-module layout is retained deliberately because
-paths participate in imports and scientific provenance.
+The code-facing handoff blockers identified below are closed. The root README
+and documentation index are current; the machine-local dependency symlink is
+removed; external inputs have a path/hash manifest; test lanes are documented;
+all 78 config files are in a drift-checked conservative registry with
+`CONFIG_REGISTRY.csv` SHA-256
+`e21c290072f88708356798725204d0ec5c6f0afed6629d6f89c4dcfdeaa994bc`;
+and all 132 in-scope output directories have preservation-first terminal
+catalog dispositions with none labeled current validation. The flat
+Python-module layout remains deliberate because paths participate in imports
+and scientific provenance.
 
-Remaining cleanup is not safe to automate as part of this pass: raw-data and
-literature redistribution/licensing, the external artifact-vault location, and
-deletion of verified duplicate backup trees still require explicit storage and
-retention decisions. These do not unblock scientific production; the larger
+Final mounted-evidence verification at tree
+`bcc902476f507d745765e9d9835e341651e70d21` passed 3,174 tests with 288 skips
+and no failures/errors in 471.17 seconds. Independent audit accepted the exact
+commit. The complete-history bundle
+`/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /hiv-prep-model-deliverables-20261015/hiv-prep-model-code-68112bb.bundle`
+is 11,117,987 bytes with SHA-256
+`4a9708dba8946277eadf21ecaef9ac0cdcb9c4c7837b88df8050642e4b3bd371`;
+`git bundle verify` passed. Its clean clone had exact commit and clean status,
+passed strict `git fsck`, contained no tracked symlinks, `.venv`,
+`node_modules`, or `outputs`, and passed the M0 and M1-at-p=0 validate-only
+routes without constructing an engine.
+
+The clean clone's source-only full suite is intentionally not green: 3,019
+passed, 327 skipped, 39 failed and 77 errored because the bundle omits external
+workbooks and historical artifact trees. Those dependencies are listed in
+`EXTERNAL_INPUT_RECONCILIATION.md`; the mounted-evidence result, not the
+source-only dependency diagnostic, is the complete repository evidence lane.
+
+Remaining artifact cleanup is not safe to automate as part of this pass:
+raw-data and literature redistribution/licensing, the external artifact-vault
+location, and deletion of verified duplicate backup trees still require
+explicit storage and retention decisions. These do not unblock scientific
+production; the larger
 blockers are the new Option B calibration and the signed evidence gates.
 
 The conference backup has now been prepared for non-destructive migration. Its
@@ -47,7 +69,9 @@ The numbered inventory below is preserved as the audit baseline, not as a
 claim that every item remains open. The implementation update above and the
 current gated checklist control present status. Items involving the README,
 machine-local symlink, test lanes, and config/artifact inventories have been
-remediated; final integrated-suite and clean-bundle verification remain open.
+remediated; final integrated-suite and clean-bundle verification are now also
+complete. Storage, licensing, and deletion decisions remain open and are not
+prerequisites for the source-code handoff.
 
 1. The active branch is 20 commits ahead of `main`, with 40 modified tracked
    files and 24 untracked files, and no configured Git remote.
@@ -70,8 +94,9 @@ remediated; final integrated-suite and clean-bundle verification remain open.
 
 ## Preservation-first sequence
 
-1. Preserve the current source state in thematic commits and a verified Git
-   bundle or remote before cleanup.
+1. **Completed for source:** preserve the accepted commit in the verified
+   complete-history Git bundle recorded above. Scientific outputs remain in
+   their separate artifact-vault workflow.
 2. Add an artifact catalog and retention policy before moving outputs.
 3. Replace the README with a short current start-here guide and label the old
    workflow historical.
@@ -95,8 +120,10 @@ remediated; final integrated-suite and clean-bundle verification remain open.
     archive consolidation.
 11. Move large immutable bundles to a stable artifact vault only after archive
     and restore verification and reference migration.
-12. Re-run the portable gate in a fresh no-hardlink clone without `.venv`,
-    outputs, or machine-local symlinks.
+12. **Completed for source:** the fresh bundle clone had no tracked `.venv`,
+    `node_modules`, `outputs`, or symlinks and passed its source/operator gates.
+    Its full source-only suite correctly exposes omitted evidence dependencies;
+    it is not represented as an all-green mounted-artifact lane.
 
 Do not mix wholesale Python module/package movement with this cleanup. Module
 paths participate in imports and provenance hashes. Any later `src/` refactor

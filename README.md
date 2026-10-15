@@ -5,16 +5,21 @@ Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
 
 ## Current status
 
-- **Code status:** final integrated revision undergoing guarded full-suite and
-  clean-clone handoff re-verification. The earlier robust-NROY baseline passed
-  isolated guarded review; that result is not being reused as proof for newer
-  collaborator, methods-contract, and vault-portability changes.
+- **Collaborator source-code handoff:** **COMPLETE** at commit
+  `68112bba96402dbbf43c4456289f4384b9635cbe` (tree
+  `bcc902476f507d745765e9d9835e341651e70d21`). The mounted-evidence guarded
+  suite passed 3,174 tests with 288 skips and no failures or errors; an
+  independent adversarial audit accepted the exact commit; and the verified
+  source bundle reproduced the commit in a clean clone. This accepts the code
+  and ordinary M0/M1 operator surface, not a fitted production model.
 - **Scientific production status:** **not yet production-ready**. Do not launch
   production calibration, identity, pilot, M1 confirmation, PSA, or policy
   runs without the explicit gate described in the current readiness package.
-- **Current workstream:** shared M0/M1 stochastic config, robust-NROY methods
-  corrections, signed inputs, seed audit, measured pilot, and collaborator
-  handoff cleanup.
+- **Next scientific sequence:** authorize the exact Option-B inputs, seed
+  blocks, preparation and identity smoke; run and review the recalibration;
+  select the fitted configuration; then finalize the 45 robust-NROY decisions.
+  Search or resume additionally requires a measured benchmark, current pricing
+  approval, and a live-matched execution profile.
 - **Historical results:** preserved for their recorded code snapshots. They are
   not automatically current-code evidence.
 
@@ -34,12 +39,14 @@ document is not current authority unless the documentation index says so.
 
 ## Intended collaborator use
 
-Collaborators are research operators, not code maintainers. `run_model.py`
-now provides the prepared parameter-focused M0/M1 route without Python edits;
+Collaborators are research operators, not code maintainers. The source-code
+handoff is complete: `run_model.py` provides the tested parameter-focused
+M0/M1 route without Python edits;
 the [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
 gives the ordinary commands and protected-field boundary. This is a tested
-code interface, not production authorization: the shared config is unsigned
-and the identity, pilot, scientific-review, and dispatch gates remain open.
+and clean-clone-verified code interface, not production authorization: the
+shared config is unsigned and the identity, pilot, scientific-review, and
+dispatch gates remain open.
 Real runs require an explicit seed and a new output directory; the runner saves
 the exact effective config and a SHA-bound runtime/code reproducibility
 manifest alongside the results, and it refuses to mark a run complete unless
@@ -68,15 +75,18 @@ authorization to spend compute.
 
 The production sequence is fail-closed:
 
-1. review and sign the complete plan;
-2. freeze the stochastic M0/M1 config and acceptance inputs;
-3. prove seed disjointness;
-4. separately authorize and pass the M0/M1 identity gate;
-5. separately authorize and measure a representative pilot;
-6. price and approve the full design;
-7. separately authorize positive-p M1 search and confirmation;
-8. obtain zero-blocker validation and independent final review;
-9. separately authorize production dispatch.
+1. review and authorize the exact Option-B inputs and disjoint seed blocks;
+2. separately authorize preparation and its paired identity smoke;
+3. bind a measured benchmark, current pricing and the live execution profile
+   before coupled search or resume;
+4. recalibrate Option B, independently review fit, and select the fitted config;
+5. finalize the 45 robust-NROY decisions against that scientific base and
+   complete the separate strict sign-off;
+6. separately authorize and pass the robust M0/M1 identity gate;
+7. separately authorize the measured pilot and approve the full priced design;
+8. separately authorize positive-p M1 search and confirmation;
+9. obtain zero-blocker validation and independent final scientific review;
+10. separately authorize production dispatch.
 
 See the [gated checklist](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/GATED_EXECUTION_CHECKLIST.md).
 
@@ -141,6 +151,15 @@ lanes still require their documented hash-pinned sibling inputs. Their
 redistribution decisions remain unresolved, so do not copy or redistribute
 those external inputs merely to set up an ordinary model operator.
 
+This distinction is visible in testing. With the canonical external workbooks
+and historical artifact mount available, the final guarded suite passed. In
+the clean source-only clone it reported 3,019 passed, 327 skipped, 39 failed,
+and 77 errors: those failures/errors require omitted evidence such as
+`DiseaseData.xlsx`, the retained RIVM target candidate, and historical
+calibration, smoke, abstract-evidence, HTA-audit, and prepared-suite output
+trees. That lane is therefore an honest dependency diagnostic, not a green
+repository-wide evidence test and not a blocker for ordinary source-code use.
+
 ## Testing
 
 No-engine guarded tests patch real `SimulationEngineV3` construction to skip,
@@ -172,6 +191,22 @@ python3.11 -m venv .venv-test
 .venv-test/bin/python -m pytest -p pytest_no_engine_guard -W error -q
 ```
 
+Final handoff evidence for commit `68112bba96402dbbf43c4456289f4384b9635cbe`:
+
+- mounted-evidence guarded suite: **3,174 passed, 288 skipped, 0 failed/errors**
+  in 471.17 seconds, exit 0;
+- config registry: **78 files**, SHA-256
+  `e21c290072f88708356798725204d0ec5c6f0afed6629d6f89c4dcfdeaa994bc`;
+- clean bundle clone: exact commit, clean status, strict `git fsck`, no tracked
+  symlinks, `.venv`, `node_modules`, or `outputs`, and both M0 and M1-at-p=0
+  validation-only routes passed without constructing an engine;
+- source-only guarded suite: **3,019 passed, 327 skipped, 39 failed, 77
+  errors** because external evidence was deliberately omitted;
+- dependency locks: `requirements.txt` SHA-256
+  `3a7ba47591451816350c1e4fb81e6e0e60dcf800bbdbb971eb43df01f2feaa74`
+  and `requirements-test.txt` SHA-256
+  `8bacaf9e55cd3c00dea363cc3fe4b3a0e752c8b81b67c91e75c6a6770da7a26f`.
+
 See [documentation/guides/TESTING.md](documentation/guides/TESTING.md) before
 interpreting skipped tests or running artifact/engine lanes.
 
@@ -196,12 +231,28 @@ the CLI's structural probability check `[0,1]` is not the unsigned robust-NROY
 search-range proposal `[0,0.5]`; only a reviewed analysis contract may choose a
 scientific range.
 
+For production work, do not sign the robust plan merely because the candidate
+validates mechanically. First authorize the hash-bound Option-B preparation
+plan and its seed evidence, run preparation and the paired identity smoke,
+review the recalibration, and select the resulting fitted config. Only then
+resolve the final 45 robust-NROY decisions against that fitted scientific
+base. A coupled search or resume also refuses to start without the exact
+measured benchmark, pricing source/approval, conservative cost ceiling, and
+local-or-Slurm execution profile matching the live environment.
+
 ## Results and artifacts
 
 `outputs/` is ignored and may contain historical, incomplete, superseded, or
 current artifacts. Path presence is not evidence status. Use the artifact
 catalog and each artifact's manifest/checksums. Never reseal an old artifact
 against current code.
+
+The verified complete-history code bundle is
+`../hiv-prep-model-deliverables-20261015/hiv-prep-model-code-68112bb.bundle`
+(11,117,987 bytes; SHA-256
+`4a9708dba8946277eadf21ecaef9ac0cdcb9c4c7837b88df8050642e4b3bd371`).
+`git bundle verify` passed. The bundle contains source history, not the ignored
+scientific artifact vault or external workbooks.
 
 ## Citation and licensing
 

@@ -1,19 +1,20 @@
 # Robust-NROY rejection remediation — 2026-10-14
 
-> **Current-authority notice (2026-10-15).** This report preserves the
-> remediation evidence and transcripts for the revision audited on
+> **Superseded-current-authority notice (2026-10-15).** This report preserves
+> the remediation evidence and transcripts for revisions audited on and after
 > 2026-10-14. It is not the current readiness verdict. The authoritative
-> package is
-> `robust_nroy_readiness_2026-10-15/README.md`. The current unsigned plan has
-> SHA-256
-> `71152198b3c9d5173a629b6babf77948553a6c7ae188cb12759c5ca76596ad55`
-> and 45 unsigned decisions (39 proposal-backed and 6 evidence-dependent),
-> plus the separate signature gate. Code acceptance for the integrated
-> revision requires a fresh guarded full-suite and clean-clone handoff audit;
-> production readiness remains **NOT READY**. Later uses of “current,” the
-> 43-decision count, plan hash `e3835812...`, and `Code acceptance: ACCEPT`
-> below are historical claims about the audited revision, not claims about the
-> current tree.
+> package is `robust_nroy_readiness_2026-10-15/README.md`. Collaborator
+> source-code handoff is now complete at commit
+> `68112bba96402dbbf43c4456289f4384b9635cbe` after a 3,174-passed / 288-skipped
+> mounted-evidence guarded suite, clean-bundle/clone verification, and
+> independent ACCEPT audit. Scientific production remains **NOT READY**. The
+> current unsigned robust plan has SHA-256
+> `d147ec6c0422c28e1c2c885bcef2a83bac26f7c0630acf94469128cbdf760f27`
+> and 45 unsigned decisions (39 proposal-backed and 6 evidence-derived), plus
+> the separate signature gate. Later uses of “current,” earlier plan hashes,
+> the 43-decision count, and historical code-acceptance totals below apply only
+> to their recorded revision. They are preserved as transcripts and must not be
+> substituted for the final handoff evidence or for scientific acceptance.
 
 ## Verdict
 

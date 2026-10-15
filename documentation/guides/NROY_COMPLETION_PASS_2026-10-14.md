@@ -1,13 +1,19 @@
 # Robust-NROY completion pass — requirement, code and test matrix
 
-> **Historical evidence notice (2026-10-15).** This matrix records the
+> **Superseded-current-authority notice (2026-10-15).** This matrix records the
 > 2026-10-14 implementation pass and remains useful as requirement-to-test
 > provenance, but it is not current readiness authority. The later package at
 > `../reports/calibration/robust_nroy_readiness_2026-10-15/README.md`
-> supersedes its decision counts, plan hash, and acceptance status. The current
-> plan has 45 unsigned decisions (39 proposal-backed and 6
-> evidence-dependent), and the final integrated revision still requires the
-> guarded full-suite and clean-clone handoff audit.
+> supersedes its decision counts, plan hash, acceptance status, and suite
+> totals. Collaborator source-code handoff is complete at commit
+> `68112bba96402dbbf43c4456289f4384b9635cbe` after the final mounted-evidence
+> guarded suite passed 3,174 tests with 288 skips and no failures/errors, the
+> bundle/clean-clone checks passed, and an independent audit accepted the exact
+> commit. Scientific production remains **NOT READY**: plan
+> `d147ec6c0422c28e1c2c885bcef2a83bac26f7c0630acf94469128cbdf760f27`
+> still has 45 unsigned decisions (39 proposal-backed and 6 evidence-derived)
+> plus separate sign-off. All older “current” claims below are preserved
+> historical transcripts, not evidence for the accepted commit.
 
 **2026-10-14.** Branch `production-lockin-nroy`.
 

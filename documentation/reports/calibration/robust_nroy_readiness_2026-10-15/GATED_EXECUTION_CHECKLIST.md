@@ -21,20 +21,25 @@ engine-running gate.
   the production adapter sets the model switch explicitly and its no-engine
   config-route tests pass. This is code acceptance only; the identity and pilot
   gates below remain open.
-- [ ] All 45 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
+- [x] Repository code-handoff gate passed at commit
+  `68112bba96402dbbf43c4456289f4384b9635cbe`: mounted-evidence guarded suite
+  3,174 passed / 288 skipped / 0 failed or errors; independent audit ACCEPT;
+  config registry 78 OK; complete-history bundle verified; and a clean clone
+  reproduced the exact commit, clean status, strict `git fsck`, and M0/M1-at-p=0
+  validate-only routes without constructing an engine. The source-only full
+  suite is separately disclosed as 3,019 passed / 327 skipped / 39 failed / 77
+  errors because external workbooks and historical outputs are not bundled.
+  Closing this gate is not scientific production acceptance.
 - [x] The owner selected backbone Option B on 2026-10-15. A hash-bound,
   machine-diffed V13.22-on-1980 stochastic M0/M1 **calibration candidate** now
   records that direction without signing the plan or claiming fit validity;
   see `PRODUCTION_BACKBONE_RECONCILIATION.md`.
-- [ ] Recalibrate the Option B 1980 candidate, review the resulting fit and
-  exact config/space hashes, then select a production proposal. The current
-  candidate is `REQUIRES_RECALIBRATION` and cannot itself close this gate.
-- [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
+- [x] External inputs are located and stale path assumptions corrected; the
+  full legacy backlog edition remains an explicit documentation-owner decision.
 - [x] Historical artifacts have preservation-first terminal dispositions;
-  current claims exclude every pre-Option-B result unless it is explicitly
+  current claims exclude every pre-Option-B result unless explicitly
   revalidated or rerun. All 132 catalog rows are classified and none is marked
   current validated.
-- [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.
 - [x] A read-only deterministic `robust_nroy_seed_audit/1.3.0` scanner,
   expanded all-tracked-file source-scope manifest, strict reviewed-resolution
   schema/template, and preceding incomplete inventory artifact exist; no seed
@@ -43,9 +48,29 @@ engine-running gate.
   is present; the committed v1.0 artifact remains historical until then.
 - [ ] The seed-source scope is owner-approved as exhaustive, all ambiguous and
   unparseable references are resolved, explicit candidate discovery,
-  confirmation, and proposal blocks are supplied, and the audit proves no
-  internal or prior-source overlap.
-- [ ] Identity-gate run separately authorized, executed through the production route, and passed.
+  confirmation, smoke and proposal blocks are supplied, and the audit proves
+  no internal or prior-source overlap.
+- [ ] Authorize the exact Option-B inputs and disjoint seed blocks. Plan
+  `6ad3198a5e252e4835361be85ea343a15055ea30c3f1ee2895810792266eb806`
+  currently exits validation 2 with zero engines/simulations/writes because its
+  seeds are unsigned and execution is `PREPARATION_ONLY_NOT_AUTHORIZED`.
+- [ ] Issue separate exact-hash grants for Option-B preparation and then its
+  paired production-versus-harness identity smoke. Neither grant authorizes a
+  coupled search.
+- [ ] Before Option-B search or resume, approve the exact FINAL measured
+  benchmark, worker/trajectory/wall specification, hash-bound pricing source,
+  conservative ceiling including the five-replicate in-flight tail, and
+  hash-bound execution profile that matches the live local or Slurm runtime.
+- [ ] Recalibrate the Option B 1980 candidate, review the resulting fit and
+  exact config/space hashes, then select a production proposal. The current
+  candidate is `REQUIRES_RECALIBRATION` and cannot itself close this gate.
+- [ ] Against the selected fitted config and space, review and sign all 45
+  robust-NROY decisions; the decision register has no `UNSIGNED` rows and the
+  separate strict sign-off is complete. Signing does not authorize compute.
+- [ ] `CONFIG_REGISTRY.md` generated from the exact signed
+  plan/config/space/targets/runtime and independently reviewed.
+- [ ] Identity-gate run separately authorized, executed through the production
+  route, and passed.
 - [ ] Before any timing starts, a scientific reviewer authorizes a hash-bound
   `robust_nroy_pilot_vector_selection_protocol/1.0.0` with the exact M0/M1
   vectors, rationale, signer/time, and current plan/code/config/space bindings.
@@ -68,22 +93,17 @@ engine-running gate.
   rows exactly match the signed per-stage caps, and the validator recomputes
   each row and the separately priced entire robust-NROY workflow before human
   approval.
-- [ ] Positive-p M1 anchors confirmed on the reserved 20-seed block under separate authorization.
-- [ ] Observed values, component variance budget and B_i regenerated from the signed plan; hashes frozen; discrepancy appears exactly once.
-- [ ] Repository code-handoff gate passes. The README/index, collaborator
-  contract, operator environment, config/external-input registries, portable
-  test lane, and complete artifact catalog are prepared, but this checkbox may
-  be closed only after the final integrated revision passes the guarded full
-  suite, documentation-consistency audit, and fresh source-only clone/bundle
-  verification. Mounted raw/literature/output lanes remain separate from a
-  source-only clone. Even after closure, this gate is not scientific
-  production acceptance.
+- [ ] Positive-p M1 anchors confirmed on the reserved 20-seed block under
+  separate authorization.
+- [ ] Observed values, component variance budget and B_i regenerated from the
+  signed plan; hashes frozen; discrepancy appears exactly once.
 - [ ] `.venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan>` returns zero blockers.
 - [ ] Only then request a new, separate authorization for production dispatch.
 
-Current stopping point: the five scientific implementation gates and the
-Option B direction choice are closed, while the repository code-handoff gate
-is undergoing final re-verification. The calibration candidate is not fitted,
-the design values remain unsigned, no fitted production proposal is selected,
-and later scientific/evidence gates are open. No engine gate may run merely
-from this preparation work.
+Current stopping point: the collaborator source-code handoff and the Option-B
+direction choice are closed. Next, authorize the exact Option-B inputs, seeds,
+preparation and smoke; provide the measured benchmark/pricing/live-profile
+bundle before search; review the calibration; select the fitted config; and
+only then finalize the 45 robust decisions. The current candidate is not
+fitted, the design values remain unsigned, and no engine gate may run merely
+from code acceptance.

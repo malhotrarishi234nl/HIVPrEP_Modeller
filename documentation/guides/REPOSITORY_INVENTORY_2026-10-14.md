@@ -1,5 +1,15 @@
 # Repository inventory and production entry points — 2026-10-14
 
+> **Current-handoff notice (2026-10-15).** Sections 1–8 preserve the bounded
+> 2026-10-14 inventory and its then-current measurements. The collaborator
+> source-code handoff is now complete at commit
+> `68112bba96402dbbf43c4456289f4384b9635cbe`; section 9 records the final
+> evidence. Scientific production remains **NOT READY** and the readiness
+> package at
+> `../reports/calibration/robust_nroy_readiness_2026-10-15/README.md` is the
+> current authority. Older counts, paths, and status statements below are kept
+> as provenance, not silently rewritten.
+
 Produced by the bounded repository-hygiene pass required by
 `documentation/reports/calibration/PRODUCTION_LOCKIN_SPEC_2026-10-13.md` section 4.
 
@@ -379,3 +389,42 @@ no `stage_structured_diagnosis` block, so the profile loads disabled and
 `_step_diagnosis` never takes this branch. It becomes active only for M1, and
 at exact `p=0` with `routine_hazard_scale=1.0` the identity dispatch sends M1
 back to the legacy path — so even M1 reaches this code only for `p > 0`.
+
+## 9. Final collaborator source-code handoff — 2026-10-15
+
+The accepted source identity is commit
+`68112bba96402dbbf43c4456289f4384b9635cbe`, tree
+`bcc902476f507d745765e9d9835e341651e70d21`.
+
+- Mounted-evidence guarded suite: 3,174 passed, 288 skipped, zero failures or
+  errors in 471.17 seconds, exit 0.
+- Independent adversarial audit: ACCEPT; 160 focused checks passed.
+- Conservative config registry: 78 files, SHA-256
+  `e21c290072f88708356798725204d0ec5c6f0afed6629d6f89c4dcfdeaa994bc`.
+- Complete-history bundle:
+  `/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /hiv-prep-model-deliverables-20261015/hiv-prep-model-code-68112bb.bundle`,
+  11,117,987 bytes, SHA-256
+  `4a9708dba8946277eadf21ecaef9ac0cdcb9c4c7837b88df8050642e4b3bd371`;
+  `git bundle verify` passed.
+- Clean clone `/private/tmp/hiv-prep-handoff.Feb1Qm/repo`: exact commit, clean
+  status, strict `git fsck`, no tracked symlinks, `.venv`, `node_modules`, or
+  `outputs`; M0 and M1-at-p=0 validation-only passed without constructing an
+  engine; registry 78 OK; robust validation reproduced the 45-decision
+  fail-closed result.
+- Source-only full suite: 3,019 passed, 327 skipped, 39 failed and 77 errors in
+  232.99 seconds. This result is not called green: those tests require omitted
+  external workbooks and historical output artifacts documented in
+  `EXTERNAL_INPUT_RECONCILIATION.md`.
+- Dependency hashes: `requirements.txt`
+  `3a7ba47591451816350c1e4fb81e6e0e60dcf800bbdbb971eb43df01f2feaa74`;
+  `requirements-test.txt`
+  `8bacaf9e55cd3c00dea363cc3fe4b3a0e752c8b81b67c91e75c6a6770da7a26f`.
+
+The bundle is a source-code handoff, not an artifact-vault export. It
+intentionally excludes ignored `outputs/`, external workbooks, raw data and
+the literature library. Their storage, licensing and retention decisions
+remain separate. For scientific production, the required order is: authorize
+the exact Option-B inputs, seed blocks, preparation and smoke; provide the
+measured benchmark, pricing and live execution profile before search; review
+the recalibration and select the fitted config; then finalize the 45 robust
+decisions and later evidence/dispatch gates.
