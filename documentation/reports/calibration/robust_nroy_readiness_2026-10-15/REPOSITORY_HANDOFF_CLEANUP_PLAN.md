@@ -11,16 +11,19 @@ This plan is non-destructive. No file should be moved or deleted until the
 current dirty state is preserved and the relevant references have been
 enumerated.
 
-### 2026-10-15 completion update
+### 2026-10-15 implementation update
 
-The code-facing handoff blockers identified below are now closed: the root
-README and documentation index are current; the machine-local dependency
-symlink is removed; external inputs have a path/hash manifest; test lanes are
-documented; the guarded repository suite is green; all 75 config files are in a
-drift-checked conservative registry; and all 132 in-scope output directories
-have preservation-first terminal catalog dispositions with none labeled
-current validation. The flat Python-module layout is retained deliberately
-because paths participate in imports and scientific provenance.
+The code-facing handoff blockers identified below are substantially closed:
+the root README and documentation index are current; the machine-local
+dependency symlink is removed; external inputs have a path/hash manifest; test
+lanes are documented; all 76 config files are in a drift-checked conservative
+registry; and all 132 in-scope output directories have preservation-first
+terminal catalog dispositions with none labeled current validation. The
+guarded suite was green on the prior audited revision, but the final integrated
+revision must repeat that suite, a documentation-consistency audit, and a
+fresh source-only clone/bundle verification before the repository code-handoff
+gate can close. The flat Python-module layout is retained deliberately because
+paths participate in imports and scientific provenance.
 
 Remaining cleanup is not safe to automate as part of this pass: raw-data and
 literature redistribution/licensing, the external artifact-vault location, and

@@ -1,5 +1,14 @@
 # Robust-NROY completion pass — requirement, code and test matrix
 
+> **Historical evidence notice (2026-10-15).** This matrix records the
+> 2026-10-14 implementation pass and remains useful as requirement-to-test
+> provenance, but it is not current readiness authority. The later package at
+> `../reports/calibration/robust_nroy_readiness_2026-10-15/README.md`
+> supersedes its decision counts, plan hash, and acceptance status. The current
+> plan has 45 unsigned decisions (39 proposal-backed and 6
+> evidence-dependent), and the final integrated revision still requires the
+> guarded full-suite and clean-clone handoff audit.
+
 **2026-10-14.** Branch `production-lockin-nroy`.
 
 **No production simulation was run.** No calibration, robust-NROY, scenario or

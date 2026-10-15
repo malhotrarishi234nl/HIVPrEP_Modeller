@@ -48,16 +48,20 @@ engine-running gate.
   declaring per-stage ledger caps and a separately priced entire workflow, and approved.
 - [ ] Positive-p M1 anchors confirmed on the reserved 20-seed block under separate authorization.
 - [ ] Observed values, component variance budget and B_i regenerated from the signed plan; hashes frozen; discrepancy appears exactly once.
-- [x] Repository code-handoff gate passes: current README/index, config and external-
-  input registries, portable test lane, and artifact catalog contain no
-  unclassified current dependency. Mounted raw/literature/output lanes remain
-  separate from a source-only clone, and this code-handoff result is not
-  scientific production acceptance.
+- [ ] Repository code-handoff gate passes. The README/index, collaborator
+  contract, operator environment, config/external-input registries, portable
+  test lane, and complete artifact catalog are prepared, but this checkbox may
+  be closed only after the final integrated revision passes the guarded full
+  suite, documentation-consistency audit, and fresh source-only clone/bundle
+  verification. Mounted raw/literature/output lanes remain separate from a
+  source-only clone. Even after closure, this gate is not scientific
+  production acceptance.
 - [ ] `.venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan>` returns zero blockers.
 - [ ] Only then request a new, separate authorization for production dispatch.
 
-Current stopping point: the five implementation gates and the Option B
-direction choice are closed, but the calibration candidate is not fitted, the
-design values remain unsigned, no production backbone is selected, and later
-scientific/evidence gates are open. No engine gate may run merely from this
-preparation work.
+Current stopping point: the five scientific implementation gates and the
+Option B direction choice are closed, while the repository code-handoff gate
+is undergoing final re-verification. The calibration candidate is not fitted,
+the design values remain unsigned, no fitted production proposal is selected,
+and later scientific/evidence gates are open. No engine gate may run merely
+from this preparation work.

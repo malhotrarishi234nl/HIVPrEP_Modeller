@@ -1,5 +1,20 @@
 # Robust-NROY rejection remediation — 2026-10-14
 
+> **Current-authority notice (2026-10-15).** This report preserves the
+> remediation evidence and transcripts for the revision audited on
+> 2026-10-14. It is not the current readiness verdict. The authoritative
+> package is
+> `robust_nroy_readiness_2026-10-15/README.md`. The current unsigned plan has
+> SHA-256
+> `532b1500096b2835e2d24a5b3d0c66db1f07e6e5cde823fba197fb0949658db3`
+> and 45 unsigned decisions (39 proposal-backed and 6 evidence-dependent),
+> plus the separate signature gate. Code acceptance for the integrated
+> revision requires a fresh guarded full-suite and clean-clone handoff audit;
+> production readiness remains **NOT READY**. Later uses of “current,” the
+> 43-decision count, plan hash `e3835812...`, and `Code acceptance: ACCEPT`
+> below are historical claims about the audited revision, not claims about the
+> current tree.
+
 ## Verdict
 
 - **Code acceptance:** **ACCEPT** after independent third-pass reconstruction,
