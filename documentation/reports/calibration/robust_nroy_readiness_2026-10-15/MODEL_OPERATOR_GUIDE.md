@@ -25,7 +25,11 @@ Edit only existing scientific parameter `value` payloads in
 `configs/my_analysis_config.json` and record the purpose and source of every
 change. Do not add, remove, or rename keys or list entries, and do not edit
 notes, sources, tiers, bounds, distribution metadata, or provenance. The model
-remains runnable without any calibration step.
+remains runnable without any calibration step. When a parameter object declares
+numeric `bounds`, `range`, `min`/`max`, or `minimum`/`maximum`, an edited value
+must remain inside that declared inclusive interval. The CLI does not invent a
+range where the config declares none; absence of a range is not scientific
+approval for an arbitrary value.
 
 ## Validate without running the engine
 
@@ -50,6 +54,7 @@ probability:
 ```
 
 These commands do not construct the simulation engine.
+They may omit `--seed` because no stochastic trajectory is created.
 
 The CLI checks that `p` is a mathematical probability in `[0,1]`. That is a
 structural check, not approval of a scientific range. The robust-NROY plan
@@ -59,7 +64,8 @@ as scientific acceptance.
 
 ## Run after the analysis is authorized
 
-Choose a new, analysis-specific output directory:
+Choose an explicit seed and a new, analysis-specific output directory. A real
+run always requires `--seed`; the CLI never falls back to the saved config seed.
 
 ```bash
 .venv/bin/python run_model.py \
@@ -80,14 +86,33 @@ For M1:
   --output-dir outputs/collaborator_runs/my_analysis_m1_p020_seed42001
 ```
 
+Before importing the engine, the runner creates two files in the new output
+directory:
+
+- `effective_config.json`: the exact routed runtime config, including explicit
+  M0/M1 choice, M1 `p` when applicable, and output route;
+- `run_reproducibility_manifest.json`: input-config path and SHA-256,
+  effective-config path and SHA-256, model, `p`, explicit seed, output path,
+  Python/dependency/platform identity, Git identity, and hashes of the direct
+  model implementation files.
+
+The manifest starts as `PREPARED`, becomes `COMPLETE` only after the run
+returns successfully, and becomes `FAILED` with the exception type if the
+engine raises. Do not relabel a `PREPARED` or `FAILED` directory as a completed
+result. The output-directory non-overwrite rule protects these sidecars along
+with the scientific outputs.
+
 ## Editable and protected inputs
 
 Ordinary analysis inputs may be changed in a copied config when the change is
 documented and scientifically justified. Examples include existing population,
 transmission, progression, intervention, and costing parameter `value`
 payloads. The validator preserves their object/list shape and scalar JSON type.
-The seed, model choice, M1 `p`, and output directory must be supplied on the
-command line so the run intent is visible.
+Declared numeric bounds/ranges are enforced for changed values. Values without
+declared ranges still require scientific justification; the CLI does not infer
+new bounds from names, notes, or neighbouring parameters. The seed, model
+choice, M1 `p`, and output directory must be supplied on the command line so
+the run intent is visible.
 
 Do not edit these protected shared-route fields:
 

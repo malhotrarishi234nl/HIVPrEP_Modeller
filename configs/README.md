@@ -69,6 +69,13 @@ or the saved `stage_structured_diagnosis` block. A rejection names the first
 forbidden path; start again from a fresh canonical copy rather than repairing
 an uncertain schema by hand.
 
+For an edited `value`, the validator enforces co-located numeric `bounds`,
+`range`, `min`/`max`, or `minimum`/`maximum` metadata when it exists. It does
+not infer a limit where the canonical parameter declares none, and passing
+this mechanical check does not make the edit scientifically accepted. Actual
+runs require an explicit command-line seed and produce an effective-config
+snapshot plus a reproducibility manifest in the new output directory.
+
 `run_model.py` structurally validates the M1 symptom probability as a
 mathematical probability in `[0,1]`. That does not approve the entire interval
 for robust-NROY or any other scientific analysis. The current robust-NROY plan

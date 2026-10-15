@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
+import sys
+import types
 
 import pytest
 
@@ -122,6 +125,16 @@ def test_operator_validation_is_explicit_and_never_constructs_engine(capsys):
     assert "VALID: M1" in capsys.readouterr().out
 
 
+def test_validate_only_never_creates_output_or_reproducibility_files(tmp_path, capsys):
+    output = tmp_path / "must-not-exist"
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M0",
+        "--output-dir", str(output), "--validate-only",
+    ]) == 0
+    assert "engine was not constructed" in capsys.readouterr().out
+    assert not output.exists()
+
+
 def test_operator_route_rejects_ambiguous_variant_requests(capsys):
     assert run_model.main([
         "--config", str(SHARED), "--model", "M1", "--validate-only",
@@ -140,9 +153,21 @@ def test_operator_run_refuses_to_overwrite_a_nonempty_output(tmp_path, capsys):
     (output / "result.csv").write_text("preserve me")
     assert run_model.main([
         "--config", str(SHARED), "--model", "M0",
+        "--seed", "12345",
         "--output-dir", str(output),
     ]) == 2
     assert "output directory is not empty" in capsys.readouterr().out
+
+
+def test_operator_run_requires_an_explicit_seed_before_engine_import(tmp_path, capsys):
+    output = tmp_path / "new-run"
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M0",
+        "--output-dir", str(output),
+    ]) == 2
+    message = capsys.readouterr().out
+    assert "--seed is required for every run" in message
+    assert not output.exists()
 
 
 def test_operator_copy_may_change_an_existing_scientific_value(tmp_path, capsys):
@@ -155,6 +180,143 @@ def test_operator_copy_may_change_an_existing_scientific_value(tmp_path, capsys)
         "--config", str(path), "--model", "M0", "--validate-only",
     ]) == 0
     assert "VALID: M0" in capsys.readouterr().out
+
+
+def test_operator_copy_accepts_a_value_inside_declared_bounds(tmp_path, capsys):
+    config = json.loads(SHARED.read_text())
+    config["population"]["p_msm"]["value"] = 0.08
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 0
+    assert "VALID: M0" in capsys.readouterr().out
+
+
+def test_operator_copy_rejects_a_value_outside_declared_bounds(tmp_path, capsys):
+    config = json.loads(SHARED.read_text())
+    config["population"]["p_msm"]["value"] = 0.5
+    path = _write_copy(tmp_path, config)
+    assert run_model.main([
+        "--config", str(path), "--model", "M0", "--validate-only",
+    ]) == 2
+    message = capsys.readouterr().out
+    assert "population.p_msm.value=0.5" in message
+    assert "declared bounds [0.05, 0.09]" in message
+
+
+def test_unchanged_canonical_value_is_not_reinterpreted_against_old_bounds():
+    # This historical candidate contains at least one value outside old bound
+    # metadata. The collaborator gate checks operator edits; it does not silently
+    # redefine or repair the reviewed canonical scientific baseline.
+    config = run_model.load_shared_config(SHARED)
+    assert config["transmission_model"]["disease"]["progression"][
+        "chronic_to_aids"
+    ]["value"] > config["transmission_model"]["disease"]["progression"][
+        "chronic_to_aids"
+    ]["bounds"][1]
+
+
+def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
+    tmp_path, monkeypatch, capsys,
+):
+    output = tmp_path / "recorded-run"
+    seen = {}
+
+    class FakeEngine:
+        def __init__(self, config, seed):
+            seen["config"] = config
+            seen["seed"] = seed
+
+        def run(self, run_number):
+            seen["run_number"] = run_number
+
+    monkeypatch.setitem(
+        sys.modules, "run_v3", types.SimpleNamespace(SimulationEngineV3=FakeEngine)
+    )
+    monkeypatch.setattr(run_model, "_runtime_identity", lambda: {"python": "test"})
+    monkeypatch.setattr(run_model, "_code_identity", lambda: {
+        "scientific_files_sha256": "code-hash",
+        "files": {"run_model.py": "launcher-hash"},
+        "git_commit": "abc123",
+        "git_scientific_files_dirty": False,
+        "git_scientific_diff_sha256": hashlib.sha256(b"").hexdigest(),
+    })
+    times = iter(("2026-10-15T10:00:00+00:00", "2026-10-15T10:01:00+00:00"))
+    monkeypatch.setattr(run_model, "_utc_now", lambda: next(times))
+
+    assert run_model.main([
+        "--config", str(SHARED), "--model", "M1", "--p", "0.2",
+        "--seed", "42001", "--output-dir", str(output),
+    ]) == 0
+    assert seen["seed"] == 42001
+    assert seen["run_number"] == 1
+
+    effective_path = output / run_model.EFFECTIVE_CONFIG_FILENAME
+    manifest_path = output / run_model.RUN_MANIFEST_FILENAME
+    effective = json.loads(effective_path.read_text())
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["schema"] == run_model.RUN_MANIFEST_SCHEMA
+    assert manifest["status"] == "COMPLETE"
+    assert manifest["route"] == {"model": "M1", "p": 0.2, "seed": 42001}
+    assert manifest["input_config"] == {
+        "path": str(SHARED.resolve()),
+        "sha256": hashlib.sha256(SHARED.read_bytes()).hexdigest(),
+    }
+    assert manifest["effective_config"]["path"] == str(effective_path.resolve())
+    assert manifest["effective_config"]["sha256"] == hashlib.sha256(
+        effective_path.read_bytes()
+    ).hexdigest()
+    assert manifest["output_path"] == str(output.resolve())
+    assert manifest["runtime_identity"] == {"python": "test"}
+    assert manifest["code_identity"]["scientific_files_sha256"] == "code-hash"
+    assert manifest["prepared_utc"] == "2026-10-15T10:00:00+00:00"
+    assert manifest["completed_utc"] == "2026-10-15T10:01:00+00:00"
+    node = effective["transmission_model"]["disease"]["diagnosis"][
+        "stage_structured_diagnosis"
+    ]
+    assert node["enabled"]["value"] is True
+    assert node["aids_symptom_annual_probability"]["value"] == pytest.approx(0.2)
+    assert "reproducibility manifest" in capsys.readouterr().out
+
+
+def test_fake_engine_failure_marks_manifest_failed(tmp_path, monkeypatch):
+    output = tmp_path / "failed-run"
+
+    class FailingFakeEngine:
+        def __init__(self, config, seed):
+            pass
+
+        def run(self, run_number):
+            raise RuntimeError("synthetic test failure")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "run_v3",
+        types.SimpleNamespace(SimulationEngineV3=FailingFakeEngine),
+    )
+    monkeypatch.setattr(run_model, "_runtime_identity", lambda: {"python": "test"})
+    monkeypatch.setattr(run_model, "_code_identity", lambda: {
+        "scientific_files_sha256": "code-hash",
+        "files": {"run_model.py": "launcher-hash"},
+        "git_commit": "abc123",
+        "git_scientific_files_dirty": False,
+        "git_scientific_diff_sha256": hashlib.sha256(b"").hexdigest(),
+    })
+    times = iter(("2026-10-15T10:00:00+00:00", "2026-10-15T10:01:00+00:00"))
+    monkeypatch.setattr(run_model, "_utc_now", lambda: next(times))
+
+    with pytest.raises(RuntimeError, match="synthetic test failure"):
+        run_model.main([
+            "--config", str(SHARED), "--model", "M0", "--seed", "42002",
+            "--output-dir", str(output),
+        ])
+
+    manifest = json.loads(
+        (output / run_model.RUN_MANIFEST_FILENAME).read_text()
+    )
+    assert manifest["status"] == "FAILED"
+    assert manifest["failure_type"] == "RuntimeError"
+    assert manifest["completed_utc"] == "2026-10-15T10:01:00+00:00"
 
 
 @pytest.mark.parametrize(

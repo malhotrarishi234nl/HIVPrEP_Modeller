@@ -37,6 +37,10 @@ the [model operator guide](documentation/reports/calibration/robust_nroy_readine
 gives the ordinary commands and protected-field boundary. This is a tested
 code interface, not production authorization: the shared config is unsigned
 and the identity, pilot, scientific-review, and dispatch gates remain open.
+Real runs require an explicit seed and a new output directory; the runner saves
+the exact effective config and a SHA-bound runtime/code reproducibility
+manifest alongside the results. Validation-only constructs no engine and
+writes no run files.
 
 ## Safety boundary
 
