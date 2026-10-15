@@ -71,6 +71,7 @@ CONTAINER_FIELDS = {"seeds", "seed_blocks", "random_seeds"}
 ACTIVE_PLAN_CANDIDATE_POINTERS = (
     "/seeds/discovery",
     "/seeds/confirmation",
+    "/seeds/smoke",
     "/seeds/proposal_rng",
 )
 
@@ -1346,34 +1347,51 @@ def load_candidate_blocks(path: Path | None) -> dict[str, Any] | None:
     if path is None:
         return None
     payload = strict_json_load(path)
-    _require_exact_keys(
-        payload,
-        {"schema", "discovery", "confirmation", "proposal_rng"},
-        "candidate seed blocks",
-    )
+    base_fields = {"schema", "discovery", "confirmation", "proposal_rng"}
+    if set(payload) not in (base_fields, base_fields | {"smoke"}):
+        raise ValueError(
+            "candidate seed blocks fields are invalid; expected exactly "
+            f"{sorted(base_fields)} with optional 'smoke', found {sorted(payload)}"
+        )
     if payload.get("schema") != CANDIDATE_SCHEMA:
         raise ValueError(f"candidate seed schema must be {CANDIDATE_SCHEMA!r}")
     discovery = payload["discovery"]
     confirmation = payload["confirmation"]
     proposal = payload["proposal_rng"]
-    for field, values in (("discovery", discovery), ("confirmation", confirmation)):
+    arrays = [("discovery", discovery), ("confirmation", confirmation)]
+    if "smoke" in payload:
+        arrays.append(("smoke", payload["smoke"]))
+    for field, values in arrays:
         if (not isinstance(values, list)
                 or any(isinstance(value, bool) or not isinstance(value, int)
                        for value in values)):
             raise ValueError(f"candidate {field} must be an explicit integer array")
     if isinstance(proposal, bool) or not isinstance(proposal, int):
         raise ValueError("candidate proposal_rng must be one explicit integer")
-    if not discovery or not confirmation:
-        raise ValueError("candidate discovery and confirmation blocks must be non-empty")
-    if len(discovery) != len(set(discovery)) or len(confirmation) != len(set(confirmation)):
-        raise ValueError("candidate discovery and confirmation blocks must contain unique integers")
-    return {
+    if not discovery or not confirmation or ("smoke" in payload and not payload["smoke"]):
+        raise ValueError("candidate discovery, confirmation and supplied smoke blocks must be non-empty")
+    for field, values in arrays:
+        if len(values) != len(set(values)):
+            raise ValueError(f"candidate {field} block must contain unique integers")
+        try:
+            for index, value in enumerate(values):
+                nc.require_rng_seed(value, what=f"candidate {field}[{index}]")
+        except nc.ContractError as exc:
+            raise ValueError(str(exc)) from exc
+    try:
+        nc.require_rng_seed(proposal, what="candidate proposal_rng")
+    except nc.ContractError as exc:
+        raise ValueError(str(exc)) from exc
+    result = {
         "discovery": discovery,
         "confirmation": confirmation,
         "proposal_rng": proposal,
         "sha256": canonical_sha256(payload),
         "file_sha256": sha256_file(path),
     }
+    if "smoke" in payload:
+        result["smoke"] = payload["smoke"]
+    return result
 
 
 def build_audit(root: Path, scope_path: Path,
@@ -1454,7 +1472,7 @@ def build_audit(root: Path, scope_path: Path,
     if candidates is None:
         candidate_summary = {
             "status": "NOT_SUPPLIED", "path": None, "file_sha256": None,
-            "discovery": [], "confirmation": [], "proposal_rng": None,
+            "discovery": [], "confirmation": [], "smoke": [], "proposal_rng": None,
             "sha256": None,
         }
         disjointness = {"status": "NOT_EVALUATED", "reason":
@@ -1466,6 +1484,7 @@ def build_audit(root: Path, scope_path: Path,
         }
         discovery = set(candidates["discovery"])
         confirmation = set(candidates["confirmation"])
+        smoke = set(candidates.get("smoke", ()))
         proposal = {candidates["proposal_rng"]}
         checks = {
             "discovery_vs_confirmation": sorted(discovery & confirmation),
@@ -1475,6 +1494,13 @@ def build_audit(root: Path, scope_path: Path,
             "confirmation_vs_prior": sorted(confirmation & prior),
             "proposal_vs_prior": sorted(proposal & prior),
         }
+        if "smoke" in candidates:
+            checks.update({
+                "smoke_vs_discovery": sorted(smoke & discovery),
+                "smoke_vs_confirmation": sorted(smoke & confirmation),
+                "smoke_vs_proposal": sorted(smoke & proposal),
+                "smoke_vs_prior": sorted(smoke & prior),
+            })
         for comparison, seeds in checks.items():
             if seeds:
                 overlap_rows.append({"comparison": comparison, "seeds": seeds})

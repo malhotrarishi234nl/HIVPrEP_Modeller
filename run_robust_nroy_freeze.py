@@ -1519,6 +1519,12 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
         signed_seeds = set(plan.seeds.discovery) | set(plan.seeds.confirmation) | {
             plan.seeds.proposal_rng
         }
+        candidate_for_prior = audit.get("candidate_blocks")
+        if isinstance(candidate_for_prior, Mapping):
+            try:
+                signed_seeds.update(int(seed) for seed in candidate_for_prior.get("smoke", ()))
+            except (TypeError, ValueError):
+                problems.append("the seed-disjointness audit smoke block is malformed")
         if prior_seeds & signed_seeds:
             problems.append("the seed-disjointness audit signed blocks overlap prior seeds")
         for field in ("ambiguous_references", "unparseable_references"):
@@ -1548,7 +1554,10 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                         f"{exc}"
                     )
                 else:
-                    for field in ("discovery", "confirmation", "proposal_rng", "sha256"):
+                    provenance_fields = ["discovery", "confirmation", "proposal_rng", "sha256"]
+                    if "smoke" in candidate_payload:
+                        provenance_fields.append("smoke")
+                    for field in provenance_fields:
                         if candidate_blocks.get(field) != candidate_payload.get(field):
                             problems.append(
                                 "the seed-disjointness candidate-block provenance is stale"
@@ -1565,12 +1574,17 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             if discovery != plan.seeds.discovery or confirmation != plan.seeds.confirmation \
                     or proposal_rng != plan.seeds.proposal_rng:
                 problems.append("the seed-disjointness audit does not cover the signed seed blocks")
-            expected_candidate_sha = hashlib.sha256(json.dumps({
+            expected_candidate_payload = {
                 "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
                 "discovery": list(plan.seeds.discovery),
                 "confirmation": list(plan.seeds.confirmation),
                 "proposal_rng": plan.seeds.proposal_rng,
-            }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            }
+            if "smoke" in candidate_blocks:
+                expected_candidate_payload["smoke"] = list(candidate_blocks.get("smoke", ()))
+            expected_candidate_sha = hashlib.sha256(json.dumps(
+                expected_candidate_payload, sort_keys=True, separators=(",", ":")
+            ).encode()).hexdigest()
             if candidate_blocks.get("sha256") != expected_candidate_sha:
                 problems.append("the seed-disjointness candidate-block hash is not exact")
         disjointness = audit.get("disjointness")
@@ -1583,6 +1597,11 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
                 "proposal_vs_confirmation", "discovery_vs_prior",
                 "confirmation_vs_prior", "proposal_vs_prior",
             }
+            if isinstance(candidate_blocks, Mapping) and "smoke" in candidate_blocks:
+                required_checks.update({
+                    "smoke_vs_discovery", "smoke_vs_confirmation",
+                    "smoke_vs_proposal", "smoke_vs_prior",
+                })
             if not isinstance(checks, Mapping) or set(checks) != required_checks \
                     or any(list(values or ()) for values in checks.values()):
                 problems.append("the seed-disjointness audit records a non-empty overlap check")

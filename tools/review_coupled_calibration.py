@@ -28,6 +28,45 @@ class ReviewError(RuntimeError):
     pass
 
 
+def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ReviewError(f"duplicate JSON object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str):
+    raise ReviewError(f"non-finite JSON token {value!r} is forbidden")
+
+
+def _parse_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ReviewError(f"JSON number {value!r} overflows to a non-finite value")
+    return parsed
+
+
+def strict_json_loads(text: str, *, what: str) -> object:
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_strict_object_pairs,
+            parse_constant=_reject_constant,
+            parse_float=_parse_float,
+        )
+    except json.JSONDecodeError as exc:
+        raise ReviewError(f"{what} is not valid strict JSON: {exc}") from exc
+
+
+def strict_json(path: Path, *, what: str | None = None) -> object:
+    path = Path(path)
+    return strict_json_loads(
+        path.read_text(encoding="utf-8"), what=what or f"JSON file {path}"
+    )
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -45,9 +84,13 @@ def read_jsonl(path: Path) -> list[dict]:
     if not Path(path).exists():
         return []
     out = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    for line_number, line in enumerate(
+            Path(path).read_text(encoding="utf-8").splitlines(), start=1):
         if line.strip():
-            out.append(json.loads(line))
+            row = strict_json_loads(line, what=f"{path}:{line_number}")
+            if not isinstance(row, dict):
+                raise ReviewError(f"{path}:{line_number} must be a JSON object")
+            out.append(row)
     return out
 
 
@@ -56,7 +99,7 @@ def as_bool(value) -> bool:
 
 
 def verify_artifacts(directory: Path) -> dict:
-    index = json.loads((directory / "artifacts.json").read_text())
+    index = strict_json(directory / "artifacts.json", what="artifact index")
     checked = 0
     for entry in index["files"]:
         path = directory / entry["path"]
@@ -66,6 +109,10 @@ def verify_artifacts(directory: Path) -> dict:
             raise ReviewError(f"{directory}: size mismatch: {entry['path']}")
         if sha256(path) != entry["sha256"]:
             raise ReviewError(f"{directory}: sha256 mismatch: {entry['path']}")
+        if path.suffix == ".json":
+            strict_json(path)
+        elif path.suffix == ".jsonl":
+            read_jsonl(path)
         checked += 1
     return {"files_verified": checked}
 
@@ -135,7 +182,7 @@ def recompute(matrix: np.ndarray, targets: list[dict], groups: list[str], *,
 def load_raw(directory: Path, targets: list[dict]) -> dict[int, dict]:
     records = {}
     for path in sorted((directory / "raw").glob("candidate_*.json")):
-        raw = json.loads(path.read_text())
+        raw = strict_json(path, what=f"raw record {path.name}")
         if raw["target_order"] != [t["key"] for t in targets]:
             raise ReviewError(f"{path.name}: target order differs from the frozen order")
         matrix = np.array(raw["target_matrix"], dtype=float)
@@ -177,7 +224,7 @@ def check_budget(directory: Path, manifest: dict, replicates: int) -> dict:
 
 
 def check_shortlist(directory: Path, computed: dict, cutoff: float) -> dict:
-    shortlist = json.loads((directory / "shortlist.json").read_text())
+    shortlist = strict_json(directory / "shortlist.json", what="search shortlist")
     entries = shortlist["entries"]
     ranked = sorted(computed, key=lambda cid: (computed[cid]["j"], computed[cid]["mean_r"], cid))
     expected: list[tuple[int, str]] = []
@@ -263,11 +310,13 @@ def main() -> int:
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
         raise ReviewError("the review output directory must be empty")
 
-    manifest = json.loads((args.source / "manifest.json").read_text())
+    manifest = strict_json(args.source / "manifest.json", what="search manifest")
     if manifest["status"] != "SEARCH_COMPLETE":
         raise ReviewError(f"only a SEARCH_COMPLETE run can be reviewed; found {manifest['status']}")
-    context = json.loads((args.source / "search_context.json").read_text())
-    plan = json.loads((Path(context["prepared_dir"]) / "frozen_plan.json").read_text())
+    context = strict_json(args.source / "search_context.json", what="search context")
+    plan = strict_json(
+        Path(context["prepared_dir"]) / "frozen_plan.json", what="frozen plan"
+    )
     cutoff = float(plan["acceptance"]["cutoff"])
     discovery_seeds = [int(s) for s in plan["seeds"]["discovery"]]
     confirmation_seeds = [int(s) for s in plan["seeds"]["confirmation"]]
@@ -307,12 +356,13 @@ def main() -> int:
 
     confirmation_report = None
     if args.confirmation:
-        cm = json.loads((args.confirmation / "manifest.json").read_text())
+        cm = strict_json(args.confirmation / "manifest.json", what="confirmation manifest")
         if cm["status"] != "CONFIRMATION_COMPLETE":
             raise ReviewError(f"confirmation status is {cm['status']}")
         report["artifacts"]["confirmation"] = verify_artifacts(args.confirmation)
-        if json.loads((args.confirmation / "frozen_shortlist.json").read_text()) != \
-                json.loads((args.source / "shortlist.json").read_text()):
+        if strict_json(
+                args.confirmation / "frozen_shortlist.json", what="confirmed shortlist"
+        ) != strict_json(args.source / "shortlist.json", what="search shortlist"):
             raise ReviewError("the confirmed shortlist is not the one the search froze")
         c_targets = load_frozen_targets(args.source, int(plan["targets"]["n"]))
         c_records, c_computed = review_stage(

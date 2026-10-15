@@ -142,17 +142,18 @@ seeds as prior use. The tracked
 v1.0 evidence; never overwrite or promote it.
 The candidate document must have schema
 `robust_nroy_candidate_seed_blocks/1.0.0` and explicit integer arrays
-`discovery`, `confirmation`, plus one integer `proposal_rng`. The scanner never
+`discovery`, `confirmation`, an optional explicit `smoke` array when the consuming plan has a
+smoke stage, plus one integer `proposal_rng`. The scanner never
 creates that document. The audit records both its exact input path and raw-file
 SHA-256, plus the canonical payload SHA-256; the production validator reloads
-the strict JSON file and rechecks all three seed blocks.
+the strict JSON file and rechecks every supplied seed block.
 
 The exact active signed plan remains inventoried and content-hash-bound, but
-its three candidate declaration pointers (`/seeds/discovery`,
-`/seeds/confirmation`, and `/seeds/proposal_rng`) are omitted from prior-use
+its candidate declaration pointers (`/seeds/discovery`,
+`/seeds/confirmation`, optional `/seeds/smoke`, and `/seeds/proposal_rng`) are omitted from prior-use
 extraction. They describe proposed future use and would otherwise make every
 valid plan collide with itself. The audit records the exact active plan path,
-SHA-256, and those three pointers. No other field or file is omitted: the same
+SHA-256, and those pointers. No other field or file is omitted: the same
 integer in any historical plan, run manifest, result, or other scanned source
 remains prior use and fails the collision gate.
 

@@ -103,14 +103,18 @@ def _write_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, complete: 
     return scope_path
 
 
-def _candidate(tmp_path: Path, *, discovery=(10, 11), confirmation=(20, 21), proposal=30):
+def _candidate(tmp_path: Path, *, discovery=(10, 11), confirmation=(20, 21), proposal=30,
+               smoke=None):
     path = tmp_path / "candidate.json"
-    path.write_text(json.dumps({
+    payload = {
         "schema": audit.CANDIDATE_SCHEMA,
         "discovery": list(discovery),
         "confirmation": list(confirmation),
         "proposal_rng": proposal,
-    }))
+    }
+    if smoke is not None:
+        payload["smoke"] = list(smoke)
+    path.write_text(json.dumps(payload))
     return path
 
 
@@ -179,7 +183,7 @@ def test_candidate_blocks_are_required_before_disjointness_is_evaluated(
 def test_complete_approved_scope_and_disjoint_candidates_can_prove_gate(
         tmp_path, monkeypatch):
     scope_path = _write_inputs(tmp_path, monkeypatch)
-    candidate_path = _candidate(tmp_path)
+    candidate_path = _candidate(tmp_path, smoke=(40, 41, 42))
     resolution_path = tmp_path / "resolutions.json"
     resolution_path.write_text(json.dumps(_resolution_document(scope_path)))
     first = audit.build_audit(
@@ -194,6 +198,9 @@ def test_complete_approved_scope_and_disjoint_candidates_can_prove_gate(
     assert first["status"] == "INCOMPLETE"
     assert first["production_eligible"] is False
     assert first["disjointness"]["status"] == "PROVEN"
+    assert first["candidate_blocks"]["smoke"] == [40, 41, 42]
+    assert first["disjointness"]["checks"]["smoke_vs_prior"] == []
+    assert first["disjointness"]["checks"]["smoke_vs_discovery"] == []
     assert first["overlaps"] == []
     assert first["generated_utc"] is None
     assert "signed production plan was not supplied" in first["unresolved"]
@@ -879,6 +886,30 @@ def test_candidate_blocks_reject_extra_fields_and_record_raw_file_hash(tmp_path)
     path.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="candidate seed blocks fields are invalid"):
         audit.load_candidate_blocks(path)
+
+
+def test_candidate_blocks_optionally_cover_smoke_and_audit_its_collisions(
+        tmp_path, monkeypatch):
+    loaded = audit.load_candidate_blocks(
+        _candidate(tmp_path, discovery=(10, 11), confirmation=(20, 21),
+                   smoke=(40, 41, 42), proposal=30)
+    )
+    assert loaded["smoke"] == [40, 41, 42]
+
+    duplicate = _candidate(
+        tmp_path, discovery=(10, 11), confirmation=(20, 21), smoke=(40, 10), proposal=30
+    )
+    # Individual blocks are typed here; cross-block reuse is exposed by the audit proof.
+    loaded = audit.load_candidate_blocks(duplicate)
+    assert set(loaded["smoke"]) & set(loaded["discovery"]) == {10}
+    scope_path = _write_inputs(tmp_path, monkeypatch)
+    resolution_path = tmp_path / "resolutions.json"
+    resolution_path.write_text(json.dumps(_resolution_document(scope_path)))
+    result = audit.build_audit(
+        tmp_path, scope_path, duplicate, resolution_path=resolution_path
+    )
+    assert result["disjointness"]["checks"]["smoke_vs_discovery"] == [10]
+    assert result["overlaps"] == [{"comparison": "smoke_vs_discovery", "seeds": [10]}]
 
 
 def test_resolution_scope_hash_mismatch_is_fatal(tmp_path, monkeypatch):

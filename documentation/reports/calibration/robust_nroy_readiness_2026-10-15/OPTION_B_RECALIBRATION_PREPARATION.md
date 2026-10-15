@@ -35,9 +35,10 @@ placeholder. They are intentionally unsigned and cannot pass validation, prepara
 engine stage. Exact integer seeds must be selected only after the seed-disjointness audit is
 complete. The plan is byte-bound to the existing `INCOMPLETE` seed-audit artifact, so replacing
 placeholders is not enough: a reviewed `FINAL`, passed, production-eligible audit must bind the
-exact discovery, confirmation, and proposal-RNG blocks and its own exact hash. The runner's
-supplemental manifest scan also covers the smoke block; that scan cannot replace the reviewed
-audit. The plan itself allows only `validate-only`; write or engine stages require separate
+exact discovery, confirmation, smoke and proposal-RNG blocks and its own exact hash. Malformed
+candidate manifests are blocking unless the exact file hash has a reviewed `NON_RNG` disposition
+in that audit; the supplemental manifest scan cannot replace the reviewed audit. The plan itself
+allows only `validate-only`; write or engine stages require separate
 authorization artifacts rather than a broader status embedded in the plan.
 
 Scientific review must still sign the exact Option B config, 33-D parameter space, 13-target
@@ -76,10 +77,27 @@ cannot execute without the current lowercase source-workbook hash and exact fina
 binding.
 
 Each write or engine stage also requires `--authorization` pointing to a strict JSON object with
-schema `coupled_calibration_stage_authorization/1.0.0`, status `AUTHORIZED`, exactly one of
+schema `coupled_calibration_stage_authorization/1.1.0`, status `AUTHORIZED`, exactly one of
 `prepare`, `smoke`, `search`, `resume`, or `confirmation`, the byte-exact plan SHA-256, and the
-exact upstream hashes required by that stage. Preparation has no upstream artifact; smoke binds
-the preparation manifest; search binds preparation plus smoke; resume additionally binds the
-current partial search manifest; confirmation binds the completed search manifest. Grants cannot
-be reused across stages or after any bound artifact changes. These mechanics do not authorize the
-current plan and do not substitute for scientific review.
+exact upstream hashes required by that stage. Every grant records a non-empty approver identifier,
+an ISO-8601 UTC approval time, and the exact decision-evidence SHA-256.
+
+Preparation has no upstream stage artifact. Smoke binds both the preparation manifest and its
+verified `artifacts.json`. Search binds the preparation and smoke manifests and both verified
+artifact indexes (plus the smoke result), and requires `--measured-benchmark` and
+`--pricing-approval`. The benchmark uses
+`coupled_calibration_measured_benchmark/1.0.0`, is `FINAL`, names the exact plan, preparation and
+smoke hashes, machine profile, sample size and measured seconds per trajectory. Pricing uses
+`coupled_calibration_pricing_approval/1.0.0`, is `APPROVED`, and binds the exact plan, benchmark,
+machine profile, approver, approval time and maximum priced ceiling.
+
+Resume additionally binds the verified partial-search manifest and `artifacts.json`, plus the
+exact search-context hash and a canonical bundle hash over dispatch, result and proposal journals.
+A hard-killed tree therefore remains ineligible until an operator seals its preserved files with
+a fresh artifact index for review; the resulting new index must be the one the resume grant signs.
+Each accepted resume grant is appended to an indexed authorization journal before work continues.
+Only a physically final unterminated journal fragment is ignored as a torn append. A malformed
+middle record or newline-terminated final record is fatal. Confirmation binds both the completed
+search manifest and verified artifact index. Grants cannot be reused across stages or after any
+bound artifact changes. These mechanics do not authorize the current plan and do not substitute
+for scientific review.

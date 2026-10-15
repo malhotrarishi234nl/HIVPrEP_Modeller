@@ -62,6 +62,7 @@
     "file_sha256": null,
     "discovery": [],
     "confirmation": [],
+    "smoke": [],
     "proposal_rng": null,
     "sha256": null
   },

@@ -53,8 +53,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 DEFAULT_PLAN = ROOT / "configs/coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json"
-STAGE_AUTHORIZATION_SCHEMA = "coupled_calibration_stage_authorization/1.0.0"
+STAGE_AUTHORIZATION_SCHEMA = "coupled_calibration_stage_authorization/1.1.0"
 STAGE_AUTHORIZED = "AUTHORIZED"
+MEASURED_BENCHMARK_SCHEMA = "coupled_calibration_measured_benchmark/1.0.0"
+PRICING_APPROVAL_SCHEMA = "coupled_calibration_pricing_approval/1.0.0"
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 #: Modules whose content defines a result.  Frozen at preparation and re-verified
@@ -212,18 +214,19 @@ def read_journal(path: Path) -> list[dict]:
     if not path.exists():
         return []
     records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
         try:
-            # Preserve the documented torn-final-line recovery while refusing
-            # duplicate keys and non-finite/overflowing numbers in valid JSON.
-            json.loads(line)
-        except json.JSONDecodeError:
-            # A torn trailing line from an interrupted append is discarded, not repaired.
-            break
-        payload = nc.strict_json_loads(line, what=f"journal record in {path}")
+            payload = nc.strict_json_loads(line, what=f"journal record in {path}")
+        except ContractError:
+            is_physical_final_fragment = index == len(lines) - 1 and not text.endswith(("\n", "\r"))
+            if is_physical_final_fragment:
+                break
+            raise
         if not isinstance(payload, dict):
             raise ContractError(f"journal record in {path} must be a JSON object")
         records.append(payload)
@@ -273,6 +276,18 @@ def _require_sha256(value, *, what: str) -> str:
     return value
 
 
+def _require_utc(value, *, what: str) -> str:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise ContractError(f"{what} must be an ISO-8601 UTC timestamp ending in Z")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ContractError(f"{what} must be a valid ISO-8601 UTC timestamp") from exc
+    if parsed.utcoffset() != timezone.utc.utcoffset(parsed):
+        raise ContractError(f"{what} must be UTC")
+    return value
+
+
 def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
     """Require exact FINAL seed-audit evidence before any stage can use integer seeds."""
     inputs = plan.inputs
@@ -295,6 +310,19 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
             f"seed-audit hash changed: expected {expected_hash}, found {actual_hash}"
         )
     audit = strict_json_object(path, what="seed-audit artifact")
+    required_fields = {
+        "schema", "status", "production_eligible", "deterministic", "generated_utc",
+        "command", "passed", "plan_path", "plan_sha256", "scope_manifest",
+        "source_inventory", "finding_resolutions", "parsed_prior_seeds",
+        "parsed_prior_seed_count", "ambiguous_references", "unparseable_references",
+        "candidate_blocks", "disjointness", "overlaps", "unresolved", "limitations",
+        "artifact_sha256",
+    }
+    if not required_fields.issubset(audit):
+        raise ContractError(
+            f"seed-audit artifact lacks required 1.3 fields: "
+            f"{sorted(required_fields - set(audit))}"
+        )
     if audit.get("schema") != "robust_nroy_seed_audit/1.3.0":
         raise ContractError("seed-audit artifact must use robust_nroy_seed_audit/1.3.0")
     if audit.get("status") != expected_status:
@@ -305,6 +333,10 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
         raise ContractError("seed-audit artifact is not passed and production eligible")
     if audit.get("deterministic") is not True:
         raise ContractError("seed-audit artifact is not declared deterministic")
+    _require_utc(audit.get("generated_utc"), what="seed-audit generated_utc")
+    if not isinstance(audit.get("command"), str) or not audit["command"].strip():
+        raise ContractError("seed-audit artifact has no producing command")
+    _require_sha256(audit.get("plan_sha256"), what="seed-audit plan_sha256")
     recorded_artifact_sha = audit.get("artifact_sha256")
     audit_without_sha = dict(audit)
     audit_without_sha.pop("artifact_sha256", None)
@@ -312,6 +344,89 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
         raise ContractError("seed-audit artifact_sha256 is missing or stale")
     if audit.get("unresolved") != [] or audit.get("overlaps") != []:
         raise ContractError("seed-audit artifact retains unresolved findings or overlaps")
+    scope = audit.get("scope_manifest")
+    if not isinstance(scope, dict) or scope.get("owner_scope_status") != "APPROVED" \
+            or scope.get("source_coverage_status") != "COMPLETE":
+        raise ContractError("seed-audit scope is not owner-approved with complete coverage")
+    scope_path = _bound_evidence_path(scope.get("path"), what="seed-audit scope manifest")
+    if ccs.sha256_file(scope_path) != _require_sha256(
+            scope.get("sha256"), what="seed-audit scope manifest sha256"):
+        raise ContractError("seed-audit scope-manifest hash is stale")
+    scope_payload = strict_json_object(scope_path, what="seed-audit scope manifest")
+    if scope_payload.get("schema") != "robust_nroy_seed_source_scope/1.2.0":
+        raise ContractError("seed-audit scope manifest is not repository schema 1.2")
+    owner_scope = scope_payload.get("owner_scope")
+    source_coverage = scope_payload.get("source_coverage")
+    if not isinstance(owner_scope, dict) or owner_scope.get("status") != "APPROVED" \
+            or not isinstance(source_coverage, dict) \
+            or source_coverage.get("status") != "COMPLETE":
+        raise ContractError("seed-audit scope payload is not approved and complete")
+    inventory = audit.get("source_inventory")
+    if not isinstance(inventory, dict):
+        raise ContractError("seed-audit source_inventory is missing")
+    for field in (
+        "inventory_sha256", "scanned_content_index_sha256", "excluded_output_index_sha256",
+    ):
+        _require_sha256(inventory.get(field), what=f"seed-audit source_inventory.{field}")
+    for field in ("scanned_files", "excluded_output_files", "excluded_output_bytes"):
+        if type(inventory.get(field)) is not int or inventory[field] < 0:
+            raise ContractError(f"seed-audit source_inventory.{field} must be non-negative")
+    if not isinstance(inventory.get("counts_by_kind"), dict) \
+            or not isinstance(inventory.get("excluded_output_index"), list):
+        raise ContractError("seed-audit source inventory lacks coverage indexes")
+    resolutions = audit.get("finding_resolutions")
+    if not isinstance(resolutions, dict) or resolutions.get("status") != "REVIEWED" \
+            or resolutions.get("unresolved") != 0:
+        raise ContractError("seed-audit finding resolutions are not complete and reviewed")
+    excluded = resolutions.get("excluded_output")
+    if not isinstance(excluded, dict) or excluded.get("status") != "REVIEWED" \
+            or excluded.get("unresolved") != 0:
+        raise ContractError("seed-audit excluded-output coverage is not completely reviewed")
+    resolution_path = _bound_evidence_path(
+        resolutions.get("path"), what="seed-audit finding resolutions"
+    )
+    if ccs.sha256_file(resolution_path) != _require_sha256(
+            resolutions.get("file_sha256"), what="seed-audit finding-resolutions sha256"):
+        raise ContractError("seed-audit finding-resolutions hash is stale")
+    resolution_payload = strict_json_object(
+        resolution_path, what="seed-audit finding resolutions"
+    )
+    if resolution_payload.get("schema") != "robust_nroy_seed_finding_resolutions/1.1.0" \
+            or resolution_payload.get("status") != "REVIEWED" \
+            or resolution_payload.get("scope_manifest_sha256") != scope["sha256"]:
+        raise ContractError("seed-audit finding-resolution provenance is invalid")
+    for field in ("resolved_rng", "resolved_non_rng"):
+        if type(resolutions.get(field)) is not int or resolutions[field] < 0:
+            raise ContractError(f"seed-audit finding_resolutions.{field} is invalid")
+    resolution_payload_sha = _require_sha256(
+        resolutions.get("payload_sha256"),
+        what="seed-audit finding_resolutions.payload_sha256",
+    )
+    if resolution_payload_sha != ccs.sha256_json(resolution_payload):
+        raise ContractError("seed-audit finding-resolution payload hash is stale")
+    if type(excluded.get("resolved")) is not int or excluded["resolved"] < 0 \
+            or excluded.get("coverage_mode") not in (None, "EXACT_PER_FILE"):
+        raise ContractError("seed-audit excluded-output review metadata is invalid")
+    for field in ("ambiguous_references", "unparseable_references"):
+        findings = audit.get(field)
+        if not isinstance(findings, dict) or findings.get("count") != 0 \
+                or findings.get("examples") != [] or findings.get("examples_truncated") != 0:
+            raise ContractError(f"seed-audit retains unresolved {field}")
+        if type(findings.get("detected_count")) is not int \
+                or findings.get("detected_count", -1) < 0 \
+                or findings.get("resolved_count") != findings.get("detected_count"):
+            raise ContractError(f"seed-audit {field} coverage counts are inconsistent")
+    prior_rows = audit.get("parsed_prior_seeds")
+    if not isinstance(prior_rows, list) or audit.get("parsed_prior_seed_count") != len(prior_rows):
+        raise ContractError("seed-audit parsed-prior seed count is inconsistent")
+    prior_seeds: set[int] = set()
+    for index, row in enumerate(prior_rows):
+        if not isinstance(row, dict) or "seed" not in row:
+            raise ContractError(f"seed-audit parsed_prior_seeds[{index}] is malformed")
+        seed = nc.require_rng_seed(row["seed"], what=f"seed-audit parsed_prior_seeds[{index}]")
+        if seed in prior_seeds:
+            raise ContractError("seed-audit parsed-prior seeds contain a duplicate")
+        prior_seeds.add(seed)
     disjointness = audit.get("disjointness")
     if not isinstance(disjointness, dict) or disjointness.get("status") != "PROVEN":
         raise ContractError("seed-audit artifact does not prove disjointness")
@@ -321,18 +436,90 @@ def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
     expected_blocks = {
         "discovery": list(plan.discovery_seeds),
         "confirmation": list(plan.confirmation_seeds),
+        "smoke": list(plan.smoke_seeds),
         "proposal_rng": plan.proposal_rng_seed,
     }
     for field, expected in expected_blocks.items():
         if blocks.get(field) != expected:
             raise ContractError(f"seed-audit candidate_blocks.{field} does not match the plan")
-    expected_candidate_sha = ccs.sha256_json({
+    candidate_path = _bound_evidence_path(
+        blocks.get("path"), what="seed-audit candidate seed blocks"
+    )
+    if ccs.sha256_file(candidate_path) != _require_sha256(
+            blocks.get("file_sha256"), what="seed-audit candidate-block file_sha256"):
+        raise ContractError("seed-audit candidate-block file hash is stale")
+    candidate_payload = strict_json_object(candidate_path, what="candidate seed blocks")
+    expected_candidate_payload = {
         "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
         **expected_blocks,
-    })
+    }
+    if candidate_payload != expected_candidate_payload:
+        raise ContractError("seed-audit candidate-block file does not exactly match the plan")
+    expected_candidate_sha = ccs.sha256_json(expected_candidate_payload)
     if blocks.get("sha256") != expected_candidate_sha:
         raise ContractError("seed-audit candidate_blocks.sha256 does not match the plan")
-    return {"path": str(path), "sha256": actual_hash, "status": expected_status}
+    expected_checks = {
+        "discovery_vs_confirmation", "proposal_vs_discovery",
+        "proposal_vs_confirmation", "discovery_vs_prior",
+        "confirmation_vs_prior", "proposal_vs_prior", "smoke_vs_discovery",
+        "smoke_vs_confirmation", "smoke_vs_proposal", "smoke_vs_prior",
+    }
+    checks = disjointness.get("checks")
+    if not isinstance(checks, dict) or set(checks) != expected_checks \
+            or any(value != [] for value in checks.values()):
+        raise ContractError("seed-audit disjointness checks are incomplete or non-empty")
+    all_candidate_seeds = {
+        *plan.discovery_seeds, *plan.confirmation_seeds, *plan.smoke_seeds,
+        plan.proposal_rng_seed,
+    }
+    if prior_seeds & all_candidate_seeds:
+        raise ContractError("seed-audit candidate seeds overlap parsed prior use")
+    return {
+        "path": str(path), "sha256": actual_hash, "status": expected_status,
+        "resolution_path": str(resolution_path),
+        "resolution_sha256": ccs.sha256_file(resolution_path),
+        "reviewed_non_seed_sources": _reviewed_non_seed_sources(resolution_payload),
+    }
+
+
+def _bound_evidence_path(value, *, what: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ContractError(f"{what} path is missing")
+    path = Path(value)
+    if not path.is_absolute():
+        path = ROOT / path
+    if not path.is_file():
+        raise ContractError(f"{what} is missing: {path}")
+    return path
+
+
+def _reviewed_non_seed_sources(resolutions: dict) -> list[dict]:
+    rows = resolutions.get("exact_resolutions")
+    if not isinstance(rows, list):
+        raise ContractError("seed-audit finding resolutions lack exact_resolutions")
+    reviewed: list[dict] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ContractError(f"seed-audit exact_resolutions[{index}] is malformed")
+        if row.get("classification") != "NON_RNG":
+            continue
+        _require_sha256(
+            row.get("source_sha256"),
+            what=f"seed-audit exact_resolutions[{index}].source_sha256",
+        )
+        _require_utc(
+            row.get("reviewed_utc"),
+            what=f"seed-audit exact_resolutions[{index}].reviewed_utc",
+        )
+        if not isinstance(row.get("reviewer"), str) or not row["reviewer"].strip():
+            raise ContractError(f"seed-audit exact_resolutions[{index}] lacks reviewer")
+        reviewed.append({
+            "source": str(row.get("source")),
+            "source_sha256": row["source_sha256"],
+            "finding_kind": row.get("finding_kind"),
+            "location": row.get("location"),
+        })
+    return reviewed
 
 
 def validate_executable_input_bindings(plan: RunnerPlan) -> dict:
@@ -359,7 +546,10 @@ def require_stage_authorization(
     if not path.is_file():
         raise ContractError(f"stage authorization does not exist: {path}")
     payload = strict_json_object(path, what=f"{stage} stage authorization")
-    required = {"schema", "status", "stage", "plan_sha256", "upstream_sha256"}
+    required = {
+        "schema", "status", "stage", "plan_sha256", "upstream_sha256",
+        "approver_id", "approved_utc", "decision_evidence_sha256",
+    }
     if set(payload) != required:
         raise ContractError(
             f"stage authorization fields differ; missing={sorted(required - set(payload))}, "
@@ -373,6 +563,13 @@ def require_stage_authorization(
         raise ContractError(
             f"authorization is for stage {payload['stage']!r}, not {stage!r}"
         )
+    if not isinstance(payload["approver_id"], str) or not payload["approver_id"].strip():
+        raise ContractError("stage authorization approver_id must be non-empty")
+    _require_utc(payload["approved_utc"], what="stage authorization approved_utc")
+    _require_sha256(
+        payload["decision_evidence_sha256"],
+        what="stage authorization decision_evidence_sha256",
+    )
     expected_plan_hash = _require_sha256(plan_sha256, what="exact plan file sha256")
     if _require_sha256(payload["plan_sha256"], what="authorization plan_sha256") \
             != expected_plan_hash:
@@ -812,15 +1009,50 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
 
     plan = plan or RunnerPlan(plan_payload())
     root = Path(outputs_root) if outputs_root is not None else ROOT / "outputs"
+    reserved = {
+        "discovery": list(plan.discovery_seeds),
+        "confirmation": list(plan.confirmation_seeds),
+        "smoke": list(plan.smoke_seeds), "proposal_rng": [plan.proposal_rng_seed],
+    }
+    flat = [s for values in reserved.values() for s in values]
+    if len(set(flat)) != len(flat):
+        raise ContractError("the reserved seed ranges are not mutually disjoint")
     found: set[int] = set()
     n_manifests = 0
     own: list[str] = []
-    skipped_invalid: list[str] = []
+    reviewed_invalid: list[str] = []
+    legacy_read_only_invalid: list[str] = []
+    seed_audit: dict | None = None
     for manifest in sorted(root.rglob("manifest.json")):
         try:
             payload = strict_json_object(manifest, what="seed-scan manifest")
-        except (OSError, ContractError):
-            skipped_invalid.append(str(manifest.relative_to(root)))
+        except (OSError, ContractError) as exc:
+            if not plan.inputs.get("seed_audit"):
+                # Legacy plans remain inspectable. They are execution-ineligible elsewhere,
+                # so this does not allow a malformed source to reach a write/engine stage.
+                legacy_read_only_invalid.append(str(manifest.relative_to(root)))
+                continue
+            seed_audit = seed_audit or validate_seed_audit_binding(plan)
+            actual_sha = ccs.sha256_file(manifest)
+            accepted_sources = {
+                str(manifest), str(manifest.resolve()), str(manifest.relative_to(root)),
+            }
+            try:
+                accepted_sources.add(str(manifest.resolve().relative_to(ROOT.resolve())))
+            except ValueError:
+                pass
+            matched = [
+                row for row in seed_audit["reviewed_non_seed_sources"]
+                if row["source"] in accepted_sources
+                and row["source_sha256"] == actual_sha
+                and row["finding_kind"] == "unparseable"
+            ]
+            if not matched:
+                raise ContractError(
+                    f"malformed seed-scan manifest is blocking and lacks exact reviewed "
+                    f"NON_RNG exclusion evidence: {manifest}: {exc}"
+                ) from exc
+            reviewed_invalid.append(str(manifest.relative_to(root)))
             continue
         n_manifests += 1
         same_design = isinstance(payload, dict) and payload.get("design") == plan.design_name
@@ -834,14 +1066,6 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
             continue
         _seeds_from_obj(payload, found)
     found = set(found) | set(DECLARED_FOREIGN_SEEDS)
-    reserved = {
-        "discovery": list(plan.discovery_seeds),
-        "confirmation": list(plan.confirmation_seeds),
-        "smoke": list(plan.smoke_seeds), "proposal_rng": [plan.proposal_rng_seed],
-    }
-    flat = [s for values in reserved.values() for s in values]
-    if len(set(flat)) != len(flat):
-        raise ContractError("the reserved seed ranges are not mutually disjoint")
     overlap = sorted(set(flat) & found)
     if overlap:
         raise ContractError(
@@ -852,8 +1076,10 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
         "reserved": reserved, "n_manifests_scanned": n_manifests,
         "n_own_manifests_skipped": len(own), "own_manifests": own,
         "n_recorded_seeds": len(found), "overlap": overlap,
-        "n_invalid_manifests_skipped": len(skipped_invalid),
-        "invalid_manifests_skipped": skipped_invalid,
+        "n_invalid_manifests_reviewed_non_seed": len(reviewed_invalid),
+        "invalid_manifests_reviewed_non_seed": reviewed_invalid,
+        "n_invalid_manifests_legacy_read_only": len(legacy_read_only_invalid),
+        "invalid_manifests_legacy_read_only": legacy_read_only_invalid,
         "limitation": "Only seeds recorded in manifest.json files under outputs/, plus the "
                       "declared foreign ranges listed in this runner, are visible to the scan. "
                       f"Manifests carrying design={plan.design_name!r}, or the explicitly paired "
@@ -1313,7 +1539,115 @@ def verify_artifact_index(directory: Path) -> dict:
             raise ContractError(f"artifact missing from {directory}: {entry['path']}")
         if path.stat().st_size != entry["bytes"] or ccs.sha256_file(path) != entry["sha256"]:
             raise ContractError(f"artifact failed integrity verification: {entry['path']}")
-    return {"n_files": len(index["files"])}
+    return {"n_files": len(index["files"]),
+            "artifacts_sha256": ccs.sha256_file(Path(directory) / "artifacts.json")}
+
+
+def artifact_binding(directory: Path, prefix: str, *, extra_files: Sequence[str] = ()) -> dict:
+    """Verify an artifact tree and return exact grant prerequisites for it."""
+    directory = Path(directory)
+    verified = verify_artifact_index(directory)
+    binding = {
+        f"{prefix}_manifest": ccs.sha256_file(directory / "manifest.json"),
+        f"{prefix}_artifacts": verified["artifacts_sha256"],
+    }
+    for name in extra_files:
+        path = directory / name
+        if not path.is_file():
+            raise ContractError(f"required {prefix} artifact is missing: {path}")
+        binding[f"{prefix}_{Path(name).stem.lower()}"] = ccs.sha256_file(path)
+    return binding
+
+
+def resume_integrity_binding(search_dir: Path) -> dict:
+    """Hash the exact context and recovery journals a resume will consume."""
+    search_dir = Path(search_dir)
+    journal_dir = search_dir / "journal"
+    journal_files = {
+        name: (ccs.sha256_file(journal_dir / name)
+               if (journal_dir / name).is_file() else None)
+        for name in ("dispatch.jsonl", "results.jsonl", "proposals.jsonl")
+    }
+    return {
+        "partial_search_context": ccs.sha256_file(search_dir / "search_context.json"),
+        "partial_search_journal_bundle": ccs.sha256_json(journal_files),
+    }
+
+
+def validate_search_evidence(
+    measured_benchmark_path: Path | None,
+    pricing_approval_path: Path | None,
+    *,
+    plan_sha256: str,
+    prepared_binding: dict[str, str],
+    smoke_binding: dict[str, str],
+) -> dict[str, str]:
+    """Require exact measured timing and owner-approved pricing before search spend."""
+    if measured_benchmark_path is None or pricing_approval_path is None:
+        raise ContractError("search/resume requires measured benchmark and pricing approval")
+    benchmark_path = Path(measured_benchmark_path)
+    pricing_path = Path(pricing_approval_path)
+    benchmark = strict_json_object(benchmark_path, what="measured benchmark")
+    required_benchmark = {
+        "schema", "status", "plan_sha256", "prepared_manifest_sha256",
+        "prepared_artifacts_sha256", "smoke_manifest_sha256", "smoke_artifacts_sha256",
+        "machine_profile", "measured_utc", "sample_trajectories",
+        "seconds_per_trajectory",
+    }
+    if set(benchmark) != required_benchmark:
+        raise ContractError("measured benchmark fields differ from the exact schema")
+    if benchmark["schema"] != MEASURED_BENCHMARK_SCHEMA or benchmark["status"] != "FINAL":
+        raise ContractError("measured benchmark is not FINAL on the current schema")
+    if benchmark["plan_sha256"] != plan_sha256:
+        raise ContractError("measured benchmark is for a different plan")
+    expected_benchmark_bindings = {
+        "prepared_manifest_sha256": prepared_binding["prepared_manifest"],
+        "prepared_artifacts_sha256": prepared_binding["prepared_artifacts"],
+        "smoke_manifest_sha256": smoke_binding["smoke_manifest"],
+        "smoke_artifacts_sha256": smoke_binding["smoke_artifacts"],
+    }
+    if any(benchmark.get(key) != value for key, value in expected_benchmark_bindings.items()):
+        raise ContractError("measured benchmark does not bind the exact preparation and smoke")
+    if not isinstance(benchmark["machine_profile"], str) or not benchmark["machine_profile"].strip():
+        raise ContractError("measured benchmark machine_profile must be non-empty")
+    _require_utc(benchmark["measured_utc"], what="measured benchmark measured_utc")
+    if type(benchmark["sample_trajectories"]) is not int or benchmark["sample_trajectories"] < 1:
+        raise ContractError("measured benchmark sample_trajectories must be positive")
+    seconds = benchmark["seconds_per_trajectory"]
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) \
+            or not np.isfinite(seconds) or seconds <= 0:
+        raise ContractError("measured benchmark seconds_per_trajectory must be positive finite")
+    benchmark_sha256 = ccs.sha256_file(benchmark_path)
+
+    pricing = strict_json_object(pricing_path, what="pricing approval")
+    required_pricing = {
+        "schema", "status", "plan_sha256", "measured_benchmark_sha256",
+        "machine_profile", "approved_by", "approved_utc", "maximum_approved_cost",
+        "currency_or_credit_unit",
+    }
+    if set(pricing) != required_pricing:
+        raise ContractError("pricing approval fields differ from the exact schema")
+    if pricing["schema"] != PRICING_APPROVAL_SCHEMA or pricing["status"] != "APPROVED":
+        raise ContractError("pricing approval is not APPROVED on the current schema")
+    if pricing["plan_sha256"] != plan_sha256 \
+            or pricing["measured_benchmark_sha256"] != benchmark_sha256:
+        raise ContractError("pricing approval does not bind the exact plan and benchmark")
+    if pricing["machine_profile"] != benchmark["machine_profile"]:
+        raise ContractError("pricing approval machine profile differs from the benchmark")
+    if not isinstance(pricing["approved_by"], str) or not pricing["approved_by"].strip():
+        raise ContractError("pricing approval approved_by must be non-empty")
+    _require_utc(pricing["approved_utc"], what="pricing approval approved_utc")
+    cost = pricing["maximum_approved_cost"]
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)) \
+            or not np.isfinite(cost) or cost <= 0:
+        raise ContractError("pricing approval maximum_approved_cost must be positive finite")
+    if not isinstance(pricing["currency_or_credit_unit"], str) \
+            or not pricing["currency_or_credit_unit"].strip():
+        raise ContractError("pricing approval currency_or_credit_unit must be non-empty")
+    return {
+        "measured_benchmark": benchmark_sha256,
+        "pricing_approval": ccs.sha256_file(pricing_path),
+    }
 
 
 def load_prepared(prepared_dir: Path) -> dict:
@@ -1394,12 +1728,13 @@ def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
         plan_path, prepared["contract"],
         expected_file_sha256=prepared["manifest"]["plan_sha256"],
     )
+    prepared_binding = artifact_binding(Path(prepared_dir), "prepared")
     authorization = require_stage_authorization(
         authorization_path,
         stage="smoke",
         plan=prepared["contract"],
         plan_sha256=matching_plan["file_sha256"],
-        upstream_sha256={"prepared_manifest": prepared["prepared_sha256"]},
+        upstream_sha256=prepared_binding,
     )
     gate = diagnosis_test_gate()
     assert_unoccupied(output_dir)
@@ -1683,6 +2018,8 @@ def run_search(
     *,
     plan_path: Path | None = None,
     authorization_path: Path | None = None,
+    measured_benchmark_path: Path | None = None,
+    pricing_approval_path: Path | None = None,
     workers: int = ccs.DEFAULT_WORKERS,
     resume: bool = False,
     worker: Callable[[dict], dict] = evaluate_candidate_worker,
@@ -1708,12 +2045,21 @@ def run_search(
         expected_file_sha256=prepared["manifest"]["plan_sha256"],
     )
     smoke_result = load_smoke(smoke_dir, prepared)
-    upstream_sha256 = {
-        "prepared_manifest": prepared["prepared_sha256"],
-        "smoke_result": ccs.sha256_file(Path(smoke_dir) / "SMOKE_RESULT.json"),
-    }
+    prepared_binding = artifact_binding(Path(prepared_dir), "prepared")
+    smoke_binding = artifact_binding(
+        Path(smoke_dir), "smoke", extra_files=("SMOKE_RESULT.json",)
+    )
+    search_evidence = validate_search_evidence(
+        measured_benchmark_path,
+        pricing_approval_path,
+        plan_sha256=matching_plan["file_sha256"],
+        prepared_binding=prepared_binding,
+        smoke_binding=smoke_binding,
+    )
+    upstream_sha256 = {**prepared_binding, **smoke_binding, **search_evidence}
     if resume:
-        upstream_sha256["search_manifest"] = ccs.sha256_file(output_dir / "manifest.json")
+        upstream_sha256.update(artifact_binding(output_dir, "partial_search"))
+        upstream_sha256.update(resume_integrity_binding(output_dir))
     authorization = require_stage_authorization(
         authorization_path,
         stage="resume" if resume else "search",
@@ -1726,11 +2072,19 @@ def run_search(
             raise ContractError("the partial search was produced from a different preparation")
         if context["smoke_sha256"] != ccs.sha256_file(Path(smoke_dir) / "SMOKE_RESULT.json"):
             raise ContractError("the partial search was produced from a different smoke artifact")
+        if context.get("search_evidence_sha256") != search_evidence:
+            raise ContractError(
+                "the partial search was produced under different benchmark or pricing evidence"
+            )
         current = module_hashes()
         differences = sorted(n for n in set(context["module_sha256"]) | set(current)
                              if context["module_sha256"].get(n) != current.get(n))
         if differences:
             raise ContractError(f"code changed since the partial search: {differences}")
+        append_journal(
+            output_dir / "journal/resume_authorizations.jsonl",
+            {**authorization, "recorded_utc": now()},
+        )
     else:
         assert_unoccupied(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1749,6 +2103,7 @@ def run_search(
             "prepared_sha256": prepared["prepared_sha256"],
             "smoke_dir": str(Path(smoke_dir).resolve()),
             "smoke_sha256": ccs.sha256_file(Path(smoke_dir) / "SMOKE_RESULT.json"),
+            "search_evidence_sha256": search_evidence,
             "module_sha256": module_hashes(), "input_sha256": state["hashes"],
             "n_batches": int(n_batches), "workers": int(workers),
             "execution_mode": (
@@ -2201,12 +2556,13 @@ def confirm(
     matching_plan = require_matching_plan_path(
         plan_path, plan, expected_file_sha256=prepared["manifest"]["plan_sha256"]
     )
+    search_binding = artifact_binding(Path(source), "completed_search")
     authorization = require_stage_authorization(
         authorization_path,
         stage="confirmation",
         plan=plan,
         plan_sha256=matching_plan["file_sha256"],
-        upstream_sha256={"search_manifest": ccs.sha256_file(Path(source) / "manifest.json")},
+        upstream_sha256=search_binding,
     )
     discovery_replicates = len(plan.discovery_seeds)
     confirmation_replicates = len(plan.confirmation_seeds)
@@ -2514,6 +2870,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                         help="explicit coupled-calibration plan; never inferred or defaulted")
     parser.add_argument("--authorization", type=Path,
                         help="strict stage-scoped authorization artifact for write/engine modes")
+    parser.add_argument(
+        "--measured-benchmark", type=Path,
+        help="FINAL measured timing artifact required by search and resume",
+    )
+    parser.add_argument(
+        "--pricing-approval", type=Path,
+        help="owner-approved priced budget artifact required by search and resume",
+    )
     parser.add_argument("--prepared", type=Path, help="a PREPARED directory")
     parser.add_argument("--smoke-source", type=Path, help="a SMOKE_PASSED directory")
     parser.add_argument("--source", type=Path, help="a SEARCH_COMPLETE directory")
@@ -2579,7 +2943,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _require(args.smoke_source, "--run-search needs --smoke-source")
             result = run_search(args.prepared, args.smoke_source, output_dir,
                                 workers=args.workers, resume=bool(args.resume),
-                                plan_path=plan_path, authorization_path=args.authorization)
+                                plan_path=plan_path, authorization_path=args.authorization,
+                                measured_benchmark_path=args.measured_benchmark,
+                                pricing_approval_path=args.pricing_approval)
             print(json.dumps(ccs.json_safe(result), indent=2))
             return 0 if result["status"] == ccs.STATUS_SEARCH_COMPLETE else 1
         if args.confirm:
