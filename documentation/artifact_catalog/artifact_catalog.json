@@ -1999,8 +1999,8 @@
       "manifest_count": 0,
       "manifest_paths": "",
       "manifest_sha256s": "",
-      "tracked_reference_count": 8,
-      "tracked_reference_files": "configs/diagnosis_triangulation_orchestration_20260922.json;configs/hm_target_register_focused_20260916.json;configs/hm_target_register_rivm_msm_aids_20260916.json;documentation/reports/calibration/HM_PRESENTATION_EVIDENCE_AND_COMPOUND_DESIGN_2026-09-16.md;documentation/reports/calibration/RIVM_AIDS_TARGET_WINDOW_AUDIT_2026-09-21.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md;tools/audit_rivm_aids_vintages.py;tools/build_rivm_aids_candidate.py",
+      "tracked_reference_count": 12,
+      "tracked_reference_files": "configs/diagnosis_triangulation_orchestration_20260922.json;configs/hm_target_register_focused_20260916.json;configs/hm_target_register_rivm_msm_aids_20260916.json;data/external_inputs.json;documentation/reports/calibration/HM_PRESENTATION_EVIDENCE_AND_COMPOUND_DESIGN_2026-09-16.md;documentation/reports/calibration/RIVM_AIDS_TARGET_WINDOW_AUDIT_2026-09-21.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/ARTIFACT_TERMINAL_DISPOSITION_2026-10-15.md;documentation/reports/calibration/robust_nroy_readiness_2026-10-15/EXTERNAL_INPUT_RECONCILIATION.md;tests/test_nroy_graph_report.py;tests/test_prepare_robust_nroy_acceptance_inputs.py;tools/audit_rivm_aids_vintages.py;tools/build_rivm_aids_candidate.py",
       "retention_rule": "retain_read_only;exclude_from_current_claims",
       "modified_at_utc": "2026-09-16T00:35:49.592870+00:00"
     },
