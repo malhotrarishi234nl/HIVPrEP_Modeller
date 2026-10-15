@@ -21,12 +21,14 @@ engine-running gate.
   the production adapter sets the model switch explicitly and its no-engine
   config-route tests pass. This is code acceptance only; the identity and pilot
   gates below remain open.
-- [ ] All 42 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
-- [ ] The prepared stochastic M1-capable derivative's inherited diagnostic 1975
-  backbone and explicitly unvalidated period inputs are reconciled against the
-  intended 1980 production backbone; the owner selects Option A or B from
-  `PRODUCTION_BACKBONE_RECONCILIATION.md`; only then is the reviewed base
-  selected and hashed.
+- [ ] All 43 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
+- [x] The owner selected backbone Option B on 2026-10-15. A hash-bound,
+  machine-diffed V13.22-on-1980 stochastic M0/M1 **calibration candidate** now
+  records that direction without signing the plan or claiming fit validity;
+  see `PRODUCTION_BACKBONE_RECONCILIATION.md`.
+- [ ] Recalibrate the Option B 1980 candidate, review the resulting fit and
+  exact config/space hashes, then select a production proposal. The current
+  candidate is `REQUIRES_RECALIBRATION` and cannot itself close this gate.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
 - [ ] Historical artifacts have an approved disposition; current claims exclude unrepeated stale lineages.
 - [ ] `CONFIG_REGISTRY.md` generated from the exact signed plan/config/space/targets/runtime and independently reviewed.
@@ -48,6 +50,8 @@ engine-running gate.
 - [ ] `.venv/bin/python run_robust_nroy_freeze.py validate --plan <signed-plan>` returns zero blockers.
 - [ ] Only then request a new, separate authorization for production dispatch.
 
-Current stopping point: the five implementation gates above are closed, but the
-design values remain unsigned, the production backbone is unresolved, and
-later scientific/evidence gates are open, so no engine gate may run.
+Current stopping point: the five implementation gates and the Option B
+direction choice are closed, but the calibration candidate is not fitted, the
+design values remain unsigned, no production backbone is selected, and later
+scientific/evidence gates are open. No engine gate may run merely from this
+preparation work.

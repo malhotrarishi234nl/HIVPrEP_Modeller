@@ -28,7 +28,7 @@ def test_owner_packet_covers_bound_register_exactly_once():
         int(index): path
         for index, path in re.findall(r"^\| (\d+) \| `([^`]+)` \|", text, re.MULTILINE)
     }
-    assert len(found) == 42
+    assert len(found) == 43
     assert found == expected
     assert _sha256(PLAN) in text
     assert _sha256(REGISTER) in text

@@ -18,6 +18,12 @@ TRACKED_EVIDENCE = {
     "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json": (
         "fd50dd1a98965c9ea6b946c634060b0bd8ddac9334eb62ffc8d9cac67a63e7cf"
     ),
+    "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json": (
+        "49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30"
+    ),
+    "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json": (
+        "70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d"
+    ),
     "configs/calib_space_v13_25_unordered_orientation_20260921.json": (
         "82970c6d542ea7319ba9cc807ea221bb43f4558afdc5d8abb37e96d649649a12"
     ),

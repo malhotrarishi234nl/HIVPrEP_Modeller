@@ -1,26 +1,36 @@
 # Robust-NROY production-backbone reconciliation
 
-**Status: CURRENT decision support as of 2026-10-15.** This report records a
-read-only, no-engine audit. It does not select or sign a model configuration.
+**Status: OPTION B SELECTED BY THE OWNER on 2026-10-15; recalibration and all
+production gates remain open.** This report began as a read-only, no-engine
+audit. The recorded choice selects a development direction, not a fitted model,
+not a plan signature, and not authorization to run an engine.
 
 ## Outcome
 
 A documented 1980 candidate exists, but it is not a drop-in production base for
 the current robust-NROY calibration space. The strongest historical evidence is
-the preserved V13.1 prefinal joint rank-1 output. The current shared M0/M1
+the preserved V13.1 prefinal joint rank-1 output. The earlier shared M0/M1
 candidate instead descends from a config that explicitly labels its 1975
 burn-in settings diagnostic and non-production.
 
-The remaining choice is scientific, not mechanical:
+The owner selected **Option B**:
 
-- **Option A:** use the completed historical 1980 V13.1 prefinal rank-1 output
-  as the backbone and approve or rebuild a calibration space compatible with
-  that model generation; or
-- **Option B:** retain the later V13.22 diagnosis and on-ART mechanisms, restore
-  a scientifically justified 1980 base for them, and recalibrate rather than
-  copying fields or changing the start year in place.
+- retain the later V13.22 diagnosis and on-ART mechanisms;
+- restore only initialization/backbone fields supported by exact 1980 evidence;
+- preserve the stochastic shared M0/M1 route; and
+- rerun calibration before considering any scientific or production promotion.
 
-No owner-signed config-registry entry currently resolves this choice.
+The resulting file is
+`configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json`
+(SHA-256
+`49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30`).
+It is explicitly **REQUIRES_RECALIBRATION**, not fitted, not validated, and not
+production eligible. Its derivation manifest is
+`configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json`
+(SHA-256
+`70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d`).
+The plan records this path only as `base_config_proposal`; `base_config` remains
+`UNSIGNED` and no config-registry entry promotes it.
 
 ## Evidence inventory
 
@@ -30,6 +40,8 @@ No owner-signed config-registry entry currently resolves this choice.
 |---|---|---|---|
 | Direct source | `configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json` | `c7aaec0f3ae36929ff3266f7305c128952e08714575363436d273e73dbd53187` | Starts in 1975; deterministic; identifies itself as `13.14-diagnostic`; calibration metadata has `overall_accept=false`. |
 | Prepared shared derivative | `configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json` | `fd50dd1a98965c9ea6b946c634060b0bd8ddac9334eb62ffc8d9cac67a63e7cf` | Mechanical derivative only: descriptive metadata, stochastic mode, and a complete disabled M1 block. |
+| Option B recalibration candidate | `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json` | `49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30` | Retains the V13.22 mechanisms/shared route and replaces only four documented 1980 initialization objects plus explicit status metadata. Requires a new calibration. |
+| Option B derivation manifest | `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json` | `70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d` | Machine-readable 56-scalar-leaf diff with old/new value, source path/hash and rationale for every change. |
 | Current proposed M0 space | `configs/calib_space_v13_25_unordered_orientation_20260921.json` | `82970c6d542ea7319ba9cc807ea221bb43f4558afdc5d8abb37e96d649649a12` | Contains 33 parameters and identifies itself as a diagnostic space combining later model layers. |
 
 The 1975 source states all of the following in its own metadata:
@@ -160,20 +172,31 @@ but establish their 1980 demographic and epidemic initialization scientifically
 and recalibrate them. The preserved rank-1 config can be a historical comparator,
 not a source from which later mechanism blocks are copied without validation.
 
-### Recommendation and required decision
+**Owner decision recorded 2026-10-15: Option B.** The prepared candidate copies
+only these complete parameter objects from the exact preserved V13.1 rank-1
+artifact, with the tracked `configs/1980_test.json` values as an exact local
+cross-check:
 
-**Recommend Option B if robust-NROY is intended to make production claims using
-the current V13.22 diagnosis and two-era on-ART mechanisms.** It is more work,
-but it preserves the intended current model rather than creating an undocumented
-hybrid. Option A is defensible only if the owner explicitly narrows the model
-claim to the historical V13.1 backbone and approves a compatible calibration
-design.
+1. `run_control.start_year`;
+2. `population.total_size`;
+3. `population.age_sex_distribution`; and
+4. `population.epidemic_seed.seed_year`.
 
-The owner must choose A or B, record the scope and rationale, and bind the exact
-selected config and calibration-space hashes in the signed plan and the
-authoritative config registry. Until then:
+No V13.1 fitted transmission, progression, diagnosis, mixing, contact, ART,
+PrEP, mortality, or epidemic-seed parameter is transplanted. The inherited
+V13.22 fitted values remain only as starting values for recalibration. The old
+1975 `calibration_metadata` is deliberately retained as historical provenance,
+not relabelled as a 1980 fit.
 
-- do not sign `models.base_config`;
-- do not alter the 1975 diagnostic source into a nominal 1980 file;
+### Recorded decision and required closure
+
+Option B is now the selected development direction. This closes only the
+A-versus-B choice. It does not close the calibration, model-identity,
+positive-p M1, pilot/pricing, seed, plan-signature, registry, or dispatch gates.
+Until a new calibration is completed and reviewed:
+
+- do not sign `models.base_config` or promote the candidate in the registry;
+- do not describe inherited V13.22 fitted values as a 1980 fit;
 - do not promote `1980_test.json` or `model_final.json` by filename; and
-- do not run the identity gate, pilot, or production engine.
+- do not run the identity gate, pilot, or production engine merely because the
+  candidate file exists.

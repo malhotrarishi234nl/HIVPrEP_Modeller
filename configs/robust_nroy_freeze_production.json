@@ -83,8 +83,10 @@
 
   "models": {
     "base_config": "UNSIGNED",
-    "base_config_proposal": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json",
-    "base_config_note": "The frozen production model config that parameter vectors are injected into. The proposal is a minimal derivative of coupled_calibration_search.BASE_CONFIG_PATH: calibrated scientific values are unchanged, stochastic mode is explicit, and a complete stage-structured diagnosis block defaults off for safe standalone M0 use. ProductionEvaluator explicitly removes the block for M0 and enables it for M1 on a runtime copy. This remains UNSIGNED and is not scientific identity evidence; select it only after review and bind its exact hash in the config registry.",
+    "base_config_proposal": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
+    "base_config_proposal_sha256": "49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30",
+    "base_config_derivation_manifest_proposal": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json",
+    "base_config_note": "Owner selected backbone Option B on 2026-10-15: retain the V13.22 mechanisms, restore only authoritative 1980 initialization/backbone fields, and recalibrate. The proposed file is a transparent calibration candidate, not a fitted or validated production config. It is prominently REQUIRES_RECALIBRATION and preserves stochastic execution plus the disabled-by-default shared M0/M1 route. The adjacent derivation manifest records every JSON-path change and source hash. models.base_config deliberately remains UNSIGNED; do not sign or dispatch until a new calibration and every downstream scientific/evidence gate pass.",
     "m0": {
       "calib_space": "UNSIGNED",
       "calib_space_proposal": "configs/calib_space_v13_25_unordered_orientation_20260921.json",

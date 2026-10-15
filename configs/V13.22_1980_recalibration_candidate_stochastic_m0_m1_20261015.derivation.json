@@ -1,0 +1,559 @@
+{
+  "schema": "v13_22_option_b_1980_derivation/1.0.0",
+  "status": "REQUIRES_RECALIBRATION_NOT_PRODUCTION_ELIGIBLE",
+  "owner_decision": {
+    "choice": "OPTION_B",
+    "recorded_date": "2026-10-15",
+    "meaning": "Retain V13.22 mechanisms, restore only traceable 1980 initialization/backbone fields, then recalibrate.",
+    "does_not_sign_production_plan": true
+  },
+  "parent_config": {
+    "path": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json",
+    "sha256": "fd50dd1a98965c9ea6b946c634060b0bd8ddac9334eb62ffc8d9cac67a63e7cf"
+  },
+  "candidate_config": {
+    "path": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
+    "sha256": "49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30"
+  },
+  "authoritative_sources": [
+    {
+      "role": "primary_1980_initialization_authority",
+      "path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02"
+    },
+    {
+      "role": "tracked_exact_1980_initialization_mirror",
+      "path": "configs/1980_test.json",
+      "sha256": "936dc7d1a50cc4107884715f62a0b83ee5af33afc925f1234387358658b9c1fe"
+    },
+    {
+      "role": "pre_decision_backbone_reconciliation",
+      "path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666"
+    }
+  ],
+  "derivation_rule": "Start from the shared stochastic V13.22 M0/M1 candidate. Copy only run_control.start_year, population.total_size, population.age_sex_distribution, and population.epidemic_seed.seed_year from the exact preserved V13.1 rank-1 artifact, including their co-located notes/source fields. Change only top-level status metadata in addition. Do not copy any V13.1 fitted parameter.",
+  "changed_json_paths": [
+    {
+      "json_path": "/_readme",
+      "old_value": "Robust-NROY shared M0/M1 configuration candidate, derived from V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json. Scientific parameter values are unchanged. This derivative switches the model to stochastic execution and adds a disabled-by-default stage-structured diagnosis block. It is not production evidence until the separately authorized identity gate and pilot pass.",
+      "new_value": "OPTION B 1980 CALIBRATION CANDIDATE. REQUIRES_RECALIBRATION. NOT FITTED, NOT VALIDATED, AND NOT PRODUCTION ELIGIBLE. Retains the existing V13.22 mechanisms and safe disabled-by-default shared M0/M1 route. Only the traceable 1980 initialization/backbone fields enumerated in the adjacent derivation manifest replace the inherited diagnostic 1975 fields. All other inherited fitted values remain unchanged solely as starting values for a new calibration and must not be interpreted as a 1980 fit.",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
+      "source_json_path": null,
+      "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
+    },
+    {
+      "json_path": "/meta/model_notes/calibration_status",
+      "old_value": "ROBUST-NROY CONFIG CANDIDATE. NOT PRODUCTION READY: code-route verification does not replace the separately authorized M0/M1 identity gate, measured pilot, signed plan, and scientific acceptance.",
+      "new_value": "REQUIRES_RECALIBRATION. OPTION B 1980 CALIBRATION CANDIDATE ONLY. NOT FITTED, NOT VALIDATED, NOT PRODUCTION ELIGIBLE, AND NOT AUTHORIZED FOR ROBUST-NROY PRODUCTION. Inherited 1975-fit values and calibration_metadata are historical starting provenance, not evidence of a 1980 fit.",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
+      "source_json_path": null,
+      "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
+    },
+    {
+      "json_path": "/meta/version/notes",
+      "old_value": "2026-10-15 derivative: stochastic execution plus a disabled-by-default stage-structured diagnosis block for explicit M0/M1 runtime routing. All calibrated scientific parameter values are inherited unchanged from V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json.",
+      "new_value": "2026-10-15 Option B derivative of the shared V13.22 stochastic M0/M1 candidate. Exact 1980 initialization substitutions and their evidence are recorded in V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json.",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
+      "source_json_path": null,
+      "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
+    },
+    {
+      "json_path": "/meta/version/value",
+      "old_value": "13.25-robust-nroy-config-candidate",
+      "new_value": "13.25-option-b-1980-recalibration-candidate",
+      "source_path": "documentation/reports/calibration/robust_nroy_readiness_2026-10-15/PRODUCTION_BACKBONE_RECONCILIATION.md",
+      "source_sha256": "680498dff8a65c4cfe759e8a2330e2c47643eeff518ca1d56569f5cae3c6f666",
+      "source_json_path": null,
+      "rationale": "Make the owner's Option B choice and the candidate's mandatory recalibration/non-production status unmistakable; this is status metadata, not a fitted model input."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/notes",
+      "old_value": "Relative age-sex weight shares for initial population. Source: Human Mortality Database (HMD) Netherlands, Jan 1 1975. V13.14 diagnostic \u2014 production uses 1980 weights.",
+      "new_value": "Relative age-sex weight shares for initial population. Auto-normalised. Source: Human Mortality Database (HMD) Netherlands, Jan 1 1980. Covers all age bins including childhood (0-14) and elderly (65+).",
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/notes",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/0-4/female",
+      "old_value": 0.03794105,
+      "new_value": 0.030550623,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/0-4/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/0-4/male",
+      "old_value": 0.039710162,
+      "new_value": 0.032053712,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/0-4/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/10-14/female",
+      "old_value": 0.043984548,
+      "new_value": 0.042383501,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/10-14/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/10-14/male",
+      "old_value": 0.04605464,
+      "new_value": 0.044392682,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/10-14/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/100-104/female",
+      "old_value": 1.2354e-05,
+      "new_value": 1.8098e-05,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/100-104/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/100-104/male",
+      "old_value": 5.221e-06,
+      "new_value": 8.942e-06,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/100-104/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/105-109/female",
+      "old_value": 5.15e-07,
+      "new_value": 5.68e-07,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/105-109/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/105-109/male",
+      "old_value": 7.4e-08,
+      "new_value": 2.84e-07,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/105-109/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/15-19/female",
+      "old_value": 0.041826949,
+      "new_value": 0.043268292,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/15-19/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/15-19/male",
+      "old_value": 0.043661213,
+      "new_value": 0.04527939,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/15-19/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/20-24/female",
+      "old_value": 0.040462943,
+      "new_value": 0.041502186,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/20-24/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/20-24/male",
+      "old_value": 0.042191758,
+      "new_value": 0.043040831,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/20-24/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/25-29/female",
+      "old_value": 0.041991006,
+      "new_value": 0.03971344,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/25-29/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/25-29/male",
+      "old_value": 0.044784392,
+      "new_value": 0.041679755,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/25-29/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/30-34/female",
+      "old_value": 0.032203679,
+      "new_value": 0.040724205,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/30-34/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/30-34/male",
+      "old_value": 0.035123398,
+      "new_value": 0.043569421,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/30-34/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/35-39/female",
+      "old_value": 0.028545445,
+      "new_value": 0.031230807,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/35-39/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/35-39/male",
+      "old_value": 0.030785036,
+      "new_value": 0.03376141,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/35-39/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/40-44/female",
+      "old_value": 0.028036728,
+      "new_value": 0.027731099,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/40-44/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/40-44/male",
+      "old_value": 0.028951875,
+      "new_value": 0.029396356,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/40-44/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/45-49/female",
+      "old_value": 0.027558234,
+      "new_value": 0.026956099,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/45-49/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/45-49/male",
+      "old_value": 0.026990395,
+      "new_value": 0.027506618,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/45-49/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/5-9/female",
+      "old_value": 0.043199118,
+      "new_value": 0.037441809,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/5-9/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/5-9/male",
+      "old_value": 0.045284358,
+      "new_value": 0.039156959,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/5-9/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/50-54/female",
+      "old_value": 0.028095556,
+      "new_value": 0.026276767,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/50-54/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/50-54/male",
+      "old_value": 0.026531534,
+      "new_value": 0.025377,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/50-54/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/55-59/female",
+      "old_value": 0.023490409,
+      "new_value": 0.02658769,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/55-59/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/55-59/male",
+      "old_value": 0.021753358,
+      "new_value": 0.02449817,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/55-59/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/60-64/female",
+      "old_value": 0.023178031,
+      "new_value": 0.021948547,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/60-64/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/60-64/male",
+      "old_value": 0.020358467,
+      "new_value": 0.019381323,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/60-64/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/65-69/female",
+      "old_value": 0.02086564,
+      "new_value": 0.021156584,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/65-69/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/65-69/male",
+      "old_value": 0.01696474,
+      "new_value": 0.017187405,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/65-69/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/70-74/female",
+      "old_value": 0.017061144,
+      "new_value": 0.018294264,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/70-74/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/70-74/male",
+      "old_value": 0.012785214,
+      "new_value": 0.013190263,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/70-74/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/75-79/female",
+      "old_value": 0.012221713,
+      "new_value": 0.013803095,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/75-79/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/75-79/male",
+      "old_value": 0.0084206,
+      "new_value": 0.008874959,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/75-79/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/80-84/female",
+      "old_value": 0.007225578,
+      "new_value": 0.008592496,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/80-84/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/80-84/male",
+      "old_value": 0.004833916,
+      "new_value": 0.004952763,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/80-84/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/85-89/female",
+      "old_value": 0.003144737,
+      "new_value": 0.004023756,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/85-89/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/85-89/male",
+      "old_value": 0.002108919,
+      "new_value": 0.002242036,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/85-89/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/90-94/female",
+      "old_value": 0.000889115,
+      "new_value": 0.001225451,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/90-94/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/90-94/male",
+      "old_value": 0.000580488,
+      "new_value": 0.000698849,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/90-94/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/95-99/female",
+      "old_value": 0.000117583,
+      "new_value": 0.000203899,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/95-99/female",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/age_sex_distribution/value/95-99/male",
+      "old_value": 6.8167e-05,
+      "new_value": 0.000117598,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/age_sex_distribution/value/95-99/male",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/epidemic_seed/seed_year/notes",
+      "old_value": "V13.14 diagnostic: seed year set to 1975 for burn-in testing. Probes test 1975, 1977, and 1980 variants. Original production value: 1980.",
+      "new_value": "Calendar year of epidemic introduction. First Dutch HIV diagnoses documented in national surveillance 1982. Not a calibration parameter.",
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/epidemic_seed/seed_year/notes",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/epidemic_seed/seed_year/value",
+      "old_value": 1975.0,
+      "new_value": 1980.0,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/epidemic_seed/seed_year/value",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/total_size/notes",
+      "old_value": "Total population at simulation start. Source: Human Mortality Database (HMD) Netherlands Jan 1, 1975. V13.14 diagnostic \u2014 production uses 1980 value (14,090,318).",
+      "new_value": "Total population at simulation start. Source: Human Mortality Database (HMD) Netherlands Jan 1, 1980.",
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/total_size/notes",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/total_size/source",
+      "old_value": "Human Mortality Database (HMD). Netherlands population Jan 1 1975. https://www.mortality.org/Country/Country?cntr=NLD",
+      "new_value": "Human Mortality Database (HMD). Netherlands population Jan 1 1980. https://www.mortality.org/Country/Country?cntr=NLD",
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/total_size/source",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/population/total_size/value",
+      "old_value": 13598912,
+      "new_value": 14090318,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/population/total_size/value",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/run_control/start_year/notes",
+      "old_value": "V13.14: diagnostic 1975 start for historical burn-in. Production remains 1980.",
+      "new_value": "Calendar year when simulation begins (1980 test run)",
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/run_control/start_year/notes",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    },
+    {
+      "json_path": "/run_control/start_year/value",
+      "old_value": 1975,
+      "new_value": 1980,
+      "source_path": "/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /data/model-outputs/v11_outputs/calibration/lhs_pipeline_v131_prefinal/lhs_joint/branch_004/lhs_best_fit_rank_001.json",
+      "source_sha256": "f0f7efbcca6181fce76401a4604231b88927011b97eb736a5f0107a8848b9d02",
+      "source_json_path": "/run_control/start_year/value",
+      "rationale": "Restore the documented 1980 initialization/backbone value or its co-located provenance metadata from the preserved V13.1 prefinal joint rank-1 artifact; the tracked 1980_test.json mirror agrees exactly."
+    }
+  ],
+  "changed_json_path_count": 56,
+  "preserved_invariants": [
+    "run_control.deterministic_mode.value remains false",
+    "the complete stage_structured_diagnosis block remains disabled by default with routine_hazard_scale=1.0, p=0.0, and symptom_start_year=1985",
+    "all V13.22 diagnosis and two-era on-ART mechanisms remain structurally and numerically unchanged",
+    "all inherited fitted scientific values outside the four named initialization/backbone objects remain byte-for-byte equal as parsed JSON values",
+    "the production plan remains UNSIGNED"
+  ],
+  "open_gates": [
+    "new calibration on this 1980 candidate",
+    "scientific review of the resulting fit",
+    "M0 versus M1-at-p=0 engine identity evidence",
+    "positive-p M1 confirmation",
+    "measured pilot and priced compute budget",
+    "seed-scope closure and disjoint signed seed blocks",
+    "signed plan and independently reviewed config registry"
+  ]
+}

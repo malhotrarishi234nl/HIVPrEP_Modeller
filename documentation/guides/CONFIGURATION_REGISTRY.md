@@ -26,9 +26,11 @@ The only excluded filesystem entries are untracked machine/cache debris such as
 - `suite/tool`: input to a named workflow that needs its own review;
 - `review-required`: ambiguous provenance or intended use; do not use yet.
 
-The shared stochastic M0/M1 candidate remains explicitly blocked. It inherits a
-diagnostic 1975 backbone and unvalidated period inputs that must be reconciled
-with the intended 1980 production backbone before selection or signature.
+The owner selected Option B and the current shared stochastic M0/M1 file is an
+explicit V13.22-on-1980 **recalibration candidate**. Its derivation is
+machine-recorded, but its inherited fitted values have not been recalibrated on
+that backbone. It is not fitted, validated, or production eligible and cannot
+be selected or signed as the production model.
 
 ## Drift check
 

@@ -28,10 +28,17 @@ The route is code-tested but is not a production approval.
 - `calib_space_v13_25_unordered_orientation_20260921.json`: proposed M0
   calibration space. M1 is generated as M0 plus one final coordinate.
 - `V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json`:
-  prepared shared stochastic M0/M1 candidate. It defaults safely to standalone
-  M0 and is the proposal recorded in the unsigned robust-NROY plan. It is
-  **not production-ready** until it is selected, signed, hash-bound, and the
-  identity, pilot, scientific-review, and dispatch gates pass.
+  superseded 1975 shared-route proposal retained as the exact parent of the
+  Option B derivation. It is not a production base.
+- `V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json`:
+  current unsigned `base_config_proposal` after the owner's Option B choice.
+  It retains the V13.22 mechanisms and safe stochastic M0/M1 route while
+  replacing only four traceable 1980 initialization/backbone objects. It is
+  **REQUIRES_RECALIBRATION**, not fitted, not validated, and not production
+  eligible. Do not use its inherited fitted values as 1980 results.
+- `V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json`:
+  machine-readable parent/source hashes and exact old/new JSON-path changes.
+  It is derivation evidence, not a production registry entry or approval.
 
 ## Broad file classes
 

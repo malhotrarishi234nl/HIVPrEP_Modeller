@@ -15,7 +15,7 @@ def test_tracked_config_registry_is_complete_and_current():
     with registry.REGISTRY_PATH.open(newline="", encoding="utf-8") as stream:
         tracked = list(csv.DictReader(stream))
     assert tracked == rows
-    assert len(rows) == 73
+    assert len(rows) == 75
     assert len({row["path"] for row in rows}) == len(rows)
     assert {row["role_class"] for row in rows} <= registry.ALLOWED_ROLES
 
@@ -30,9 +30,10 @@ def test_registry_is_not_a_scientific_promotion_mechanism():
     assert len(current) == 1
     status = current[0]["scientific_status"]
     note = current[0]["safe_collaborator_use"]
-    assert "BLOCKED" in status
-    assert "1975" in status and "1980" in status
-    assert "Do not use for scientific or production runs" in note
+    assert "REQUIRES_RECALIBRATION" in status
+    assert "not fitted" in status and "not production eligible" in status
+    assert "newly authorized calibration" in note
+    assert "Do not report its inherited values as a 1980 fit" in note
 
 
 def test_registry_checker_reports_an_unclassified_file(tmp_path):

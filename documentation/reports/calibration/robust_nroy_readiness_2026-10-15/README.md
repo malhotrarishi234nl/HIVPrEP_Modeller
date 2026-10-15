@@ -5,8 +5,8 @@
 - **Code acceptance: ACCEPT.** Current robust-NROY fail-closed code remains
   accepted; the path reconciliation is covered by guarded tests.
 - **Production readiness: NOT READY.** The exact current plan hash is
-  `76798841923717b78f7cf2f8f2185b5f5352fa30d545be9339f260f9c0b89e3c`
-  and validation reports 42 unsigned required decisions: 28 proposal-backed
+  `e3835812876831af6381e96bc662b75731fe89b35ba261ef79e38e683f181c74`
+  and validation reports 43 unsigned required decisions: 29 proposal-backed
   and 14 requiring new decisions.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
   run. No historical result was resealed.
@@ -15,7 +15,7 @@
 
 ## Package contents
 
-- `DECISION_REGISTER.csv`: all 42 decisions, split 28/14, with ranges,
+- `DECISION_REGISTER.csv`: all 43 decisions, split 29/14, with ranges,
   dependencies, consequences, evidence needs, suggested owner role and status.
 - `EXTERNAL_INPUT_RECONCILIATION.md`: exact locations/hashes and path fixes.
 - `HISTORICAL_ARTIFACT_DISPOSITION.md`: old/current code-map hashes,
@@ -23,7 +23,8 @@
 - `PRODUCTION_CONFIG_ASSESSMENT.md`: proposed-config rejection and exact
   `ProductionEvaluator.config_for` route.
 - `PRODUCTION_BACKBONE_RECONCILIATION.md`: exact 1975/1980 lineage evidence,
-  compatibility audit, and the unresolved Option A/Option B owner decision.
+  compatibility audit, recorded Option B choice, and remaining recalibration
+  boundary.
 - `POSITIVE_P_M1_CONFIRMATION_PLAN.md`: candidate, seed, vector and evidence
   contract without execution.
 - `acceptance_inputs_pre_sign/`: current-source observed values, component
@@ -35,7 +36,7 @@
 - `OWNER_LOCK_IN_AND_METHODS_GUIDE.md`: plain-language owner decisions,
   assumptions, methods rationale, reading list, and newly discovered design
   gaps that must close before signing.
-- `OWNER_DECISION_PACKET.md`: all 42 unsigned rows grouped by closure route,
+- `OWNER_DECISION_PACKET.md`: all 43 unsigned rows grouped by closure route,
   with coupled numeric recommendations, bounded sensitivities, and explicit
   trajectory-cost consequences; it is decision support, not a signature.
 - `REPOSITORY_HANDOFF_CLEANUP_PLAN.md`: preservation-first repository and
@@ -113,13 +114,12 @@ confirmation, and proposal blocks are supplied. See
 
 ## Exact remaining approvals
 
-1. Rishi Malhotra reviews and signs the 42 owner-assigned register rows.
-2. Review and approve the prepared minimal stochastic M0/M1 config derivative;
-   code-route tests do not replace the identity gate or scientific review. Its
-   inherited 1975 diagnostic backbone and explicitly unvalidated period inputs
-   must be reconciled against the intended 1980 production backbone before it
-   can be selected or signed. The evidence, incompatible paths, and required
-   owner choice are recorded in `PRODUCTION_BACKBONE_RECONCILIATION.md`.
+1. Rishi Malhotra reviews and signs the 43 owner-assigned register rows.
+2. The owner selected backbone Option B. Recalibrate the prepared V13.22-on-
+   1980 stochastic M0/M1 candidate and independently review the resulting fit
+   before selecting or signing any production base. The current candidate is
+   explicitly not fitted, validated, or production eligible; code-route tests
+   do not replace calibration, identity, or scientific review.
 3. Choose whether a full preserved backlog edition should be restored as
    authoritative documentation.
 4. Approve retirement-only versus current-code rerun for the two stale

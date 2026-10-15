@@ -13,7 +13,7 @@ must **not** be selected as-is:
   the signed `p_parameter.config_path` cannot be injected through the proposed
   M1 route.
 
-A minimal derivative is now prepared for owner review:
+A minimal 1975 derivative was prepared for owner review:
 
 `configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json`
 
@@ -34,9 +34,25 @@ backbone must therefore be reconciled before selection or signature. The exact
 file hash must be recorded after that review.
 
 `PRODUCTION_BACKBONE_RECONCILIATION.md` records the preserved 1980 candidates,
-their exact hashes, the current-space compatibility audit, and the required
-Option A/Option B owner decision. It finds no safe mechanical drop-in for the
-current space and does not select a config.
+their exact hashes, and the current-space compatibility audit. The owner chose
+Option B on 2026-10-15: retain the V13.22 mechanisms, restore only traceable
+1980 initialization/backbone fields, and recalibrate.
+
+The unsigned plan now proposes this calibration candidate:
+
+`configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json`
+
+- candidate SHA-256: `49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30`
+- derivation manifest:
+  `configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json`
+- manifest SHA-256: `70893d733ba16efd524b3a2b473fd6edc6a62dd616eb21c5e99ddfd02626a36d`
+
+The manifest proves the exact 56-scalar-leaf diff. Apart from four status
+metadata leaves, changes are confined to the complete 1980 `start_year`,
+`total_size`, `age_sex_distribution`, and epidemic `seed_year` objects copied
+from the preserved V13.1 rank-1 artifact. No fitted V13.1 value was
+transplanted. The candidate is **REQUIRES_RECALIBRATION**, not a fitted or
+validated config and not production eligible.
 
 ## Exact production route
 
@@ -61,9 +77,9 @@ identity or runtime suitability.
 
 ## Recommendation
 
-First reconcile the inherited diagnostic 1975 settings against the intended
-1980 production backbone. Then review the resulting shared config and exact
-diff, and bind the approved file's exact hash in the signed plan and
-`CONFIG_REGISTRY.md`. After that, separately authorize and pass the real M0/M1
-identity gate and measured pilot. This report prepares a mechanical route
-candidate; it does not select it, sign it, or claim scientific acceptance.
+Rerun calibration on the Option B candidate and independently review the
+resulting fit before creating any production proposal. Only a later reviewed
+fitted config may be hash-bound in the signed plan and `CONFIG_REGISTRY.md`.
+After that, separately authorize and pass the real M0/M1 identity gate and
+measured pilot. The current plan remains unsigned; this report records a
+calibration direction, not scientific acceptance or production authorization.

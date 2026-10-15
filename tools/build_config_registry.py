@@ -51,7 +51,7 @@ def _names(text: str) -> set[str]:
 # prestige or whether a loader happens to accept the file.
 ROLE_GROUPS: Mapping[str, set[str]] = {
     ROLE_CURRENT: _names("""
-        V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json
+        V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json
     """),
     ROLE_PROPOSED: _names("""
         calib_space_v13_25_unordered_orientation_20260921.json
@@ -63,6 +63,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
         V13.22_20260604.json
         V13.22_20260604_final_candidate_rank012.json
         V13.22_20260604_nearfit_rank001_basecase.json
+        V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json
         calib_space_v13_10_msm_diag_multiplier_pilot.json
         calib_space_v13_11_orientation_seed_stage_pilot.json
         calib_space_v13_12_structural_capacity_msm_multiplier.json
@@ -120,6 +121,7 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
     """),
     ROLE_SUITE: _names("""
         README.md
+        V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json
         disease_target_mapping.json
         hm_wave_plan_template.json
         hta_config.json
@@ -167,10 +169,13 @@ DEFAULT_SAFE_NOTE = {
 }
 
 STATUS_OVERRIDES = {
-    "V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json": (
-        "PREPARED_NOT_APPROVED — BLOCKED: inherited diagnostic 1975 backbone and "
-        "unvalidated period inputs must be reconciled with the intended 1980 "
-        "production backbone"
+    "V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json": (
+        "REQUIRES_RECALIBRATION — Option B 1980 calibration candidate; not fitted; "
+        "not validated; not production eligible"
+    ),
+    "V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json": (
+        "DERIVATION_EVIDENCE — exact Option B parent/source hashes and JSON-path diff; "
+        "not production approval"
     ),
     "robust_nroy_freeze_production.json": (
         "UNSIGNED_PROPOSAL — 42 owner-assigned decisions remain unsigned; fails closed"
@@ -184,10 +189,12 @@ STATUS_OVERRIDES = {
 }
 
 SAFE_NOTE_OVERRIDES = {
-    "V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json": (
-        "Code-route validation is allowed without the engine. Do not use for scientific or production "
-        "runs until the 1975-versus-1980 backbone is resolved, the resulting file is reviewed/hash-bound, "
-        "and identity, pilot, scientific-review, and dispatch gates pass."
+    "V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json": (
+        "Use only as the declared starting config for a newly authorized calibration. Do not report its "
+        "inherited values as a 1980 fit and do not use it for policy, PSA, or production runs."
+    ),
+    "V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.derivation.json": (
+        "Inspect to audit the candidate derivation; it does not authorize calibration or production."
     ),
     "robust_nroy_freeze_production.json": (
         "Validation-only use is safe; it must continue to fail closed until all decisions and evidence "
