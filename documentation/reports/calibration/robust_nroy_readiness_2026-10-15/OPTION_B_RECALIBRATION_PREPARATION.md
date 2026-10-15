@@ -33,8 +33,12 @@ separate 2,000-attempt cap. These are different algorithms and their caps must n
 The plan carries five discovery, twenty confirmation, three smoke and one proposal-RNG seed
 placeholder. They are intentionally unsigned and cannot pass validation, preparation, or any
 engine stage. Exact integer seeds must be selected only after the seed-disjointness audit is
-complete. The plan itself also allows only `validate-only`; changing that status requires an
-explicit owner decision and creates a new exact plan hash.
+complete. The plan is byte-bound to the existing `INCOMPLETE` seed-audit artifact, so replacing
+placeholders is not enough: a reviewed `FINAL`, passed, production-eligible audit must bind the
+exact discovery, confirmation, and proposal-RNG blocks and its own exact hash. The runner's
+supplemental manifest scan also covers the smoke block; that scan cannot replace the reviewed
+audit. The plan itself allows only `validate-only`; write or engine stages require separate
+authorization artifacts rather than a broader status embedded in the plan.
 
 Scientific review must still sign the exact Option B config, 33-D parameter space, 13-target
 register/order and variance assumptions. In particular, `V_obs=0` for underivable target terms is
@@ -63,3 +67,19 @@ toward over-exclusion. It is not an empirical estimate.
 
 This sequence bundles the mechanical path now while preserving the distinction between code
 acceptance, calibration evidence and production authorization.
+
+## Execution mechanics after later owner approval
+
+The runner never infers a plan. Every mode requires an explicit `--plan`; a missing or nonexistent
+path is refused, including validation. Historical plans can still be validated read-only, but
+cannot execute without the current lowercase source-workbook hash and exact final seed-audit
+binding.
+
+Each write or engine stage also requires `--authorization` pointing to a strict JSON object with
+schema `coupled_calibration_stage_authorization/1.0.0`, status `AUTHORIZED`, exactly one of
+`prepare`, `smoke`, `search`, `resume`, or `confirmation`, the byte-exact plan SHA-256, and the
+exact upstream hashes required by that stage. Preparation has no upstream artifact; smoke binds
+the preparation manifest; search binds preparation plus smoke; resume additionally binds the
+current partial search manifest; confirmation binds the completed search manifest. Grants cannot
+be reused across stages or after any bound artifact changes. These mechanics do not authorize the
+current plan and do not substitute for scientific review.

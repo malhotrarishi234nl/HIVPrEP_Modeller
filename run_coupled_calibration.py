@@ -3,8 +3,7 @@
 
 Modes, each writing its OWN directory so a previous stage can never be overwritten:
 
-    (no arguments)   print the validation report; zero engine construction, zero
-                     simulations, nothing written
+    (no arguments)   refused: every mode requires an explicit plan path
     --validate-only  the same, explicitly
     --prepare        freeze the design into a new preparation directory; zero simulations
     --smoke          three paired production-versus-harness trajectories (6 runs)
@@ -26,6 +25,7 @@ import copy
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 
 import coupled_calibration_search as ccs
+import nroy_contract as nc
 from coupled_calibration_search import ContractError
 
 
@@ -52,6 +53,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 DEFAULT_PLAN = ROOT / "configs/coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json"
+STAGE_AUTHORIZATION_SCHEMA = "coupled_calibration_stage_authorization/1.0.0"
+STAGE_AUTHORIZED = "AUTHORIZED"
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 #: Modules whose content defines a result.  Frozen at preparation and re-verified
 #: before every stage that spends simulation budget.
@@ -132,16 +136,16 @@ class RunnerPlan:
     @property
     def proposal_rng_seed(self) -> int:
         value = self.payload["seeds"]["proposal_rng"]
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ContractError("plan seeds.proposal_rng is unsigned or not an integer")
-        return value
+        return nc.require_rng_seed(value, what="plan seeds.proposal_rng")
 
     def _seed_tuple(self, field: str) -> tuple[int, ...]:
         values = self.payload["seeds"][field]
-        if (not isinstance(values, list)
-                or any(isinstance(v, bool) or not isinstance(v, int) for v in values)):
+        if not isinstance(values, list):
             raise ContractError(f"plan seeds.{field} contains unsigned or non-integer values")
-        return tuple(values)
+        return tuple(
+            nc.require_rng_seed(value, what=f"plan seeds.{field}[{index}]")
+            for index, value in enumerate(values)
+        )
 
     @property
     def comparison_group(self) -> str | None:
@@ -153,7 +157,7 @@ class RunnerPlan:
         return tuple(str(v) for v in self.payload["seeds"].get("paired_designs", ()))
 
     def validate_execution_authorization(self) -> dict:
-        """Fail closed when a plan explicitly limits itself to validation."""
+        """Describe the plan-level read-only policy; stage grants are separate artifacts."""
         authorization = self.payload.get("execution_authorization")
         if authorization is None:
             return {"status": "legacy_plan_without_explicit_gate", "allowed_modes": "legacy"}
@@ -163,12 +167,13 @@ class RunnerPlan:
             )
         status = authorization["status"]
         modes = authorization["allowed_modes"]
-        if status != "AUTHORIZED_FOR_PREPARATION_AND_ENGINE":
+        if not isinstance(status, str) or not status:
+            raise ContractError("execution_authorization.status must be non-empty")
+        if not isinstance(modes, list) or modes != ["validate-only"]:
             raise ContractError(
-                f"plan execution status is {status!r}; only validate-only is permitted"
+                "plan-level execution_authorization may allow validate-only only; every write or "
+                "engine stage requires a separate stage-scoped authorization artifact"
             )
-        if not isinstance(modes, list) or "prepare" not in modes or "engine" not in modes:
-            raise ContractError("authorized plans must explicitly allow prepare and engine")
         return {"status": status, "allowed_modes": modes}
 
 
@@ -212,10 +217,16 @@ def read_journal(path: Path) -> list[dict]:
         if not line:
             continue
         try:
-            records.append(json.loads(line))
+            # Preserve the documented torn-final-line recovery while refusing
+            # duplicate keys and non-finite/overflowing numbers in valid JSON.
+            json.loads(line)
         except json.JSONDecodeError:
             # A torn trailing line from an interrupted append is discarded, not repaired.
             break
+        payload = nc.strict_json_loads(line, what=f"journal record in {path}")
+        if not isinstance(payload, dict):
+            raise ContractError(f"journal record in {path} must be a JSON object")
+        records.append(payload)
     return records
 
 
@@ -247,6 +258,155 @@ def environment() -> dict:
         git["error"] = f"{type(exc).__name__}: {exc}"
     return {"python": sys.version, "platform": platform.platform(), "argv": list(sys.argv),
             "git": git, "cwd": str(Path.cwd()), "generated_utc": now()}
+
+
+def strict_json_object(path: Path, *, what: str) -> dict:
+    payload = nc.strict_json_load(path, what=what)
+    if not isinstance(payload, dict):
+        raise ContractError(f"{what} must be a JSON object")
+    return payload
+
+
+def _require_sha256(value, *, what: str) -> str:
+    if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+        raise ContractError(f"{what} must be an exact lowercase SHA-256 digest")
+    return value
+
+
+def validate_seed_audit_binding(plan: RunnerPlan) -> dict:
+    """Require exact FINAL seed-audit evidence before any stage can use integer seeds."""
+    inputs = plan.inputs
+    path_text = inputs.get("seed_audit")
+    expected_status = inputs.get("seed_audit_status")
+    expected_hash = inputs.get("expected_sha256", {}).get("seed_audit")
+    if not isinstance(path_text, str) or not path_text.strip():
+        raise ContractError("executable plan must bind inputs.seed_audit")
+    if expected_status != "FINAL":
+        raise ContractError("executable plan must bind inputs.seed_audit_status='FINAL'")
+    expected_hash = _require_sha256(expected_hash, what="inputs.expected_sha256.seed_audit")
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = ROOT / path
+    if not path.is_file():
+        raise ContractError(f"seed-audit artifact is missing: {path}")
+    actual_hash = ccs.sha256_file(path)
+    if actual_hash != expected_hash:
+        raise ContractError(
+            f"seed-audit hash changed: expected {expected_hash}, found {actual_hash}"
+        )
+    audit = strict_json_object(path, what="seed-audit artifact")
+    if audit.get("schema") != "robust_nroy_seed_audit/1.3.0":
+        raise ContractError("seed-audit artifact must use robust_nroy_seed_audit/1.3.0")
+    if audit.get("status") != expected_status:
+        raise ContractError(
+            f"seed-audit status is {audit.get('status')!r}, expected {expected_status!r}"
+        )
+    if audit.get("passed") is not True or audit.get("production_eligible") is not True:
+        raise ContractError("seed-audit artifact is not passed and production eligible")
+    if audit.get("deterministic") is not True:
+        raise ContractError("seed-audit artifact is not declared deterministic")
+    recorded_artifact_sha = audit.get("artifact_sha256")
+    audit_without_sha = dict(audit)
+    audit_without_sha.pop("artifact_sha256", None)
+    if recorded_artifact_sha != ccs.sha256_json(audit_without_sha):
+        raise ContractError("seed-audit artifact_sha256 is missing or stale")
+    if audit.get("unresolved") != [] or audit.get("overlaps") != []:
+        raise ContractError("seed-audit artifact retains unresolved findings or overlaps")
+    disjointness = audit.get("disjointness")
+    if not isinstance(disjointness, dict) or disjointness.get("status") != "PROVEN":
+        raise ContractError("seed-audit artifact does not prove disjointness")
+    blocks = audit.get("candidate_blocks")
+    if not isinstance(blocks, dict) or blocks.get("status") != "SUPPLIED":
+        raise ContractError("seed-audit artifact lacks supplied candidate_blocks")
+    expected_blocks = {
+        "discovery": list(plan.discovery_seeds),
+        "confirmation": list(plan.confirmation_seeds),
+        "proposal_rng": plan.proposal_rng_seed,
+    }
+    for field, expected in expected_blocks.items():
+        if blocks.get(field) != expected:
+            raise ContractError(f"seed-audit candidate_blocks.{field} does not match the plan")
+    expected_candidate_sha = ccs.sha256_json({
+        "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
+        **expected_blocks,
+    })
+    if blocks.get("sha256") != expected_candidate_sha:
+        raise ContractError("seed-audit candidate_blocks.sha256 does not match the plan")
+    return {"path": str(path), "sha256": actual_hash, "status": expected_status}
+
+
+def validate_executable_input_bindings(plan: RunnerPlan) -> dict:
+    """Require provenance that legacy read-only plans were not designed to carry."""
+    workbook_sha256 = _require_sha256(
+        plan.inputs.get("source_workbook_sha256"),
+        what="executable plan inputs.source_workbook_sha256",
+    )
+    return {"source_workbook_sha256": workbook_sha256}
+
+
+def require_stage_authorization(
+    authorization_path: Path | None,
+    *,
+    stage: str,
+    plan: RunnerPlan,
+    plan_sha256: str,
+    upstream_sha256: dict[str, str],
+) -> dict:
+    """Validate a one-stage grant before the stage writes or constructs an engine."""
+    if authorization_path is None:
+        raise ContractError(f"{stage} requires an explicit stage authorization artifact")
+    path = Path(authorization_path)
+    if not path.is_file():
+        raise ContractError(f"stage authorization does not exist: {path}")
+    payload = strict_json_object(path, what=f"{stage} stage authorization")
+    required = {"schema", "status", "stage", "plan_sha256", "upstream_sha256"}
+    if set(payload) != required:
+        raise ContractError(
+            f"stage authorization fields differ; missing={sorted(required - set(payload))}, "
+            f"extra={sorted(set(payload) - required)}"
+        )
+    if payload["schema"] != STAGE_AUTHORIZATION_SCHEMA:
+        raise ContractError("unsupported stage authorization schema")
+    if payload["status"] != STAGE_AUTHORIZED:
+        raise ContractError(f"stage authorization status is {payload['status']!r}")
+    if payload["stage"] != stage:
+        raise ContractError(
+            f"authorization is for stage {payload['stage']!r}, not {stage!r}"
+        )
+    expected_plan_hash = _require_sha256(plan_sha256, what="exact plan file sha256")
+    if _require_sha256(payload["plan_sha256"], what="authorization plan_sha256") \
+            != expected_plan_hash:
+        raise ContractError("authorization plan_sha256 does not match the exact plan")
+    if not isinstance(payload["upstream_sha256"], dict):
+        raise ContractError("authorization upstream_sha256 must be an object")
+    actual_upstream = payload["upstream_sha256"]
+    for key, digest in actual_upstream.items():
+        _require_sha256(digest, what=f"authorization upstream_sha256.{key}")
+    if actual_upstream != upstream_sha256:
+        raise ContractError(
+            f"authorization upstream prerequisites differ: expected {upstream_sha256}, "
+            f"found {actual_upstream}"
+        )
+    return {"path": str(path), "sha256": ccs.sha256_file(path), **payload}
+
+
+def require_matching_plan_path(
+    plan_path: Path | None,
+    plan: RunnerPlan,
+    *,
+    expected_file_sha256: str | None = None,
+) -> dict:
+    if plan_path is None:
+        raise ContractError("execution requires an explicit --plan path")
+    path = Path(plan_path)
+    payload = strict_json_object(path, what="coupled calibration plan")
+    if ccs.sha256_json(payload) != ccs.sha256_json(plan.payload):
+        raise ContractError("explicit --plan does not match the exact frozen plan")
+    file_sha256 = ccs.sha256_file(path)
+    if expected_file_sha256 is not None and file_sha256 != _require_sha256(
+            expected_file_sha256, what="prepared plan source sha256"):
+        raise ContractError("explicit --plan file hash differs from the prepared plan source")
+    return {"payload": payload, "file_sha256": file_sha256}
 
 
 # ==========================================================================
@@ -299,9 +459,10 @@ def load_inputs(plan: RunnerPlan | None = None) -> dict:
                 f"{name} hash changed: expected {expected}, found {digest}. The frozen "
                 f"proposal-source provenance must not move under this design."
             )
-    space = ccs.ParameterSpace.from_calib_space(json.loads(paths["calib_space"].read_text()))
-    wave_plan = json.loads(paths["wave_plan"].read_text())
-    base_config = json.loads(paths["base_config"].read_text())
+    space_json = strict_json_object(paths["calib_space"], what="calibration space")
+    wave_plan = strict_json_object(paths["wave_plan"], what="wave plan")
+    base_config = strict_json_object(paths["base_config"], what="base config")
+    space = ccs.ParameterSpace.from_calib_space(space_json)
     targets = ccs.load_frozen_targets(paths["target_register"], wave_plan)
     base_start = _config_year(base_config, "start_year")
     base_end_exclusive = _config_year(base_config, "end_year")
@@ -317,7 +478,7 @@ def load_inputs(plan: RunnerPlan | None = None) -> dict:
             f"extract_end_year={plan.extract_end_year} must be before the base config's "
             f"exclusive end_year={base_end_exclusive}"
         )
-    register = json.loads(paths["target_register"].read_text())
+    register = strict_json_object(paths["target_register"], what="target register")
     expected_workbook = plan.inputs.get("source_workbook_sha256")
     if expected_workbook is not None and register.get("source_workbook_sha256") != expected_workbook:
         raise ContractError(
@@ -326,6 +487,7 @@ def load_inputs(plan: RunnerPlan | None = None) -> dict:
 
     from run_hm_confirmation import _verified_manifest  # noqa: PLC0415
 
+    strict_json_object(source_dir / "manifest.json", what="source experiment manifest")
     source_manifest = _verified_manifest(source_dir.resolve())
     evaluated = pd.read_csv(source_dir / "wave_01/evaluated.csv",
                             usecols=["design_id", *space.names])
@@ -337,7 +499,8 @@ def load_inputs(plan: RunnerPlan | None = None) -> dict:
     if missing:
         raise ContractError(f"warm-start file lacks parameters: {missing}")
     return {
-        "paths": paths, "hashes": hashes, "space": space, "wave_plan": wave_plan,
+        "paths": paths, "hashes": hashes, "space": space, "space_json": space_json,
+        "wave_plan": wave_plan,
         "base_config": base_config, "targets": targets, "source_frame": source_frame,
         "warm_frame": warm_frame, "source_manifest": source_manifest,
         "plan": plan, "warm_start_sha256": warm_sha256,
@@ -652,10 +815,12 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
     found: set[int] = set()
     n_manifests = 0
     own: list[str] = []
+    skipped_invalid: list[str] = []
     for manifest in sorted(root.rglob("manifest.json")):
         try:
-            payload = json.loads(manifest.read_text())
-        except (OSError, json.JSONDecodeError):
+            payload = strict_json_object(manifest, what="seed-scan manifest")
+        except (OSError, ContractError):
+            skipped_invalid.append(str(manifest.relative_to(root)))
             continue
         n_manifests += 1
         same_design = isinstance(payload, dict) and payload.get("design") == plan.design_name
@@ -687,6 +852,8 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
         "reserved": reserved, "n_manifests_scanned": n_manifests,
         "n_own_manifests_skipped": len(own), "own_manifests": own,
         "n_recorded_seeds": len(found), "overlap": overlap,
+        "n_invalid_manifests_skipped": len(skipped_invalid),
+        "invalid_manifests_skipped": skipped_invalid,
         "limitation": "Only seeds recorded in manifest.json files under outputs/, plus the "
                       "declared foreign ranges listed in this runner, are visible to the scan. "
                       f"Manifests carrying design={plan.design_name!r}, or the explicitly paired "
@@ -702,9 +869,9 @@ def seed_preflight(outputs_root: Path | None = None, plan: RunnerPlan | None = N
 def validate(*, plan_path: Path | None = None, run_seed_preflight: bool = True) -> dict:
     checks: dict[str, dict] = {}
     state: dict = {}
-    plan_payload_from_file = (
-        json.loads(Path(plan_path).read_text()) if plan_path is not None else plan_payload()
-    )
+    if plan_path is None:
+        raise ContractError("validation requires an explicit --plan path")
+    plan_payload_from_file = strict_json_object(Path(plan_path), what="coupled calibration plan")
     plan = RunnerPlan(plan_payload_from_file)
 
     def check(name: str, fn):
@@ -739,7 +906,7 @@ def validate(*, plan_path: Path | None = None, run_seed_preflight: bool = True) 
                  state["base_config"],
                  state["space"].as_dict(state["source_frame"].loc[d, list(state["space"].names)]
                                         .to_numpy(dtype=float)),
-                 json.loads(state["paths"]["calib_space"].read_text()),
+                 state["space_json"],
                  simulation_start_year=plan.simulation_start_year))}
             for d in plan.source_vector_ids
         ])
@@ -750,7 +917,7 @@ def validate(*, plan_path: Path | None = None, run_seed_preflight: bool = True) 
                 state["space"].as_dict(state["source_frame"].loc[plan.source_vector_ids[0],
                                                                  list(state["space"].names)]
                                        .to_numpy(dtype=float)),
-                json.loads(state["paths"]["calib_space"].read_text()),
+                state["space_json"],
                 simulation_start_year=plan.simulation_start_year))[:3],
         })
 
@@ -821,12 +988,12 @@ def assert_plan_matches(plan: dict) -> dict:
         raise ContractError("plan design.declared_as must be non-empty")
 
     input_keys = set(expected["inputs"])
-    optional_input_fields = {"source_workbook_sha256"}
+    optional_input_fields = {"source_workbook_sha256", "seed_audit", "seed_audit_status"}
     if (not input_keys.issubset(plan["inputs"])
             or set(plan["inputs"]) - input_keys - optional_input_fields):
         raise ContractError("plan inputs must retain reviewed fields and only known bindings")
     hash_keys = set(expected["inputs"]["expected_sha256"])
-    optional_hash_keys = {"warm_start", "source_manifest"}
+    optional_hash_keys = {"warm_start", "source_manifest", "seed_audit"}
     actual_hash_keys = set(plan["inputs"]["expected_sha256"])
     if (not hash_keys.issubset(actual_hash_keys)
             or actual_hash_keys - hash_keys - optional_hash_keys):
@@ -840,12 +1007,25 @@ def assert_plan_matches(plan: dict) -> dict:
     for field in optional_hash_keys:
         if field in actual_hash_keys:
             value = plan["inputs"]["expected_sha256"][field]
-            if not isinstance(value, str) or len(value) != 64:
-                raise ContractError(f"plan expected_sha256.{field} must be a SHA-256 digest")
+            _require_sha256(value, what=f"plan expected_sha256.{field}")
     if "source_workbook_sha256" in plan["inputs"]:
-        value = plan["inputs"]["source_workbook_sha256"]
-        if not isinstance(value, str) or len(value) != 64:
-            raise ContractError("plan inputs.source_workbook_sha256 must be a SHA-256 digest")
+        _require_sha256(
+            plan["inputs"]["source_workbook_sha256"],
+            what="plan inputs.source_workbook_sha256",
+        )
+    current_schema = ("calibration_window" in plan or "execution_authorization" in plan)
+    if current_schema and "source_workbook_sha256" not in plan["inputs"]:
+        raise ContractError("current executable plan schema requires source_workbook_sha256")
+    if "seed_audit" in plan["inputs"]:
+        if not isinstance(plan["inputs"]["seed_audit"], str) \
+                or not plan["inputs"]["seed_audit"].strip():
+            raise ContractError("plan inputs.seed_audit must be a non-empty path")
+        if plan["inputs"].get("seed_audit_status") not in {"INCOMPLETE", "FINAL"}:
+            raise ContractError("plan inputs.seed_audit_status must be INCOMPLETE or FINAL")
+        if "seed_audit" not in actual_hash_keys:
+            raise ContractError("plan with seed_audit must bind expected_sha256.seed_audit")
+    elif "seed_audit_status" in plan["inputs"] or "seed_audit" in actual_hash_keys:
+        raise ContractError("seed_audit path, status and hash must be declared together")
 
     window = plan.get("calibration_window")
     if window is not None:
@@ -865,14 +1045,15 @@ def assert_plan_matches(plan: dict) -> dict:
         raise ContractError("plan seeds must retain the reviewed seed fields")
     for field in ("discovery", "confirmation", "smoke"):
         values = seeds[field]
+        if not isinstance(values, list):
+            raise ContractError(f"plan seeds.{field} must be a JSON array")
         if len(values) != len(expected["seeds"][field]):
             raise ContractError(
                 f"plan seeds.{field} must contain {len(expected['seeds'][field])} values"
             )
-        if any(isinstance(v, bool) or not isinstance(v, int) for v in values):
-            raise ContractError(f"plan seeds.{field} must contain integers")
-    if isinstance(seeds["proposal_rng"], bool) or not isinstance(seeds["proposal_rng"], int):
-        raise ContractError("plan seeds.proposal_rng must be an integer")
+        for index, value in enumerate(values):
+            nc.require_rng_seed(value, what=f"plan seeds.{field}[{index}]")
+    nc.require_rng_seed(seeds["proposal_rng"], what="plan seeds.proposal_rng")
     flat = [*seeds["discovery"], *seeds["confirmation"], *seeds["smoke"],
             seeds["proposal_rng"]]
     if len(flat) != len(set(flat)):
@@ -1016,6 +1197,7 @@ def plan_payload() -> dict:
 # ==========================================================================
 
 def prepare(output_dir: Path, *, plan_path: Path | None = None,
+            authorization_path: Path | None = None,
             initial_size: int | None = None) -> dict:
     """Freeze the design.  ``initial_size`` below the declared archive size is an
     ENGINEERING reduction: it is recorded in the manifest and flagged, so a
@@ -1026,9 +1208,16 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
                                        indent=2))
     state = report["state"]
     plan_contract = state["plan"]
+    plan_source_sha256 = ccs.sha256_file(Path(plan_path))
+    validate_executable_input_bindings(plan_contract)
+    seed_audit = validate_seed_audit_binding(plan_contract)
+    authorization = require_stage_authorization(
+        authorization_path, stage="prepare", plan=plan_contract,
+        plan_sha256=plan_source_sha256, upstream_sha256={}
+    )
     size = ccs.INITIAL_ARCHIVE_SIZE if initial_size is None else int(initial_size)
     space = state["space"]
-    space_json = json.loads(state["paths"]["calib_space"].read_text())
+    space_json = state["space_json"]
     check = injection_checker(
         state["base_config"], space_json,
         simulation_start_year=plan_contract.simulation_start_year,
@@ -1080,7 +1269,10 @@ def prepare(output_dir: Path, *, plan_path: Path | None = None,
         "warm_start_sha256": state["warm_start_sha256"],
         "source_manifest_sha256": state["source_manifest_sha256"],
         "module_sha256": module_hashes(), "environment": environment(),
-        "plan_sha256": ccs.sha256_json(plan),
+        "plan_sha256": plan_source_sha256,
+        "plan_content_sha256": ccs.sha256_json(plan),
+        "seed_audit": seed_audit,
+        "stage_authorization": authorization,
         "anchor_config_sha256": ccs.sha256_json(anchor_config),
         "proposal_rng": {"seed": plan_contract.proposal_rng_seed,
                          "state_after_initialisation": rng_state_after_initialisation},
@@ -1114,7 +1306,7 @@ def write_artifact_index(output_dir: Path) -> None:
 
 
 def verify_artifact_index(directory: Path) -> dict:
-    index = json.loads((Path(directory) / "artifacts.json").read_text())
+    index = strict_json_object(Path(directory) / "artifacts.json", what="artifact index")
     for entry in index["files"]:
         path = Path(directory) / entry["path"]
         if not path.is_file():
@@ -1127,14 +1319,21 @@ def verify_artifact_index(directory: Path) -> dict:
 def load_prepared(prepared_dir: Path) -> dict:
     """Verify a preparation directory against the CURRENT inputs and code."""
     prepared_dir = Path(prepared_dir)
-    manifest = json.loads((prepared_dir / "manifest.json").read_text())
+    manifest = strict_json_object(prepared_dir / "manifest.json", what="prepared manifest")
     if manifest.get("status") != ccs.STATUS_PREPARED:
         raise ContractError(f"{prepared_dir} has status {manifest.get('status')!r}, expected PREPARED")
     verify_artifact_index(prepared_dir)
-    plan_payload_frozen = json.loads((prepared_dir / "frozen_plan.json").read_text())
+    plan_payload_frozen = strict_json_object(
+        prepared_dir / "frozen_plan.json", what="frozen coupled calibration plan"
+    )
+    _require_sha256(manifest.get("plan_sha256"), what="prepared plan_sha256")
+    if manifest.get("plan_content_sha256") != ccs.sha256_json(plan_payload_frozen):
+        raise ContractError("prepared plan_content_sha256 does not match frozen_plan.json")
     assert_plan_matches(plan_payload_frozen)
     plan = RunnerPlan(plan_payload_frozen)
     plan.validate_execution_authorization()
+    validate_executable_input_bindings(plan)
+    validate_seed_audit_binding(plan)
     state = load_inputs(plan)
     if manifest["input_sha256"] != state["hashes"]:
         raise ContractError("prepared inputs differ from the current inputs")
@@ -1145,7 +1344,7 @@ def load_prepared(prepared_dir: Path) -> dict:
                          if manifest["module_sha256"].get(n) != current.get(n))
     if differences:
         raise ContractError(f"code changed since preparation: {differences}")
-    archive = json.loads((prepared_dir / "initial_archive.json").read_text())
+    archive = strict_json_object(prepared_dir / "initial_archive.json", what="initial archive")
     return {"manifest": manifest, "plan": plan.payload, "contract": plan,
             "initial": archive["vectors"],
             "initial_diagnostics": archive["diagnostics"], "state": state,
@@ -1161,7 +1360,7 @@ def build_smoke_pairs(prepared: dict) -> list[dict]:
     """Three pairs, each one production and one observed trajectory at the same seed."""
     state = prepared["state"]
     space = state["space"]
-    space_json = json.loads(state["paths"]["calib_space"].read_text())
+    space_json = state["space_json"]
     warm = [entry for entry in prepared["initial"]
             if entry["origin"] in ("warm_source_vector", "warm_start_csv")]
     if len(warm) < 2:
@@ -1187,9 +1386,21 @@ def build_smoke_pairs(prepared: dict) -> list[dict]:
 
 
 def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
+          plan_path: Path | None = None, authorization_path: Path | None = None,
           worker: Callable[[dict], dict] = smoke_pair_worker,
           executor_factory=ProcessPoolExecutor) -> dict:
     prepared = load_prepared(prepared_dir)
+    matching_plan = require_matching_plan_path(
+        plan_path, prepared["contract"],
+        expected_file_sha256=prepared["manifest"]["plan_sha256"],
+    )
+    authorization = require_stage_authorization(
+        authorization_path,
+        stage="smoke",
+        plan=prepared["contract"],
+        plan_sha256=matching_plan["file_sha256"],
+        upstream_sha256={"prepared_manifest": prepared["prepared_sha256"]},
+    )
     gate = diagnosis_test_gate()
     assert_unoccupied(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1218,6 +1429,7 @@ def smoke(prepared_dir: Path, output_dir: Path, *, workers: int,
         "mean_seconds_per_trajectory": float(np.mean(per_trajectory)) if per_trajectory else None,
         "elapsed_seconds": time.time() - started,
         "prepared_dir": str(prepared_dir), "prepared_sha256": prepared["prepared_sha256"],
+        "stage_authorization": authorization,
         "module_sha256": module_hashes(), "input_sha256": prepared["state"]["hashes"],
         "diagnosis_test_gate": gate, "environment": environment(), "generated_utc": now(),
         "meaning": "Equivalence of the observed harness run and the production run at identical "
@@ -1261,7 +1473,7 @@ def diagnosis_test_gate() -> dict:
 
 def load_smoke(smoke_dir: Path, prepared: dict) -> dict:
     smoke_dir = Path(smoke_dir)
-    result = json.loads((smoke_dir / "SMOKE_RESULT.json").read_text())
+    result = strict_json_object(smoke_dir / "SMOKE_RESULT.json", what="smoke result")
     if result.get("status") != ccs.STATUS_SMOKE_PASSED:
         raise ContractError(f"smoke artifact status is {result.get('status')!r}, expected SMOKE_PASSED")
     verify_artifact_index(smoke_dir)
@@ -1469,6 +1681,8 @@ def run_search(
     smoke_dir: Path,
     output_dir: Path,
     *,
+    plan_path: Path | None = None,
+    authorization_path: Path | None = None,
     workers: int = ccs.DEFAULT_WORKERS,
     resume: bool = False,
     worker: Callable[[dict], dict] = evaluate_candidate_worker,
@@ -1479,8 +1693,8 @@ def run_search(
 ) -> dict:
     output_dir = Path(output_dir)
     if resume:
-        context = json.loads((output_dir / "search_context.json").read_text())
-        manifest = json.loads((output_dir / "manifest.json").read_text())
+        context = strict_json_object(output_dir / "search_context.json", what="search context")
+        manifest = strict_json_object(output_dir / "manifest.json", what="search manifest")
         if manifest.get("status") in (ccs.STATUS_SEARCH_COMPLETE, ccs.STATUS_CONFIRMATION_COMPLETE):
             raise ContractError(
                 f"{output_dir} is already {manifest['status']}; --resume must not overwrite a "
@@ -1489,7 +1703,24 @@ def run_search(
         prepared_dir = Path(context["prepared_dir"])
         smoke_dir = Path(context["smoke_dir"])
     prepared = load_prepared(prepared_dir)
+    matching_plan = require_matching_plan_path(
+        plan_path, prepared["contract"],
+        expected_file_sha256=prepared["manifest"]["plan_sha256"],
+    )
     smoke_result = load_smoke(smoke_dir, prepared)
+    upstream_sha256 = {
+        "prepared_manifest": prepared["prepared_sha256"],
+        "smoke_result": ccs.sha256_file(Path(smoke_dir) / "SMOKE_RESULT.json"),
+    }
+    if resume:
+        upstream_sha256["search_manifest"] = ccs.sha256_file(output_dir / "manifest.json")
+    authorization = require_stage_authorization(
+        authorization_path,
+        stage="resume" if resume else "search",
+        plan=prepared["contract"],
+        plan_sha256=matching_plan["file_sha256"],
+        upstream_sha256=upstream_sha256,
+    )
     if resume:
         if context["prepared_sha256"] != prepared["prepared_sha256"]:
             raise ContractError("the partial search was produced from a different preparation")
@@ -1508,7 +1739,7 @@ def run_search(
     plan = prepared["contract"]
     discovery_replicates = len(plan.discovery_seeds)
     space = state["space"]
-    space_json = json.loads(state["paths"]["calib_space"].read_text())
+    space_json = state["space_json"]
     targets = state["targets"]
     initial = [dict(entry) for entry in prepared["initial"]]
 
@@ -1524,6 +1755,7 @@ def run_search(
                 "hpc_override" if workers > ccs.MAX_WORKERS else "reviewed_local"
             ),
             "wall_time_cap_seconds": float(wall_time_cap),
+            "stage_authorization": authorization,
             "environment": environment(), "started_utc": now(),
         })
         dump_json(output_dir / "manifest.json", {"design": plan.design_name,
@@ -1552,7 +1784,8 @@ def run_search(
 
     generator = ccs.ProposalGenerator(space, plan.proposal_rng_seed)
     checkpoint_path = output_dir / "checkpoint.json"
-    checkpoint = json.loads(checkpoint_path.read_text()) if checkpoint_path.exists() else {
+    checkpoint = strict_json_object(checkpoint_path, what="search checkpoint") \
+        if checkpoint_path.exists() else {
         "rng_after_batch": {}, "batches_generated": [], "pool_history": {},
         "proposal_diagnostics": {},
     }
@@ -1749,7 +1982,9 @@ def write_search_outputs(output_dir: Path, archive: ccs.Archive, targets, *, sta
         "n_sensitivity_only": len(sensitivity_only),
         "best_search_j": float(min((r.j for r in records), default=float("nan"))),
         "prepared_sha256": prepared["prepared_sha256"],
-        "smoke_sha256": json.loads((output_dir / "search_context.json").read_text())["smoke_sha256"],
+        "smoke_sha256": strict_json_object(
+            output_dir / "search_context.json", what="search context"
+        )["smoke_sha256"],
         "input_sha256": prepared["state"]["hashes"], "module_sha256": module_hashes(),
         "environment": environment(), "generated_utc": now(),
         "repository_acceptance_crosscheck": crosscheck,
@@ -1902,7 +2137,7 @@ def write_search_report(output_dir: Path, records, targets, manifest: dict) -> N
 
 def load_complete_search(source: Path) -> dict:
     source = Path(source)
-    manifest = json.loads((source / "manifest.json").read_text())
+    manifest = strict_json_object(source / "manifest.json", what="search manifest")
     status = manifest.get("status")
     if status != ccs.STATUS_SEARCH_COMPLETE:
         raise ContractError(
@@ -1910,18 +2145,21 @@ def load_complete_search(source: Path) -> dict:
             f"run cannot be reported as completed evidence and is not a confirmation source."
         )
     verify_artifact_index(source)
-    context = json.loads((source / "search_context.json").read_text())
+    context = strict_json_object(source / "search_context.json", what="search context")
     current = module_hashes()
     differences = sorted(n for n in set(context["module_sha256"]) | set(current)
                          if context["module_sha256"].get(n) != current.get(n))
     if differences:
         raise ContractError(f"code changed since the search: {differences}")
-    shortlist = json.loads((source / "shortlist.json").read_text())
+    shortlist = strict_json_object(source / "shortlist.json", what="search shortlist")
     return {"manifest": manifest, "context": context, "shortlist": shortlist, "source": source}
 
 
 def _raw_record(source: Path, candidate_id: int) -> dict:
-    return json.loads((Path(source) / "raw" / f"candidate_{int(candidate_id)}.json").read_text())
+    return strict_json_object(
+        Path(source) / "raw" / f"candidate_{int(candidate_id)}.json",
+        what="raw candidate record",
+    )
 
 
 def _annual_frame(raw_records: Sequence[dict]) -> pd.DataFrame:
@@ -1950,6 +2188,8 @@ def confirm(
     source: Path,
     output_dir: Path,
     *,
+    plan_path: Path | None = None,
+    authorization_path: Path | None = None,
     workers: int = ccs.DEFAULT_WORKERS,
     worker: Callable[[dict], dict] = evaluate_candidate_worker,
     executor_factory=ProcessPoolExecutor,
@@ -1958,11 +2198,21 @@ def confirm(
     search = load_complete_search(source)
     prepared = load_prepared(Path(search["context"]["prepared_dir"]))
     plan = prepared["contract"]
+    matching_plan = require_matching_plan_path(
+        plan_path, plan, expected_file_sha256=prepared["manifest"]["plan_sha256"]
+    )
+    authorization = require_stage_authorization(
+        authorization_path,
+        stage="confirmation",
+        plan=plan,
+        plan_sha256=matching_plan["file_sha256"],
+        upstream_sha256={"search_manifest": ccs.sha256_file(Path(source) / "manifest.json")},
+    )
     discovery_replicates = len(plan.discovery_seeds)
     confirmation_replicates = len(plan.confirmation_seeds)
     state = prepared["state"]
     space = state["space"]
-    space_json = json.loads(state["paths"]["calib_space"].read_text())
+    space_json = state["space_json"]
     targets = state["targets"]
     gate = diagnosis_test_gate()
 
@@ -2086,6 +2336,7 @@ def confirm(
         "source_search": str(Path(source).resolve()),
         "source_search_manifest_sha256": ccs.sha256_file(Path(source) / "manifest.json"),
         "prepared_sha256": prepared["prepared_sha256"], "input_sha256": state["hashes"],
+        "stage_authorization": authorization,
         "module_sha256": module_hashes(), "diagnosis_test_gate": gate,
         "variance_stability": stability, "cross_validation": cross_validation,
         "environment": environment(), "generated_utc": now(),
@@ -2144,7 +2395,7 @@ def _confirmation_diagnostics(output_dir: Path, raw_records, state, targets) -> 
         # A wave may hold out selected years from a series that is otherwise primary.
         # This preserves one source series and one model-output mapping while ensuring
         # the declared historical years never enter acceptance.
-        wave_plan = json.loads(state["paths"]["wave_plan"].read_text())
+        wave_plan = state["wave_plan"]
         holdout_years = wave_plan.get("cross_validation_years")
         if holdout_years:
             held_out = register.restrict_years(register.calibration_targets(), holdout_years)
@@ -2259,7 +2510,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--run-search", action="store_true", help="the declared discovery search")
     mode.add_argument("--confirm", action="store_true", help="fresh-seed confirmation")
     mode.add_argument("--resume", action="store_true", help="continue a matching partial search")
-    parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
+    parser.add_argument("--plan", type=Path, default=None,
+                        help="explicit coupled-calibration plan; never inferred or defaulted")
+    parser.add_argument("--authorization", type=Path,
+                        help="strict stage-scoped authorization artifact for write/engine modes")
     parser.add_argument("--prepared", type=Path, help="a PREPARED directory")
     parser.add_argument("--smoke-source", type=Path, help="a SMOKE_PASSED directory")
     parser.add_argument("--source", type=Path, help="a SEARCH_COMPLETE directory")
@@ -2291,8 +2545,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"error: --workers must be between 1 and {upper}{hint}"
         )
     try:
+        plan_path = _require(args.plan, "every mode requires an explicit --plan path")
+        if not Path(plan_path).is_file():
+            raise ContractError(f"explicit --plan does not exist: {plan_path}")
         if not any((args.prepare, args.smoke, args.run_search, args.confirm, args.resume)):
-            report = validate(plan_path=args.plan if Path(args.plan).exists() else None)
+            report = validate(plan_path=plan_path)
             printable = {k: v for k, v in report.items() if k != "state"}
             print(json.dumps(ccs.json_safe(printable), indent=2))
             print("\nVALIDATION " + ("PASSED" if report["ok"] else "FAILED")
@@ -2301,7 +2558,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0 if report["ok"] else 2
         if args.prepare:
             manifest = prepare(_require(args.output_dir, "--prepare needs --output-dir"),
-                               plan_path=args.plan if Path(args.plan).exists() else None)
+                               plan_path=plan_path, authorization_path=args.authorization)
             print(json.dumps({k: manifest[k] for k in
                               ("status", "simulations_started", "initial_archive_size")}, indent=2))
             print(f"Prepared {args.output_dir}; 0 simulations started.")
@@ -2309,7 +2566,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.smoke:
             result = smoke(_require(args.prepared, "--smoke needs --prepared"),
                            _require(args.output_dir, "--smoke needs --output-dir"),
-                           workers=args.workers)
+                           workers=args.workers, plan_path=plan_path,
+                           authorization_path=args.authorization)
             print(json.dumps({k: result[k] for k in
                               ("status", "pairs", "trajectories", "warm_vectors_exercised",
                                "mean_seconds_per_trajectory")}, indent=2))
@@ -2320,13 +2578,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _require(args.prepared, "--run-search needs --prepared")
                 _require(args.smoke_source, "--run-search needs --smoke-source")
             result = run_search(args.prepared, args.smoke_source, output_dir,
-                                workers=args.workers, resume=bool(args.resume))
+                                workers=args.workers, resume=bool(args.resume),
+                                plan_path=plan_path, authorization_path=args.authorization)
             print(json.dumps(ccs.json_safe(result), indent=2))
             return 0 if result["status"] == ccs.STATUS_SEARCH_COMPLETE else 1
         if args.confirm:
             manifest = confirm(_require(args.source, "--confirm needs --source"),
                                _require(args.output_dir, "--confirm needs --output-dir"),
-                               workers=args.workers)
+                               workers=args.workers, plan_path=plan_path,
+                               authorization_path=args.authorization)
             print(json.dumps({k: manifest[k] for k in
                               ("status", "n_candidates", "n_confirmation_primary_pass")}, indent=2))
             return 0

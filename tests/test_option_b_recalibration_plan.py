@@ -54,7 +54,11 @@ def test_option_b_validate_only_resolves_inputs_and_targets_without_engine_or_wr
     assert tuple(targets["detail"]["order"]) == EXPECTED_TARGET_ORDER
     assert "unsigned" in report["checks"]["seed_preflight"]["detail"].lower()
     assert not report["checks"]["plan_execution_contract"]["ok"]
-    assert not report["checks"]["execution_authorization"]["ok"]
+    assert report["checks"]["execution_authorization"]["ok"]
+    assert report["checks"]["execution_authorization"]["detail"] == {
+        "status": "PREPARATION_ONLY_NOT_AUTHORIZED",
+        "allowed_modes": ["validate-only"],
+    }
     assert report["simulations_started"] == 0
     assert report["engines_constructed"] == 0
     assert report["artifacts_written"] == 0

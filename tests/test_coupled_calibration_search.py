@@ -86,6 +86,64 @@ def stub_smoke_worker(payload: dict) -> dict:
 
 
 SMALL_ARCHIVE = 32
+OPTION_B_PLAN = (
+    ROOT / "configs/coupled_search_plan_option_b_1980_recalibration_preparation_20261015.json"
+)
+
+
+def _write_json(path: Path, payload: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _runnable_plan(root: Path) -> Path:
+    plan = rcc.strict_json_object(OPTION_B_PLAN, what="test Option B plan")
+    plan["design"]["name"] = f"test_option_b_{root.name}"
+    plan["seeds"]["discovery"] = list(range(4_000_000_000, 4_000_000_005))
+    plan["seeds"]["confirmation"] = list(range(4_000_000_100, 4_000_000_120))
+    plan["seeds"]["smoke"] = list(range(4_000_000_200, 4_000_000_203))
+    plan["seeds"]["proposal_rng"] = 4_000_000_300
+    candidate_blocks = {
+        "status": "SUPPLIED",
+        "discovery": plan["seeds"]["discovery"],
+        "confirmation": plan["seeds"]["confirmation"],
+        "proposal_rng": plan["seeds"]["proposal_rng"],
+    }
+    candidate_blocks["sha256"] = ccs.sha256_json({
+        "schema": "robust_nroy_candidate_seed_blocks/1.0.0",
+        "discovery": candidate_blocks["discovery"],
+        "confirmation": candidate_blocks["confirmation"],
+        "proposal_rng": candidate_blocks["proposal_rng"],
+    })
+    audit = {
+        "schema": "robust_nroy_seed_audit/1.3.0",
+        "status": "FINAL",
+        "passed": True,
+        "production_eligible": True,
+        "deterministic": True,
+        "candidate_blocks": candidate_blocks,
+        "disjointness": {"status": "PROVEN"},
+        "overlaps": [],
+        "unresolved": [],
+    }
+    audit["artifact_sha256"] = ccs.sha256_json(audit)
+    audit_path = _write_json(root / "seed_audit.json", audit)
+    plan["inputs"]["seed_audit"] = str(audit_path)
+    plan["inputs"]["seed_audit_status"] = "FINAL"
+    plan["inputs"]["expected_sha256"]["seed_audit"] = ccs.sha256_file(audit_path)
+    return _write_json(root / "runnable_plan.json", plan)
+
+
+def _stage_authorization(root: Path, stage: str, plan_path: Path,
+                         upstream: dict[str, str]) -> Path:
+    return _write_json(root / f"authorize_{stage}.json", {
+        "schema": rcc.STAGE_AUTHORIZATION_SCHEMA,
+        "status": rcc.STAGE_AUTHORIZED,
+        "stage": stage,
+        "plan_sha256": ccs.sha256_file(plan_path),
+        "upstream_sha256": upstream,
+    })
 
 
 @pytest.fixture(scope="session")
@@ -106,14 +164,22 @@ def _stub_gate():
     return saved
 
 
-def _prepare_and_smoke(root: Path) -> tuple[Path, Path]:
+def _prepare_and_smoke(root: Path) -> tuple[Path, Path, Path]:
     """An ENGINEERING preparation with a reduced initial archive, flagged as such."""
     prepared = root / "prepared"
     smoke_dir = root / "smoke"
-    rcc.prepare(prepared, initial_size=SMALL_ARCHIVE)
+    plan_path = _runnable_plan(root)
+    prepare_auth = _stage_authorization(root, "prepare", plan_path, {})
+    rcc.prepare(prepared, plan_path=plan_path, authorization_path=prepare_auth,
+                initial_size=SMALL_ARCHIVE)
+    smoke_auth = _stage_authorization(
+        root, "smoke", plan_path,
+        {"prepared_manifest": ccs.sha256_file(prepared / "manifest.json")},
+    )
     rcc.smoke(prepared, smoke_dir, workers=1, worker=stub_smoke_worker,
-              executor_factory=SerialExecutor)
-    return prepared, smoke_dir
+              executor_factory=SerialExecutor, plan_path=plan_path,
+              authorization_path=smoke_auth)
+    return prepared, smoke_dir, plan_path
 
 
 @pytest.fixture(scope="module")
@@ -122,12 +188,17 @@ def small_search(tmp_path_factory):
     saved = _stub_gate()
     try:
         root = tmp_path_factory.mktemp("coupled_small")
-        prepared, smoke_dir = _prepare_and_smoke(root)
+        prepared, smoke_dir, plan_path = _prepare_and_smoke(root)
         search_dir = root / "search"
+        search_auth = _stage_authorization(root, "search", plan_path, {
+            "prepared_manifest": ccs.sha256_file(prepared / "manifest.json"),
+            "smoke_result": ccs.sha256_file(smoke_dir / "SMOKE_RESULT.json"),
+        })
         result = rcc.run_search(prepared, smoke_dir, search_dir, workers=1, n_batches=1,
-                                worker=surrogate_worker, executor_factory=SerialExecutor)
+                                worker=surrogate_worker, executor_factory=SerialExecutor,
+                                plan_path=plan_path, authorization_path=search_auth)
         yield {"root": root, "prepared": prepared, "smoke": smoke_dir,
-               "search": search_dir, "result": result}
+               "search": search_dir, "result": result, "plan": plan_path}
     finally:
         rcc.diagnosis_test_gate = saved
 
@@ -246,8 +317,166 @@ def test_occupied_output_directory_is_refused(tmp_path):
     with pytest.raises(ContractError) as excinfo:
         rcc.assert_unoccupied(occupied)
     assert "choose a new --output-dir prefix" in str(excinfo.value)
-    with pytest.raises(ContractError):
+    with pytest.raises(ContractError, match="explicit --plan"):
         rcc.prepare(occupied)
+
+
+@pytest.mark.parametrize("text", [
+    '{"design": {}, "design": {}}',
+    '{"design": NaN}',
+    '{"design": 1e999}',
+])
+def test_authoritative_plan_json_refuses_ambiguous_or_nonfinite_numbers(tmp_path, text):
+    path = tmp_path / "invalid_plan.json"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ContractError):
+        rcc.validate(plan_path=path)
+
+
+def test_validation_never_falls_back_to_a_default_plan(tmp_path, capsys):
+    with pytest.raises(ContractError, match="explicit --plan"):
+        rcc.validate()
+    with pytest.raises(SystemExit, match="explicit --plan"):
+        rcc.main(["--validate-only"])
+    missing = tmp_path / "does_not_exist.json"
+    assert rcc.main(["--validate-only", "--plan", str(missing)]) == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_historical_plan_remains_read_only_but_is_execution_ineligible():
+    path = ROOT / "configs/coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json"
+    payload = rcc.strict_json_object(path, what="historical plan")
+    plan = rcc.RunnerPlan(payload)
+    assert rcc.assert_plan_matches(payload)["design"] == payload["design"]["name"]
+    assert plan.validate_execution_authorization()["status"] == \
+        "legacy_plan_without_explicit_gate"
+    with pytest.raises(ContractError, match="source_workbook_sha256"):
+        rcc.validate_executable_input_bindings(plan)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "uppercase", "malformed"])
+def test_current_plan_requires_exact_lowercase_workbook_sha(mutation):
+    payload = rcc.strict_json_object(OPTION_B_PLAN, what="Option B plan")
+    if mutation == "missing":
+        payload["inputs"].pop("source_workbook_sha256")
+    elif mutation == "uppercase":
+        payload["inputs"]["source_workbook_sha256"] = \
+            payload["inputs"]["source_workbook_sha256"].upper()
+    else:
+        payload["inputs"]["source_workbook_sha256"] = "0" * 63
+    with pytest.raises(ContractError, match="source_workbook_sha256"):
+        rcc.assert_plan_matches(payload)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("proposal_rng", -1),
+    ("proposal_rng", 2**32),
+    ("proposal_rng", True),
+    ("discovery", 2**32),
+])
+def test_plan_rng_seeds_use_the_uint32_contract_domain(tmp_path, field, value):
+    payload = rcc.strict_json_object(_runnable_plan(tmp_path), what="runnable plan")
+    if field == "discovery":
+        payload["seeds"][field][0] = value
+    else:
+        payload["seeds"][field] = value
+    with pytest.raises(ContractError, match="seed"):
+        rcc.assert_plan_matches(payload)
+
+
+def test_exact_final_seed_audit_is_required_and_plan_bound(tmp_path):
+    option_b = rcc.RunnerPlan(rcc.strict_json_object(OPTION_B_PLAN, what="Option B plan"))
+    with pytest.raises(ContractError, match="FINAL"):
+        rcc.validate_seed_audit_binding(option_b)
+
+    plan_path = _runnable_plan(tmp_path)
+    payload = rcc.strict_json_object(plan_path, what="runnable plan")
+    assert rcc.validate_seed_audit_binding(rcc.RunnerPlan(payload))["status"] == "FINAL"
+    audit_path = Path(payload["inputs"]["seed_audit"])
+    audit = rcc.strict_json_object(audit_path, what="seed audit")
+    audit["candidate_blocks"]["discovery"][0] += 1
+    audit.pop("artifact_sha256")
+    audit["artifact_sha256"] = ccs.sha256_json(audit)
+    _write_json(audit_path, audit)
+    payload["inputs"]["expected_sha256"]["seed_audit"] = ccs.sha256_file(audit_path)
+    with pytest.raises(ContractError, match="candidate_blocks.discovery"):
+        rcc.validate_seed_audit_binding(rcc.RunnerPlan(payload))
+
+
+@pytest.mark.parametrize("stage", ["prepare", "smoke", "search", "resume", "confirmation"])
+def test_every_write_or_engine_stage_requires_its_own_authorization(stage):
+    plan = rcc.RunnerPlan(rcc.strict_json_object(OPTION_B_PLAN, what="Option B plan"))
+    with pytest.raises(ContractError, match=f"{stage} requires"):
+        rcc.require_stage_authorization(
+            None, stage=stage, plan=plan, plan_sha256=ccs.sha256_file(OPTION_B_PLAN),
+            upstream_sha256={},
+        )
+
+
+def test_stage_authorization_is_exactly_stage_plan_and_upstream_bound(tmp_path):
+    plan_path = _runnable_plan(tmp_path)
+    plan = rcc.RunnerPlan(rcc.strict_json_object(plan_path, what="runnable plan"))
+    upstream = {"prepared_manifest": "a" * 64}
+    auth = _stage_authorization(tmp_path, "smoke", plan_path, upstream)
+    assert rcc.require_stage_authorization(
+        auth, stage="smoke", plan=plan, plan_sha256=ccs.sha256_file(plan_path),
+        upstream_sha256=upstream,
+    )["status"] == rcc.STAGE_AUTHORIZED
+    with pytest.raises(ContractError, match="not 'search'"):
+        rcc.require_stage_authorization(
+            auth, stage="search", plan=plan, plan_sha256=ccs.sha256_file(plan_path),
+            upstream_sha256=upstream,
+        )
+    with pytest.raises(ContractError, match="prerequisites differ"):
+        rcc.require_stage_authorization(
+            auth, stage="smoke", plan=plan,
+            plan_sha256=ccs.sha256_file(plan_path),
+            upstream_sha256={"prepared_manifest": "b" * 64},
+        )
+    with pytest.raises(ContractError, match="exact plan"):
+        rcc.require_stage_authorization(
+            auth, stage="smoke", plan=plan, plan_sha256="b" * 64,
+            upstream_sha256=upstream,
+        )
+
+    reformatted = tmp_path / "same_content_different_bytes.json"
+    reformatted.write_text(
+        json.dumps(rcc.strict_json_object(plan_path, what="runnable plan")),
+        encoding="utf-8",
+    )
+    with pytest.raises(ContractError, match="file hash differs"):
+        rcc.require_matching_plan_path(
+            reformatted, plan, expected_file_sha256=ccs.sha256_file(plan_path)
+        )
+
+
+@pytest.mark.parametrize("text", [
+    '{"schema": "a", "schema": "b"}',
+    '{"schema": NaN}',
+    '{"schema": 1e999}',
+])
+def test_authorization_json_is_strict(tmp_path, text):
+    path = tmp_path / "authorization.json"
+    path.write_text(text, encoding="utf-8")
+    plan = rcc.RunnerPlan(rcc.strict_json_object(OPTION_B_PLAN, what="Option B plan"))
+    with pytest.raises(ContractError):
+        rcc.require_stage_authorization(
+            path, stage="prepare", plan=plan, plan_sha256=ccs.sha256_file(OPTION_B_PLAN),
+            upstream_sha256={},
+        )
+
+
+@pytest.mark.parametrize("text", [
+    '{"status": "PREPARED", "status": "PREPARED"}',
+    '{"status": NaN}',
+    '{"status": 1e999}',
+])
+def test_stage_artifact_json_is_strict(tmp_path, text):
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    (prepared / "manifest.json").write_text(text, encoding="utf-8")
+    with pytest.raises(ContractError):
+        rcc.load_prepared(prepared)
 
 
 def test_frozen_targets_count_order_and_positive_budgets(targets):
@@ -858,7 +1087,8 @@ def test_search_outputs_recompute_from_raw_replicates(small_search, targets):
         matrix = np.array(raw["target_matrix"], dtype=float)
         assert matrix.shape == (ccs.DISCOVERY_REPLICATES, len(targets))
         assert raw["target_order"] == keys
-        assert raw["replicate_seeds"] == list(ccs.DISCOVERY_SEEDS)
+        expected = rcc.strict_json_object(small_search["plan"], what="test plan")
+        assert raw["replicate_seeds"] == expected["seeds"]["discovery"]
         np.testing.assert_allclose(matrix.mean(axis=0), raw["means"], rtol=0, atol=1e-12)
         np.testing.assert_allclose(matrix.var(axis=0, ddof=1), raw["sample_variances"],
                                    rtol=0, atol=1e-12)
@@ -968,6 +1198,7 @@ def test_shortlist_is_frozen_by_a_complete_search(small_search):
 
 def test_crash_and_resume_matches_an_uninterrupted_run(small_search, tmp_path, targets):
     prepared, smoke_dir = small_search["prepared"], small_search["smoke"]
+    plan_path = small_search["plan"]
     reference = small_search["search"]
     crash_after = SMALL_ARCHIVE + 2  # crash inside batch 1, after its proposals were frozen
 
@@ -983,16 +1214,29 @@ def test_crash_and_resume_matches_an_uninterrupted_run(small_search, tmp_path, t
         return surrogate_worker(payload)
 
     interrupted = tmp_path / "interrupted"
+    search_auth = _stage_authorization(tmp_path, "search", plan_path, {
+        "prepared_manifest": ccs.sha256_file(prepared / "manifest.json"),
+        "smoke_result": ccs.sha256_file(smoke_dir / "SMOKE_RESULT.json"),
+    })
     with pytest.raises(_Crash):
         rcc.run_search(prepared, smoke_dir, interrupted, workers=1, n_batches=1,
-                       worker=crashing_worker, executor_factory=SerialExecutor)
+                       worker=crashing_worker, executor_factory=SerialExecutor,
+                       plan_path=plan_path, authorization_path=search_auth)
     partial_dispatch = rcc.read_journal(interrupted / "journal/dispatch.jsonl")
     partial_results = rcc.read_journal(interrupted / "journal/results.jsonl")
     assert len(partial_dispatch) == crash_after + 1  # the lost launch was journaled first
     assert len(partial_results) == crash_after
 
-    resumed = rcc.run_search(None, None, interrupted, workers=1, n_batches=1, resume=True,
-                             worker=surrogate_worker, executor_factory=SerialExecutor)
+    resume_auth = _stage_authorization(tmp_path, "resume", plan_path, {
+        "prepared_manifest": ccs.sha256_file(prepared / "manifest.json"),
+        "smoke_result": ccs.sha256_file(smoke_dir / "SMOKE_RESULT.json"),
+        "search_manifest": ccs.sha256_file(interrupted / "manifest.json"),
+    })
+    resumed = rcc.run_search(
+        None, None, interrupted, workers=1, n_batches=1, resume=True,
+        worker=surrogate_worker, executor_factory=SerialExecutor,
+        plan_path=plan_path, authorization_path=resume_auth,
+    )
     assert resumed["status"] == ccs.STATUS_SEARCH_COMPLETE
 
     dispatch = rcc.read_journal(interrupted / "journal/dispatch.jsonl")
@@ -1038,9 +1282,14 @@ def test_resume_refuses_a_completed_search(small_search):
 def test_wall_time_cap_marks_partial_and_writes_no_shortlist(small_search, tmp_path):
     prepared, smoke_dir = small_search["prepared"], small_search["smoke"]
     ticks = iter([0.0] + [1e9] * 10_000)  # the first check passes, every later one is past due
+    search_auth = _stage_authorization(tmp_path, "search", small_search["plan"], {
+        "prepared_manifest": ccs.sha256_file(prepared / "manifest.json"),
+        "smoke_result": ccs.sha256_file(smoke_dir / "SMOKE_RESULT.json"),
+    })
     result = rcc.run_search(prepared, smoke_dir, tmp_path / "timed", workers=1, n_batches=1,
                             worker=surrogate_worker, executor_factory=SerialExecutor,
-                            clock=lambda: next(ticks), wall_time_cap=1.0)
+                            clock=lambda: next(ticks), wall_time_cap=1.0,
+                            plan_path=small_search["plan"], authorization_path=search_auth)
     assert result["status"] == ccs.STATUS_PARTIAL_TIME_LIMIT
     manifest = json.loads((tmp_path / "timed" / "manifest.json").read_text())
     assert "CANNOT be reported as completed negative evidence" in manifest["partial_run_warning"]
@@ -1065,7 +1314,8 @@ def test_smoke_plan_is_three_pairs_of_two_trajectories(small_search):
     result = json.loads((small_search["smoke"] / "SMOKE_RESULT.json").read_text())
     assert result["pairs"] == 3
     assert result["trajectories"] == ccs.SMOKE_TRAJECTORIES == 6
-    assert result["seeds"] == list(ccs.SMOKE_SEEDS)
+    expected = rcc.strict_json_object(small_search["plan"], what="test plan")
+    assert result["seeds"] == expected["seeds"]["smoke"]
     assert len(result["warm_vectors_exercised"]) >= 2
     prepared = json.loads((small_search["prepared"] / "initial_archive.json").read_text())
     origins = {v["candidate_id"]: v["origin"] for v in prepared["vectors"]}
@@ -1152,13 +1402,20 @@ def test_confirmation_runs_the_frozen_shortlist_on_fresh_seeds(small_search, tmp
     saved = _stub_gate()
     try:
         output = tmp_path / "confirmation"
+        confirmation_auth = _stage_authorization(
+            tmp_path, "confirmation", small_search["plan"],
+            {"search_manifest": ccs.sha256_file(small_search["search"] / "manifest.json")},
+        )
         manifest = rcc.confirm(small_search["search"], output, workers=1,
-                               worker=surrogate_worker, executor_factory=SerialExecutor)
+                               worker=surrogate_worker, executor_factory=SerialExecutor,
+                               plan_path=small_search["plan"],
+                               authorization_path=confirmation_auth)
     finally:
         rcc.diagnosis_test_gate = saved
     assert manifest["status"] == ccs.STATUS_CONFIRMATION_COMPLETE
     assert manifest["replicates"] == ccs.CONFIRMATION_REPLICATES == 20
-    assert manifest["seeds"] == list(ccs.CONFIRMATION_SEEDS)
+    expected = rcc.strict_json_object(small_search["plan"], what="test plan")
+    assert manifest["seeds"] == expected["seeds"]["confirmation"]
     assert manifest["budget"]["launched"] == manifest["n_candidates"] * 20
     assert manifest["n_candidates"] <= ccs.SHORTLIST_SIZE
 
@@ -1183,8 +1440,8 @@ def test_confirmation_runs_the_frozen_shortlist_on_fresh_seeds(small_search, tmp
 
     for path in (output / "raw").glob("candidate_*.json"):
         raw = json.loads(path.read_text())
-        assert raw["replicate_seeds"] == list(ccs.CONFIRMATION_SEEDS)
-        assert set(raw["replicate_seeds"]).isdisjoint(ccs.DISCOVERY_SEEDS)
+        assert raw["replicate_seeds"] == expected["seeds"]["confirmation"]
+        assert set(raw["replicate_seeds"]).isdisjoint(expected["seeds"]["discovery"])
         matrix = np.array(raw["target_matrix"], dtype=float)
         assert matrix.shape == (20, ccs.N_TARGETS)
         np.testing.assert_allclose(matrix.var(axis=0, ddof=1), raw["sample_variances"], atol=1e-12)
@@ -1280,8 +1537,13 @@ def test_a_simulator_failure_marks_the_search_failed(small_search, tmp_path):
         return row
 
     output = tmp_path / "failed"
+    search_auth = _stage_authorization(tmp_path, "search", small_search["plan"], {
+        "prepared_manifest": ccs.sha256_file(small_search["prepared"] / "manifest.json"),
+        "smoke_result": ccs.sha256_file(small_search["smoke"] / "SMOKE_RESULT.json"),
+    })
     result = rcc.run_search(small_search["prepared"], small_search["smoke"], output, workers=1,
-                            n_batches=1, worker=failing_worker, executor_factory=SerialExecutor)
+                            n_batches=1, worker=failing_worker, executor_factory=SerialExecutor,
+                            plan_path=small_search["plan"], authorization_path=search_auth)
     assert result["status"] == ccs.STATUS_FAILED
     manifest = json.loads((output / "manifest.json").read_text())
     assert manifest["status"] == ccs.STATUS_FAILED
