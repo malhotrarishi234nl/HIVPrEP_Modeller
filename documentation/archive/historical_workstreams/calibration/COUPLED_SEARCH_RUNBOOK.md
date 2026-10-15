@@ -4,7 +4,7 @@
 > start a new run.** It remains at its original path because frozen provenance
 > records reference it. Start at `documentation/INDEX.md`.
 
-Implementation of `CLAUDE_COUPLED_SEARCH_HANDOFF_2026-09-18.md`.
+Implementation of `documentation/archive/historical_workstreams/calibration/CLAUDE_COUPLED_SEARCH_HANDOFF_2026-09-18.md`.
 
 **Status, 18 September 2026.** The harness exists and is tested. The preparation is frozen and
 the six-trajectory paired smoke check has passed. **The 2,560-trajectory discovery search has NOT
@@ -281,7 +281,7 @@ search actually uses is established by the paired smoke comparison, not by that 
 | `configs/coupled_search_plan_20260918.json` | the design in machine-readable form; verified against the module constants on every run |
 | `tests/test_coupled_calibration_search.py` | scientific-contract and proposal tests |
 | `tools/review_coupled_calibration.py` | independent read-only recomputation from raw records |
-| `COUPLED_SEARCH_RUNBOOK.md` | this file |
+| `documentation/archive/historical_workstreams/calibration/COUPLED_SEARCH_RUNBOOK.md` | this file |
 
 ## 9. Limitations — read before quoting any result
 

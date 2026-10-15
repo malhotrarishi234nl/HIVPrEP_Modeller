@@ -12,7 +12,7 @@
 
 ## 0. Read first, in this order
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — verification, code review, and academic-integrity standard. **It applies to every task here.** §1A.4 (the tuning prohibition) is the most important section for this brief.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — verification, code review, and academic-integrity standard. **It applies to every task here.** §1A.4 (the tuning prohibition) is the most important section for this brief.
 2. `outputs/hta_results/a13_hiv_mortality_trace_20260910_230000/A13_HIV_MORTALITY_TRACE.md` — the finding these tasks respond to.
 3. `outputs/hta_results/a12_deterministic_allocation_audit_20260910_103000/ADDENDUM_2026-09-10_independent_review.md` — in particular the **POSTSCRIPT**, which states the taxonomy error and the ENG-01/A-13 dial.
 4. `stochastic_allocation.py` — 60 lines. Read the whole thing.

@@ -33,7 +33,7 @@ This follow-up must answer:
 
 Read before implementation:
 
-- `TASK_BRIEF_STAGE_STRUCTURED_DIAGNOSIS_AUDIT_2026-09-22.md`
+- `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_STAGE_STRUCTURED_DIAGNOSIS_AUDIT_2026-09-22.md`
 - `outputs/calibration/stage_structured_diagnosis_audit_20260922/REPORT.md`
 - `outputs/calibration/stage_structured_diagnosis_audit_20260922/profile_summary.csv`
 - `HM_PRESENTATION_EVIDENCE_AND_COMPOUND_DESIGN_2026-09-16.md`

@@ -5,7 +5,7 @@
 
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** derivation and literature check. **Implements nothing.** Ends in a judgement on whether the model's per-infection health consequence is defensible, and what drives it.
-**Supersedes:** the A-8 entry in `PHASE2_AGENT_HANDOFF_2026-09-09.md` (framed on pre-CRN figures that no longer apply — see §2).
+**Supersedes:** the A-8 entry in `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` (framed on pre-CRN figures that no longer apply — see §2).
 **Batching:** independent of A-24 — different question, different outputs. Can run in parallel.
 **Model runs:** none expected. If the distribution of averted infections by year/age/group cannot be recovered from retained A-2 outputs, one instrumented CRN-paired run at seeds 42–56 **may be executed by the agent** (foreground, smoke first). No calibration runs.
 
@@ -48,7 +48,7 @@ Undiscounted: 2.816 (SD 0.263). SE of the discounted mean at n=15 ≈ **0.047**.
 
 ## 3. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A, the A-8, A-11 and A-13 entries.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A, the A-8, A-11 and A-13 entries.
 2. `outputs/hta_results/a2_estimator_decomposition_20260913_235517/A2_ESTIMATOR_DECOMPOSITION.md` §2, §4, §5.1 — and `run_full/` (per-seed and per-step outputs).
 3. `outputs/hta_results/a11_causal_flow_20260910_044500/A11_QALY_GAP_LOCALISATION.md`.
 3a. For context on why deterministic figures are excluded: A-22 report §2–3 (`outputs/calibration/a22_background_mortality_grouping_20260913_225630/`), A-23 report §0 and §6, A-9 report §1. Skim, do not re-analyse.

@@ -45,7 +45,7 @@ The production sampler moves the allocation **66× more than the perturbation wa
 
 ## 2. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. **§1A.2 (equivalence proof before refactoring) is the governing clause for this task.**
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. **§1A.2 (equivalence proof before refactoring) is the governing clause for this task.**
 2. `outputs/hta_results/a24_entry_pathway_crn_drift_20260914_010031/` — report, `PRESPECIFICATION.md`, `raw/multinomial_sampler_probe.json`, `raw/cf_sampler_validation.json`, and **`provenance/a24_harness_as_used_for_counterfactuals.py`, which already contains working implementations of both couplings.** Do not reinvent them; promote them.
 3. `outputs/hta_results/a2_estimator_decomposition_20260913_235517/` — the variance decomposition this fix targets.
 4. `counter_based_rng.py` in full, and `tests/test_counter_based_rng.py`, `tests/test_a13_crn_key_compatibility.py`.

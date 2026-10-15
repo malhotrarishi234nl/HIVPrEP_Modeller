@@ -205,7 +205,7 @@ for 23 of 29 years) and **no ascertainment handle at all**; ECDC publishes **no 
 
 `V_ensemble` is additionally **0.0** for every target, which the register itself records as biasing
 *"towards OVER-exclusion"*. Under measurement — see
-`TASK_BRIEF_A5_ENSEMBLE_VARIANCE_2026-09-14.md`.
+`documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A5_ENSEMBLE_VARIANCE_2026-09-14.md`.
 
 ---
 

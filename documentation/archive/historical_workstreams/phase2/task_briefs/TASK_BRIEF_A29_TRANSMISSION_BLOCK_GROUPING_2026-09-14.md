@@ -5,7 +5,7 @@
 
 **Created:** 2026-09-14 · **Owner:** Rishi Malhotra
 **Type:** production change + measurement. **This one does implement in production.**
-**Sibling of:** A-22 (`TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md`), which asks the same question at the
+**Sibling of:** A-22 (`documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md`), which asks the same question at the
 background-mortality call site. Same governing rule, different call site, and this one is worse.
 **Blocks:** the calibration wave, plus re-measurement of C-1's premise, B-8's mechanism, and the
 identifiability of `epsilon_hetero` / `orient_female`.
@@ -71,9 +71,9 @@ rounding approximation, it is a category error.
 
 ## 3. Read before touching code
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. §1A.2 (tests required), §1A.3 (never
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. §1A.2 (tests required), §1A.3 (never
    cite an unverified source), §1A.4 (tuning prohibition) all apply.
-2. `TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md` — the sibling task, and where the governing rule is set out.
+2. `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md` — the sibling task, and where the governing rule is set out.
 3. `TASK_BRIEF_ALLOCATION_GRANULARITY_2026-09-11.md` — ENG-01, the failure mode at the fine end.
 4. `ROUNDING_METHOD_LITERATURE_COMPARISON_2026-09-12.md` — why rule changes were ruled out.
 5. `outputs/hta_results/ridge_identifiability_20260914_134151/REPORT.md` §5 — the finding itself.

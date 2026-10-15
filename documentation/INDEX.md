@@ -29,17 +29,21 @@
 - Configuration guide: `../configs/README.md`
 - Complete tracked configuration inventory and interpretation:
   `../CONFIG_REGISTRY.csv` and `guides/CONFIGURATION_REGISTRY.md`
+- Current scientific artifact-vault location, verification and restoration:
+  `guides/ARTIFACT_STORAGE_20261016.md`
 - External-input contract: `../data/README.md`
 
 ## Historical guidance
 
-Root-level `TASK_BRIEF_*.md`, dated handoffs, and runbooks are preserved because
-scientific artifacts cite them. Treat them as historical snapshots unless a
-current-authority document above explicitly adopts them.
+Historical task briefs, handoffs, and runbooks are preserved under
+`archive/historical_workstreams/`. Its README provides an exact
+old-path-to-new-path map for frozen catalog and seed-audit references. The few
+historical documents still at the repository root are retained there because
+source code, tests, or scientific configuration values cite those exact paths.
 
-Historical plans that could be relocated without changing frozen provenance
-are listed in `archive/historical_workstreams/README.md`, including an exact
-old-path-to-new-path map.
+Legacy version-specific model and GitHub guides are preserved under
+`archive/guides/legacy_versions/`. They document earlier versions and must not
+be used as current operating instructions.
 
 `guides/HISTORY_MATCHING_GUIDE.md` is the historical operating guide for the
 2026-09-15 19-target learning-wave workflow. It remains useful for interpreting

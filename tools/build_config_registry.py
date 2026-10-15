@@ -94,7 +94,6 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
         V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json
         art_interpolation_shape_audit_20260921.json
         calib_space_v13_14_1975_burnin_diagnostic.json
-        calib_space_v13_24_1970_snpe_wide_no_disease.json
         coupled_search_plan_unordered_orientation_activity_diagnostics_20260921.json
         diagnosis_triangulation_orchestration_20260922.json
         forecast_readiness_confirmation_20260921.json
@@ -113,13 +112,6 @@ ROLE_GROUPS: Mapping[str, set[str]] = {
     """),
     ROLE_TEST: _names("""
         1980_test.json
-        v10_dist_test.json
-        v10_edge_test.json
-        v10_test_adj_0.json
-        v10_test_adj_1.json
-        v10_test_adj_2.json
-        v10_test_adj_3.json
-        v10_test_pop_adj.json
         v6_golden_reference.json
     """),
     ROLE_SUITE: _names("""

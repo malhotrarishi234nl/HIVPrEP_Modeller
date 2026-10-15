@@ -48,7 +48,8 @@ Start with:
 6. [owner and methods guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/OWNER_LOCK_IN_AND_METHODS_GUIDE.md)
 7. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
 8. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
-9. [configuration guide](configs/README.md)
+9. [scientific artifact storage and restoration](documentation/guides/ARTIFACT_STORAGE_20261016.md)
+10. [configuration guide](configs/README.md)
 
 Older root-level task briefs and runbooks are retained for provenance. A dated
 document is not current authority unless the documentation index says so.

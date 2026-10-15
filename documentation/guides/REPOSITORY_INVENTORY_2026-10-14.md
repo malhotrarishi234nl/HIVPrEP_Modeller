@@ -185,11 +185,13 @@ larger job and is **not** attempted here.
 
 ### 4.3 Untracked task documentation at the repository root
 
-34 root-level `*.md` files, including the `TASK_BRIEF_*`, `PHASE2_*`,
-`HISTORY_MATCHING_BUILD_SPEC.md`, `MODEL_LIMITATIONS.md` and
-`COUPLED_SEARCH_RUNBOOK.md` set. All left in place. These are active working
-documents, and the production spec's hygiene pass is about executable material
-and generated artifacts rather than notes.
+At the time of this inventory there were 34 root-level `*.md` files, including
+the `TASK_BRIEF_*`, `PHASE2_*`, `HISTORY_MATCHING_BUILD_SPEC.md`,
+`MODEL_LIMITATIONS.md`, and coupled-search runbook set. They were all left in
+place in this 2026-10-14 snapshot. The later 2026-10-16 cleanup moved the
+no-code/config/test-reference subset under
+`documentation/archive/historical_workstreams/`; its README holds the exact
+relocation map.
 
 Note one documented inconsistency, already recorded in `hm_implausibility.py`:
 `HISTORY_MATCHING_BUILD_SPEC.md` section 2.3 states the three-sigma coverage

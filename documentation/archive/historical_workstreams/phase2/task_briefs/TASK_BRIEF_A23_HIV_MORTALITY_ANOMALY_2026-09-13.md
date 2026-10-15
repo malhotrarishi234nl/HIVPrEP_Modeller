@@ -64,7 +64,7 @@ Two reasons, and the second is the important one.
 
 ## 3. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A.
 2. `outputs/hta_results/a13_hiv_mortality_trace_20260910_230000/A13_HIV_MORTALITY_TRACE.md` — **the direct predecessor.** A-13 localised a deterministic defect at this process from a different symptom.
 3. `outputs/calibration/a21_rare_stratum_starvation_20260913_001500/` — §3 and its `raw/hiv_mortality_stage_art_summary.csv`, `raw/hiv_mortality_cell_trace.csv.gz` (881,280 rows, already written — **start from these, do not re-trace what exists**).
 4. `outputs/calibration/a20_process_decomposition_20260912_221520/` — the arm and its replicates.

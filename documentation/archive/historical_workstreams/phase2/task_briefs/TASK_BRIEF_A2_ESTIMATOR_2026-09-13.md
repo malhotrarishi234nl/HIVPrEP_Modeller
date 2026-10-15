@@ -49,7 +49,7 @@ September as more important than A-3 and it has not been picked up since.
 
 ## 3. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A, and the A-2/A-3 entries.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A, and the A-2/A-3 entries.
 2. `outputs/hta_results/a4_common_random_numbers_20260910_170048/` — the report **and** `ADDENDUM_2026-09-10_review_A4_A5a.md`, which is where the correlation finding is recorded.
 3. `outputs/hta_results/a16_stochastic_headline_20260911_030744/` — the current headline economics.
 4. `economics.py` — the QALY and cost accumulation path. Read it before running anything.

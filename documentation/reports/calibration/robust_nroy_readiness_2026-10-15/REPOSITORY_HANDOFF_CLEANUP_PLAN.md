@@ -25,28 +25,52 @@ artifacts without deleting evidence:
   and contains no
   `outputs/` directory. This is the recommended starting point for interface
   work and collaborator-facing source changes.
-- The completed bounded Option-B rehearsal remains preserved under
-  `outputs/calibration/option_b_research_e2e_20261015T181418Z/` in the isolated
-  research checkout. It contains 835 files and 321,536,969 logical bytes. It
-  must not be inferred to exist in a source-only clone.
-- The older live working tree remains frozen and untouched because it combines
-  uncommitted source with 13,277,647,002 logical bytes of outputs, environments,
-  caches, and backups. Cleaning that tree in place would mix source recovery
-  with artifact disposition.
-- The two loose conference restores plus three byte-identical archive copies
-  account for about 7.39 GB of reclaimable logical storage. Removal remains
-  gated on an external canonical vault location, an independent backup,
-  destination checksum and restore verification, and explicit owner approval.
-- Two unreferenced historical plans were moved into
-  `documentation/archive/historical_workstreams/`. Twenty-nine historical root
-  documents remain at their original provenance paths with prominent status
-  banners because frozen source, config, tests, or catalog records cite them.
-- The conservative configuration registry now covers 79 files and has SHA-256
-  `cdc7471aee3677f5111320294e4f63a2a9f87b780a8603aafc31c73bc9090726`.
+- The completed bounded Option-B rehearsal is preserved as a verified complete
+  archive plus a readable report subset in the sibling artifact vault. The
+  extracted 835-file, 321,536,969-byte working copy was removed only after a
+  fresh-extraction byte comparison passed.
+- The pre-cleanup live working tree contained 13,277,647,002 logical bytes.
+  Its unique source state was first protected by a complete Git bundle and an
+  exact non-artifact worktree archive. Audit showed that every dirty source,
+  config, and documentation file was also already present in current or prior
+  commits on the research branch.
+- The two loose conference restores and duplicate archives were removed after
+  the canonical archive set passed its recorded hashes, reproduced all 29,261
+  files, matched the verified restore byte-for-byte, and passed 47 provenance
+  checksums. The small non-identical superseded provenance archive was retained.
+- Twenty-two historical plans, task briefs, handoffs, and runbooks were moved
+  into `documentation/archive/historical_workstreams/`; nine historical root
+  documents remain at their original paths because source code, tests, or
+  scientific configuration values cite them. Seven version-specific legacy
+  guides were moved into `documentation/archive/guides/legacy_versions/`.
+- After removal of eight orphaned test/diagnostic inputs, the conservative
+  configuration registry now covers 71 files and has SHA-256
+  `f1a486e94e01b7ac7cf668249e78509822c96be3285c11b0aa5b52b137a9d60d`.
 
-This creates a clean repository for the next implementation session while
-keeping scientific outputs recoverable. It does not yet complete the separate
-artifact-vault migration or authorize deletion from the frozen live tree.
+The complete local artifact migration and verified source cleanup were executed
+on 2026-10-16. Large extracted output trees and historical logs were removed
+from the working directories after verification. The vault is on the same
+physical machine, so an independent off-machine backup remains recommended;
+that disaster-recovery limitation does not invalidate the completed local
+cleanup.
+
+Current vault guidance is
+`documentation/guides/ARTIFACT_STORAGE_20261016.md`. Statements below under the
+2026-10-15 implementation update and original audit blockers are retained as
+historical audit context and are superseded where this section records a
+completed 2026-10-16 action.
+
+The eight removed configuration files were orphaned working-tree inputs: no
+runtime or test consumed them, and none was part of a retained result lineage.
+They remain recoverable from Git history at commit `23b5a1c`:
+
+- `configs/calib_space_v13_24_1970_snpe_wide_no_disease.json`;
+- `configs/v10_dist_test.json` and `configs/v10_edge_test.json`;
+- `configs/v10_test_adj_0.json` through `configs/v10_test_adj_3.json`;
+- `configs/v10_test_pop_adj.json`.
+
+Their combined working-tree size was 229,644 bytes. This removal reduces
+active-config clutter, not the multi-gigabyte artifact footprint.
 
 ### 2026-10-15 implementation update
 

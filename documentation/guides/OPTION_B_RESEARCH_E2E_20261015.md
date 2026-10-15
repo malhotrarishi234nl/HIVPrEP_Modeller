@@ -21,11 +21,23 @@ authorization, benchmark, pricing approval or production claim.
 
 ## Completed 2026-10-15 rehearsal
 
-The preserved local run is:
+The original run path was:
 
 ```text
 outputs/calibration/option_b_research_e2e_20261015T181418Z/
 ```
+
+After the 2026-10-16 preservation-first cleanup, the complete 835-file run is
+stored at:
+
+```text
+/Users/rishi/On Prem/OP Desk/Erasmus Folder/Econ - Thesis /hiv-prep-model-artifacts/vault/current/option_b_research_e2e_20261015T181418Z.tar.gz
+```
+
+A directly readable 36-file subset is beside it under
+`vault/current/readable/option_b_research_e2e_20261015T181418Z/`. The complete
+archive was freshly extracted and compared byte-for-byte before the bulky
+working copy was removed. See `ARTIFACT_STORAGE_20261016.md` for restoration.
 
 Its sealed run artifacts record this outcome:
 
@@ -207,7 +219,6 @@ can indicate pressure on the search space, but it does not by itself prove the
 bound is scientifically wrong.
 
 The preserved rehearsal predates those report additions and remains sealed
-under its recorded code hashes. It was not rewritten. A local derived preview
-under `outputs/report_previews/20261016/current_option_b_rehearsal/` demonstrates
-the new presentation using the preserved numbers, but the original manifests
-and reports remain the authoritative run artifacts.
+under its recorded code hashes. It was not rewritten. The original manifests
+and reports in the complete vault archive remain authoritative. Any derived
+preview is presentation evidence only and does not replace the sealed run.

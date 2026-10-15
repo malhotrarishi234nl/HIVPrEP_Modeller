@@ -37,7 +37,7 @@ the second half fails on the HIV axis. **The brief expects level 1 to win. Test 
 
 ## 2. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. §1A.4 (tuning prohibition) applies.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. §1A.4 (tuning prohibition) applies.
 2. `outputs/calibration/a21_rare_stratum_starvation_20260913_001500/` — report **and** addendum.
 3. `outputs/calibration/a20_process_decomposition_20260912_221520/` — the arm this replaces, and the harness.
 4. `TASK_BRIEF_ALLOCATION_GRANULARITY_2026-09-11.md` §§ on ENG-01 — the failure mode at the **fine** end.

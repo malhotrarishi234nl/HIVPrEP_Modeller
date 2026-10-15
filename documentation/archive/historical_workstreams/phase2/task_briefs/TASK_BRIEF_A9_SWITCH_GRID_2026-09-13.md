@@ -44,7 +44,7 @@ available then was the granularity dial. **A-20 built the instrument that can.**
 
 ## 3. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A.
 2. `outputs/hta_results/a15_a9_allocation_hypothesis_20260911_034351/A15_A9_ALLOCATION_HYPOTHESIS.md` — the whole thing; it is the direct predecessor.
 3. `outputs/calibration/a20_process_decomposition_20260912_221520/` — the harness and its switch-surface inventory.
 4. `outputs/calibration/a21_rare_stratum_starvation_20260913_001500/` — the confirmed mechanism at one site, and the tracing pattern.

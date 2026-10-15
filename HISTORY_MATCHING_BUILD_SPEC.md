@@ -9,7 +9,7 @@
 **Build report:** `outputs/calibration/hm_prototype_20260910/HM_BUILD_REPORT_2026-09-10.md` — read it before acting on this spec; it corrects three things below and records findings that change what the method can claim.
 **Corrections applied to this document on 2026-09-10 are marked `CORRECTED 2026-09-10`.**
 **Replaces:** the ABC-SMC / SNPE calibration stack as the production calibration method
-**Expands:** Track B (B-1 … B-7) of `PHASE2_AGENT_HANDOFF_2026-09-09.md` into an executable build
+**Expands:** Track B (B-1 … B-7) of `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` into an executable build
 
 > **CURRENT IMPLEMENTATION ADDENDUM — 2026-09-15.** Sections explicitly labelled “as of
 > 2026-09-10” below are retained as the historical build record and are not current operating
@@ -25,8 +25,8 @@
 
 ## 0. Read first
 
-1. `PHASE2_STRATEGY_BRIEF_2026-09-06.md` — §3.4 (why UNAIDS targets are not independent evidence), §6 (why history matching), §12 (rejected paths).
-2. `PHASE2_AGENT_HANDOFF_2026-09-09.md` — §1A is the verification, code-review and academic-integrity standard. **It applies to every task in this document.** §1A.4 (the tuning prohibition) is the single most important section for this build.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_STRATEGY_BRIEF_2026-09-06.md` — §3.4 (why UNAIDS targets are not independent evidence), §6 (why history matching), §12 (rejected paths).
+2. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` — §1A is the verification, code-review and academic-integrity standard. **It applies to every task in this document.** §1A.4 (the tuning prohibition) is the single most important section for this build.
 3. `outputs/calibration/target_reachability_audit_20260906/TARGET_REACHABILITY_AUDIT.md` — which targets are reachable, which are landmines, and which parameter drives which target.
 4. **Andrianakis et al. 2015**, *PLoS Comput Biol* 11(1):e1003968 — https://journals.plos.org/ploscompbiol/article?id=10.1371%2Fjournal.pcbi.1003968 — the method, applied to an HIV transmission model with 22 parameters and 18 outputs. This build is a close analogue at 27–32 parameters and ~8 target series. **Read this before writing code.**
 

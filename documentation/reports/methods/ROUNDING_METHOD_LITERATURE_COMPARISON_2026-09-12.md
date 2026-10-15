@@ -28,7 +28,7 @@ residual placement biases in the **wrong direction** (−0.1277% *below* the exa
 that is *above*), is **~150× too small**, and replacing it with a verified-unbiased rule made the gap
 **worse** (median |log ratio| 0.18838 → 0.28402).
 
-**Defect 2 is now handled by A-18** (`TASK_BRIEF_JENSEN_MECHANISM_2026-09-12.md`) — the leading hypothesis is
+**Defect 2 is now handled by A-18** (`documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_JENSEN_MECHANISM_2026-09-12.md`) — the leading hypothesis is
 Jensen's inequality on the force of infection, which is upstream of allocation entirely.
 
 **What survives, and it is worth doing:** A-17 confirmed largest-remainder misplaces **severely in

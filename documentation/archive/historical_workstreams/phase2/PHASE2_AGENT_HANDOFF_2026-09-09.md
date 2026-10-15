@@ -6,9 +6,9 @@
 
 **Created:** 2026-09-09
 **Owner:** Rishi Malhotra
-**Supersedes:** §9 of `PHASE2_STRATEGY_BRIEF_2026-09-06.md` (written before Phase 0 results; the sequence below is current)
+**Supersedes:** §9 of `documentation/archive/historical_workstreams/phase2/PHASE2_STRATEGY_BRIEF_2026-09-06.md` (written before Phase 0 results; the sequence below is current)
 
-This is an executable task board, not a strategy document. The reasoning behind every decision here lives in `PHASE2_STRATEGY_BRIEF_2026-09-06.md`. **Read that first.** If a task below seems wrong, the brief probably explains why it is not — and if it genuinely is wrong, raise it rather than improvising.
+This is an executable task board, not a strategy document. The reasoning behind every decision here lives in `documentation/archive/historical_workstreams/phase2/PHASE2_STRATEGY_BRIEF_2026-09-06.md`. **Read that first.** If a task below seems wrong, the brief probably explains why it is not — and if it genuinely is wrong, raise it rather than improvising.
 
 ---
 
@@ -16,7 +16,7 @@ This is an executable task board, not a strategy document. The reasoning behind 
 
 In this order:
 
-1. `PHASE2_STRATEGY_BRIEF_2026-09-06.md` — full state, decisions, evidence, rejected paths. §12 lists paths already ruled out; do not reopen them.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_STRATEGY_BRIEF_2026-09-06.md` — full state, decisions, evidence, rejected paths. §12 lists paths already ruled out; do not reopen them.
 2. `PHASE2_DEVELOPMENT_CHECKLIST.md` — gate IDs (R0/CAL/UNC/HTA/ENG/REL) and the Decision Log. Cross-reference IDs when reporting.
 3. `outputs/calibration/target_reachability_audit_20260906/TARGET_REACHABILITY_AUDIT.md`
 4. `outputs/hta_results/probe_diagnostics_20260906/PROBE_DIAGNOSTICS.md`
@@ -487,7 +487,7 @@ The resulting off-ART AIDS exposure explains 89.2% of the mortality gap: determi
 
 #### `[ ] A-9 — Isolate deterministic substitution timing/allocation defect`
 
-> **⚠ THIS ENTRY IS STALE (flagged 2026-09-14 during A-28).** A-9 switch-grid work **has been run** — 2026-09-13, `outputs/hta_results/a9_switch_grid_process_decomposition_20260913_231232/A9_SWITCH_GRID_PROCESS_DECOMPOSITION.md`, per `TASK_BRIEF_A9_SWITCH_GRID_2026-09-13.md`. The `[ ]` and the title below describe the **original** A-7-triggered framing and were never updated. **A-28 additionally requires that run to be repeated** on the coupled samplers (see A-28's re-run list). Reconcile this entry before using the board for planning.
+> **⚠ THIS ENTRY IS STALE (flagged 2026-09-14 during A-28).** A-9 switch-grid work **has been run** — 2026-09-13, `outputs/hta_results/a9_switch_grid_process_decomposition_20260913_231232/A9_SWITCH_GRID_PROCESS_DECOMPOSITION.md`, per `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A9_SWITCH_GRID_2026-09-13.md`. The `[ ]` and the title below describe the **original** A-7-triggered framing and were never updated. **A-28 additionally requires that run to be repeated** on the coupled samplers (see A-28's re-run list). Reconcile this entry before using the board for planning.
 
 - **Trigger:** A-7 found switch_100 produces +96 infections averted but −33.5
   adult person-years, and infections averted are non-monotonic across the switch
@@ -581,7 +581,7 @@ Stochastic replicates are used **only** to quantify Monte Carlo error and supply
 
 #### `[x] A-18 — original specification, retained for provenance` — SPEC WRITTEN 2026-09-12
 
-**Brief: `TASK_BRIEF_JENSEN_MECHANISM_2026-09-12.md`.** Diagnostic plus three cheap remedy probes; implements nothing.
+**Brief: `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_JENSEN_MECHANISM_2026-09-12.md`.** Diagnostic plus three cheap remedy probes; implements nothing.
 
 **The hypothesis (unverified).** Per-person infection probability given `n` contacts is `f(n) = 1 − (1−β)^n`, which is **concave** (`f'' = −(1−β)^n·[ln(1−β)]² < 0`). Deterministic mode computes `f(E[n])`; the stochastic model computes `E[f(n)]`. By Jensen, **`f(E[n]) ≥ E[f(n)]` — deterministic systematically overstates transmission.** Matches B-8's signature **six for six**: positive sign, HIV-compartment-specific, linear per-step accumulation through growth, plateau at saturation, immunity to every allocation change tested, and the right magnitude (~0.6%/step over ~60 steps ⇒ ~1.45× against an observed peak of 1.37×). **A hypothesis that explains everything is the kind most in need of a falsification attempt** — hence Step 1.
 
@@ -614,7 +614,7 @@ Stochastic replicates are used **only** to quantify Monte Carlo error and supply
 **Original specification retained below for provenance.**
 
 
-**Brief: `TASK_BRIEF_PROCESS_DECOMPOSITION_2026-09-12.md`.** Measurement only; implements nothing. Ends in a localisation, or in an explicit statement that the gap does not localise.
+**Brief: `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_PROCESS_DECOMPOSITION_2026-09-12.md`.** Measurement only; implements nothing. Ends in a localisation, or in an explicit statement that the gap does not localise.
 
 > **Read §4 before designing the harness.** The mode switch is **not** a single chokepoint. `_draw_events_for` (`run_v3.py:493`) covers progression, diagnosis, ART, PrEP and HIV mortality, but `run_v3.py:1205` branches directly (and rounds with `np.round`, not `deterministic_allocate_events`), and `demography.py` (13 sites), `migration.py` and `transmission_corrected.py` receive the flag as a **call argument**. An arm patched only at the chokepoint would silently null out ageing, births, migration and background mortality. The brief makes a **switch-surface inventory a mandatory gate** for exactly this reason.
 
@@ -671,7 +671,7 @@ whether the inflation is a disclosure item or a repairable defect.
 |---|---|---|---|
 | **A-23** | `[x]` | The +122% is the **transmission feedback**: holding FOI at the deterministic trajectory collapses it (M_held/M_free = 0.011; residual +21.3% vs stochastic ref = deterministic mode's own +20.7% offset). Trigger (measured, not isolated): deterministic HIV mortality over-allocates deaths to MSM, starves non-MSM (24.5% of expected). **Brief's cross-stage premise was wrong at this call site** — the allocator is called per stage × ART. Conservation identity closes exactly. A-13 vs A-20 sign "contradiction" resolved: between-arm difference vs level. | `outputs/calibration/a23_hiv_mortality_anomaly_20260913_235530/A23_HIV_MORTALITY_ANOMALY.md` |
 | **A-2** | `[x]` | Decomposition reconciles (227 controls, max residual 4.6e-7). Infection-coupled components +1,592.7 mean but **2.4% of Var(ΔQALY)**; non-HIV life-years (debuts 61.4%, background deaths 36.2%) carry 97.6% of variance with mean −636.5. Partial r(ΔQALY, IA \| ΔPY) = 0.988; LY via HIV deaths r_IA = +0.70 → infection channel present, **r = +0.12 is swamping, not absence**. A-16's 183 = switch-10 near-zero denominator artefact. Births desynchronise between arms under CRN (unexplained → A-24). | `outputs/hta_results/a2_estimator_decomposition_20260913_235517/A2_ESTIMATOR_DECOMPOSITION.md` |
-| **A-8 (revised)** | `[x]` | **1.911 discounted QALYs per averted infection is what the model's parameters imply** (cohort derivation 1.83–1.94, agreement criterion ±0.116). Low because horizon-truncated (lifetime 4.01; mean averted-infection year 2044.6). Harmonised published composites 2.29–2.93 vs model-comparable 1.60 (max 2.76×, below 3× escalation). **Judgement: disclosure + sensitivity, not a defect.** No direct NL per-infection comparator exists. | `outputs/hta_results/a8_qaly_per_infection_20260914_005530/A8_QALY_PER_INFECTION.md`; brief `TASK_BRIEF_A8_QALY_PER_INFECTION_2026-09-14.md` (supersedes the A-8 entry below) |
+| **A-8 (revised)** | `[x]` | **1.911 discounted QALYs per averted infection is what the model's parameters imply** (cohort derivation 1.83–1.94, agreement criterion ±0.116). Low because horizon-truncated (lifetime 4.01; mean averted-infection year 2044.6). Harmonised published composites 2.29–2.93 vs model-comparable 1.60 (max 2.76×, below 3× escalation). **Judgement: disclosure + sensitivity, not a defect.** No direct NL per-infection comparator exists. | `outputs/hta_results/a8_qaly_per_infection_20260914_005530/A8_QALY_PER_INFECTION.md`; brief `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A8_QALY_PER_INFECTION_2026-09-14.md` (supersedes the A-8 entry below) |
 | **A-24** | `[x]` (one escalation open) | **CRN keys are 100% bitwise aligned** (9.77M base / 11.55M switch-100 paired draws, incl. transmission and HIV mortality; `unscoped_event_draw` never reached in stochastic mode) → A-2's option B as framed removes nothing. **Branch C.** Births drift = **migration allocation sampler**: `migration.py:1043` uses `Generator.multinomial` (not inverse-CDF) weighted by current adult age × sex counts, so tiny between-arm differences flip the allocation of ~14,000 migrants/quarter (sampler share of Var(Δbirths) 1.70 [1.09, 2.17], offset by ageing redistribution −0.85; female fertile-age HIV deaths differ by exactly 0 → why births don't track IA). Background-death drift = **cell-movement re-randomisation** (per-cell keys; people moved between PrEP slices re-drawn). Harness-only counterfactual coupling **both** samplers: Var(ΔQALY) ratio **0.090 [0.028, 0.265]**, SD 1,200 → 360 (≈11× seeds); no resolved mean shift (max 1.31 SE) → **variance, not bias**. A-9's stochastic-only recommendation stands for means; **seed-level switch-grid analyses not safe** (switch 100: LY via debuts 0.59 share of Var(ΔQALY)). **Open escalation:** cannot rule out drift changing seed-level monotonicity of A-9 grids (per-seed IA shift SD ≤80 vs mean steps 27–33); follow-up run specified in report (~1.2 h). | `outputs/hta_results/a24_entry_pathway_crn_drift_20260914_010031/A24_ENTRY_PATHWAY_CRN_DRIFT.md` |
 
 **Decisions now open for Rishi (do not decide unilaterally):**
@@ -704,7 +704,7 @@ whether the inflation is a disclosure item or a repairable defect.
 
 ##### `[x] A-28 — Couple the two samplers that break CRN pairing` — **COMPLETE 2026-09-14. THE FIRST IMPLEMENTATION TASK SINCE A-12.**
 
-**Brief: `TASK_BRIEF_A28_CRN_COUPLING_FIX_2026-09-14.md`.** Independent review of the whole batch: `REVIEW_ADDENDUM_BATCH_2026-09-14.md`.
+**Brief: `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A28_CRN_COUPLING_FIX_2026-09-14.md`.** Independent review of the whole batch: `REVIEW_ADDENDUM_BATCH_2026-09-14.md`.
 
 > **Payoff is measured, not projected — independently reproduced from A-24's `per_seed_decomposition.csv`:** ΔQALY SD **1,200.1 → 360.2**, variance ratio **0.0901**, **11.1× equivalent seeds**.
 > **The decisive evidence is A-24's sampler probe, verified in review.** At a one-person weight change, production `Generator.multinomial` gives mean L1 **0.351** and **max 188** against an expected shift of **0.0053**; the coupled inverse-CDF gives **0.016** and max 2. That is a direct demonstration of non-monotonicity.
@@ -737,7 +737,7 @@ Controls, all met: **all four A-13 golden pins pass unchanged** (not rebaselined
 | **A-9** switch grid | **RUN 2026-09-13**, `outputs/hta_results/a9_switch_grid_process_decomposition_20260913_231232/A9_SWITCH_GRID_PROCESS_DECOMPOSITION.md` | **RE-RUN REQUIRED** | n=15 paired differences; the 2-SE increment criterion **may now resolve where it did not**, so this re-run can change the conclusion, not only the digits. Also answers A-24's dropped open escalation on seed-level monotonicity. **See the board-entry warning below — A-9's `[ ]` entry at §TRACK A is stale.** |
 | A-5a, B-8, A-20, A-21, A-22, A-23 | all complete | **NOT invalidated, not re-run** | single-arm levels / deterministic-vs-stochastic-mean. **A shifted digit is not a changed finding.** |
 
-> **STALE BOARD ENTRY, flagged 2026-09-14 during A-28, not rewritten.** The task-board entry `#### [ ] A-9 — Isolate deterministic substitution timing/allocation defect` (TRACK A) still shows `[ ]` under its **original** title and trigger (A-7's non-monotone infections-averted grid). The A-9 work that actually ran on 2026-09-13 was the **switch-grid process decomposition** specified in `TASK_BRIEF_A9_SWITCH_GRID_2026-09-13.md`, and it has a report. The board entry was not updated when that run completed. **Anyone reading the board alone will conclude A-9 was never started, which is false.** Left as-is rather than rewritten because A-9's disposition is not A-28's to decide — but it should be reconciled before the board is used for planning.
+> **STALE BOARD ENTRY, flagged 2026-09-14 during A-28, not rewritten.** The task-board entry `#### [ ] A-9 — Isolate deterministic substitution timing/allocation defect` (TRACK A) still shows `[ ]` under its **original** title and trigger (A-7's non-monotone infections-averted grid). The A-9 work that actually ran on 2026-09-13 was the **switch-grid process decomposition** specified in `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A9_SWITCH_GRID_2026-09-13.md`, and it has a report. The board entry was not updated when that run completed. **Anyone reading the board alone will conclude A-9 was never started, which is false.** Left as-is rather than rewritten because A-9's disposition is not A-28's to decide — but it should be reconciled before the board is used for planning.
 
 ##### `[ ] A-25/A-26/A-27 — scope as ONE age-structure workstream, not three fixes` — REVIEW RECOMMENDATION 2026-09-14
 
@@ -756,10 +756,10 @@ Controls, all met: **all four A-13 golden pins pass unchanged** (not rebaselined
 
 | task | brief | question |
 |---|---|---|
-| **A-22** | `TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md` | How should the background-mortality block be grouped? Six levels, two of them falsification controls, with the A-21 identity and an ENG-01 guard re-run per level. **This is D-14's dial at the call site D-14 never swept.** |
-| **A-9** | `TASK_BRIEF_A9_SWITCH_GRID_2026-09-13.md` | Which deterministic process makes the substitution switch grid non-monotone? A-20's decomposition pointed at A-15's symptom. **n=15, seeds 42–56** — matching A-15, *not* A-20's 7001–7050, so the grids stay comparable. |
-| **A-23** | `TASK_BRIEF_A23_HIV_MORTALITY_ANOMALY_2026-09-13.md` | Why does stochastic HIV mortality alone inflate the model 122%? **Steps 1 and 2 need no new runs** — A-21 already retained an 881,280-row cell trace and A-20 retained 50 replicates. |
-| **A-2** | `TASK_BRIEF_A2_ESTIMATOR_2026-09-13.md` | What is ΔQALY actually measuring, given r=+0.998 with person-years and +0.12 with infections averted? Also the task that can finally close **A-3**. |
+| **A-22** | `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_D14_BLOCK_GROUPING_2026-09-13.md` | How should the background-mortality block be grouped? Six levels, two of them falsification controls, with the A-21 identity and an ENG-01 guard re-run per level. **This is D-14's dial at the call site D-14 never swept.** |
+| **A-9** | `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A9_SWITCH_GRID_2026-09-13.md` | Which deterministic process makes the substitution switch grid non-monotone? A-20's decomposition pointed at A-15's symptom. **n=15, seeds 42–56** — matching A-15, *not* A-20's 7001–7050, so the grids stay comparable. |
+| **A-23** | `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A23_HIV_MORTALITY_ANOMALY_2026-09-13.md` | Why does stochastic HIV mortality alone inflate the model 122%? **Steps 1 and 2 need no new runs** — A-21 already retained an 881,280-row cell trace and A-20 retained 50 replicates. |
+| **A-2** | `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A2_ESTIMATOR_2026-09-13.md` | What is ΔQALY actually measuring, given r=+0.998 with person-years and +0.12 with infections averted? Also the task that can finally close **A-3**. |
 
 > **Standing criterion-resolution rule applies to all four** — state the resolution of every threshold in the same sentence as the threshold. Prior occurrences: A-16 (CV<0.50 selected the wrong thing), A-19 (C1 could not certify its own winner), A-18 (passed at 4.57× SE), A-20 (passed).
 > **Not in this batch and deliberately so: C-4.** It is a confirmed defect whose fix is a modelling decision plus a schedule audit, and it blocks the calibration rather than these diagnostics. It should be decided, not batched.
@@ -895,7 +895,7 @@ Whichever target is scored, a model that diagnoses zero MSM across the first two
 
 
 
-**Brief: `TASK_BRIEF_RESIDUAL_PLACEMENT_2026-09-12.md`.** Diagnostic, ends in a recommendation, implements nothing.
+**Brief: `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_RESIDUAL_PLACEMENT_2026-09-12.md`.** Diagnostic, ends in a recommendation, implements nothing.
 
 **Conditional — read before running.** This serves the **calibration**, not the headline. Under D-14 Rec 1 the base case moves to the stochastic mean and the deterministic allocator stops touching the headline; what it still touches is calibration, which runs deterministically thousands of times per wave in a mode B-8 shows runs 17–30% hot. **Run it if the paper needs the calibration to stand up; skip it if the plan is to document the bias and report a range.** A-16's result is robust to it either way.
 
@@ -917,7 +917,7 @@ Whichever target is scored, a model that diagnoses zero MSM across the first two
 > **Confirms A-10 on the unbiased estimator:** every substitution scenario has positive infections averted and negative ΔQALY, so every substitution threshold price is conditional on the unsupported cabotegravir-proxy AE parameter.
 
 
-**Brief: `TASK_BRIEF_STOCHASTIC_HEADLINE_2026-09-11.md`.** A deliverable, not a diagnostic — it should end in a table that could be pasted into a results section.
+**Brief: `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_STOCHASTIC_HEADLINE_2026-09-11.md`.** A deliverable, not a diagnostic — it should end in a table that could be pasted into a results section.
 
 **Why it exists:** every quantity computed under the CRN-paired stochastic estimand so far is epidemiological. **There is no stochastic ICER, cost, net benefit or threshold price anywhere in the project** (verified by search 2026-09-11). So the central economic quantities have only ever been computed in the mode that A-13/A-14/A-15/B-8 have shown to be biased three separate ways, and that D-14 Recommendation 1 proposes to abandon.
 

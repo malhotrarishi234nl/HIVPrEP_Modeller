@@ -48,7 +48,7 @@ The two arms differ **only** in that the non-transmission processes are determin
 
 ## 3. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. **§1A.2 (equivalence proof before refactoring) and §1A.4 (tuning prohibition) both bite here.**
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. **§1A.2 (equivalence proof before refactoring) and §1A.4 (tuning prohibition) both bite here.**
 2. `outputs/calibration/a18_jensen_mechanism_20260912_205053/A18_JENSEN_MECHANISM.md` **and its `ADDENDUM_2026-09-12_independent_review.md`** — the harness pattern, and §2's two starting conditions.
 3. `outputs/calibration/b8_deterministic_target_level_comparison_20260911_032028/` — the gap being decomposed.
 4. `outputs/hta_results/a13_hiv_mortality_trace_20260910_230000/A13_HIV_MORTALITY_TRACE.md` — **required before Step 1**, see §5.

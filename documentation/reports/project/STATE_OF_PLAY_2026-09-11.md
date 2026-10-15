@@ -144,7 +144,7 @@ MSM-only quantity (B-5). The HM machinery is safe; the legacy path is not.
 
 **Orientation for anyone (human or agent) opening this repository.** Read this before the task boards.
 
-Detail lives in `PHASE2_AGENT_HANDOFF_2026-09-09.md` (task board) and `PHASE2_DEVELOPMENT_CHECKLIST.md` (gates and decision log). This file is the narrative those two don't give you.
+Detail lives in `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` (task board) and `PHASE2_DEVELOPMENT_CHECKLIST.md` (gates and decision log). This file is the narrative those two don't give you.
 
 ---
 
@@ -281,7 +281,7 @@ The probe is decisive. At a **one-person** weight change:
 
 **The keys are fine** — 9.77M paired draws verified 100% bitwise aligned. It is a sampler problem, not a keying problem.
 
-**The fix is pre-measured:** ΔQALY SD **1,200 → 360**, variance to **9.0%**, **11.1× equivalent seeds**. Brief: `TASK_BRIEF_A28_CRN_COUPLING_FIX_2026-09-14.md`. **Both couplings must ship together** — each alone is close to worthless and makes the other channel worse.
+**The fix is pre-measured:** ΔQALY SD **1,200 → 360**, variance to **9.0%**, **11.1× equivalent seeds**. Brief: `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_A28_CRN_COUPLING_FIX_2026-09-14.md`. **Both couplings must ship together** — each alone is close to worthless and makes the other channel worse.
 
 ### The estimator was never broken
 
@@ -452,7 +452,7 @@ A-8 surfaced these out of scope. **Treat them as one workstream, not three fixes
 | Batch review addendum | `REVIEW_ADDENDUM_BATCH_2026-09-14.md` |
 | History-matching build (HM-1…HM-4) | `outputs/calibration/hm_prototype_20260910/` |
 
-Task briefs for work not yet done: `TASK_BRIEF_ALLOCATION_GRANULARITY_2026-09-11.md`, `TASK_BRIEF_STOCHASTIC_HEADLINE_2026-09-11.md`, `TASK_BRIEF_RESIDUAL_PLACEMENT_2026-09-12.md` (**done — refuted**), `TASK_BRIEF_JENSEN_MECHANISM_2026-09-12.md` (**done — refuted**). `TASK_BRIEF_PROCESS_DECOMPOSITION_2026-09-12.md` (**A-20 — done**). **A-21 is complete from the specification registered in the handoff; no standalone brief was created.**
+Task briefs for work not yet done: `TASK_BRIEF_ALLOCATION_GRANULARITY_2026-09-11.md`, `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_STOCHASTIC_HEADLINE_2026-09-11.md`, `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_RESIDUAL_PLACEMENT_2026-09-12.md` (**done — refuted**), `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_JENSEN_MECHANISM_2026-09-12.md` (**done — refuted**). `documentation/archive/historical_workstreams/phase2/task_briefs/TASK_BRIEF_PROCESS_DECOMPOSITION_2026-09-12.md` (**A-20 — done**). **A-21 is complete from the specification registered in the handoff; no standalone brief was created.**
 
 ---
 

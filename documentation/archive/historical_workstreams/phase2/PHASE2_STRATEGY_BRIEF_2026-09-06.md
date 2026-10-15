@@ -499,7 +499,7 @@ Map into the checklist Decision Log.
 
 Paste roughly this:
 
-> I'm working on the Phase 2 manuscript conversion of my MSc thesis, "Cost-Effectiveness of Lenacapavir for HIV PrEP versus Oral PrEP in the Netherlands." Read `hiv-prep-model/PHASE2_STRATEGY_BRIEF_2026-09-06.md` first — it has the full state, decisions, and plan. Then read `hiv-prep-model/PHASE2_DEVELOPMENT_CHECKLIST.md` for the operational gates. The blocking question is §5 (numerical resolution of the incremental analysis); check whether those three tests have returned before proposing work downstream of them. Project instructions apply: label claims as unsupported / weakly supported / well-supported, never invent parameter values, keep model assumptions, empirical inputs, derived results, and interpretation strictly separated.
+> I'm working on the Phase 2 manuscript conversion of my MSc thesis, "Cost-Effectiveness of Lenacapavir for HIV PrEP versus Oral PrEP in the Netherlands." Read `hiv-prep-model/documentation/archive/historical_workstreams/phase2/PHASE2_STRATEGY_BRIEF_2026-09-06.md` first — it has the full state, decisions, and plan. Then read `hiv-prep-model/PHASE2_DEVELOPMENT_CHECKLIST.md` for the operational gates. The blocking question is §5 (numerical resolution of the incremental analysis); check whether those three tests have returned before proposing work downstream of them. Project instructions apply: label claims as unsupported / weakly supported / well-supported, never invent parameter values, keep model assumptions, empirical inputs, derived results, and interpretation strictly separated.
 
 ---
 

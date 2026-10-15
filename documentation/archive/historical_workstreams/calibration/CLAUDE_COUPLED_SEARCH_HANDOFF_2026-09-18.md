@@ -121,7 +121,7 @@ Create:
 - `configs/coupled_search_plan_20260918.json`: this design in machine-readable form.
 - `tests/test_coupled_calibration_search.py`: scientific contract and proposal tests.
 - `tools/review_coupled_calibration.py`: independent read-only recomputation from raw outputs.
-- `COUPLED_SEARCH_RUNBOOK.md`: tested commands, status and limitations.
+- `documentation/archive/historical_workstreams/calibration/COUPLED_SEARCH_RUNBOOK.md`: tested commands, status and limitations.
 
 Modes: no arguments and `--validate-only` perform zero engine construction/simulations and write nothing. `--prepare` writes a new frozen preparation directory, zero simulations. `--smoke` uses that preparation, writes a separate directory. `--run-search` requires a verified smoke artifact matching the current preparation/code; writes another directory. `--confirm` accepts only a COMPLETE search and creates a new directory. `--resume` resumes only a matching partial search and verifies hashes, RNG/checkpoint state and consumed budget; it must not overwrite completed artifacts. Ordinary modes reject nonempty output directories with a short actionable message, not an opaque traceback.
 

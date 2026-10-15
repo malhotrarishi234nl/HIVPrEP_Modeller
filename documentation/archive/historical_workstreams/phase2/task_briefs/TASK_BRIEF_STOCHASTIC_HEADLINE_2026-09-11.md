@@ -12,7 +12,7 @@
 
 ## 0. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — the verification and academic-integrity standard. Binding here as everywhere.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — the verification and academic-integrity standard. Binding here as everywhere.
 2. `outputs/hta_results/d14_synthesis_memo_20260911_040934/D14_SYNTHESIS_MEMO.md` — Recommendation 1 is why this task exists.
 3. `outputs/hta_results/a15_a9_allocation_hypothesis_20260911_034351/` — the paired stochastic switch-grid runs this task builds on.
 

@@ -429,7 +429,7 @@ Fifty stochastic replicates produced unbiased year-specific ensemble variances f
 ### Bayesian History Matching — calibration machinery (HM-1 … HM-4)
 
 **Files added:** `hm_implausibility.py`, `hm_variance_budget.py`, `hm_target_register.py`, `hm_diagnostics.py`, `run_history_matching.py`, `tools/hm_prototype_rescore.py`, `configs/hm_target_register.json`, `configs/hm_wave_plan_template.json`, `tests/test_hm_implausibility.py`, `tests/test_hm_variance_budget.py`, `tests/test_hm_target_register.py`, `tests/test_hm_wave_loop.py`
-**Files modified:** `HISTORY_MATCHING_BUILD_SPEC.md`, `PHASE2_AGENT_HANDOFF_2026-09-09.md`, `PHASE2_DEVELOPMENT_CHECKLIST.md` (documentation only — no existing module was changed)
+**Files modified:** `HISTORY_MATCHING_BUILD_SPEC.md`, `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md`, `PHASE2_DEVELOPMENT_CHECKLIST.md` (documentation only — no existing module was changed)
 **Report:** `outputs/calibration/hm_prototype_20260910/HM_BUILD_REPORT_2026-09-10.md`
 
 **Summary:** Implements Bayesian history matching (Andrianakis et al. 2015, *PLoS Comput Biol* 11(1):e1003968) as the intended replacement for the ABC-SMC / SNPE calibration stack. Parameter-space *exclusion* rather than *inference*: a candidate is Not Ruled Out Yet when `I_max(x) = max_i |E[f_i(x)] − z_i| / sqrt(V_obs + V_code + V_ensemble + V_disc) <= 3`. The four separate accept/reject mechanisms (`calib_distance` weighted sum plus three gate modules) collapse into one non-compensatory maximum. **No emulator** — the simulator is evaluated directly, so `V_code` is a structural zero enforced by `assemble()`.

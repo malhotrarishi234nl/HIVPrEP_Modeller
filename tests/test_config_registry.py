@@ -15,7 +15,7 @@ def test_tracked_config_registry_is_complete_and_current():
     with registry.REGISTRY_PATH.open(newline="", encoding="utf-8") as stream:
         tracked = list(csv.DictReader(stream))
     assert tracked == rows
-    assert len(rows) == 79
+    assert len(rows) == 71
     assert len({row["path"] for row in rows}) == len(rows)
     assert {row["role_class"] for row in rows} <= registry.ALLOWED_ROLES
 

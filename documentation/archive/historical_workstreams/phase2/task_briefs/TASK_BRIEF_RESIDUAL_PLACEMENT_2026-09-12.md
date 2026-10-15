@@ -18,7 +18,7 @@ So: **run A-17 if the paper needs the calibration to stand up. Skip it if the pl
 
 ## 1. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding verification and academic-integrity standard.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding verification and academic-integrity standard.
 2. `STATE_OF_PLAY_2026-09-11.md` §1 and §2 — the two-problem split and the ENG-01/A-13 dial.
 3. `outputs/hta_results/a13_hiv_mortality_trace_20260910_230000/A13_HIV_MORTALITY_TRACE.md`
 4. `outputs/calibration/b8_deterministic_target_level_comparison_20260911_032028/` — the gap this task is trying to explain.

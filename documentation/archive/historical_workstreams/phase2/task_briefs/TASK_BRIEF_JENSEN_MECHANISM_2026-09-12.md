@@ -45,7 +45,7 @@ It matches every element of B-8's measured signature, and A-17's Step 1 supplied
 
 ## 2. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. §1A.4 (tuning prohibition) is critical for §5.2.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A — binding standard. §1A.4 (tuning prohibition) is critical for §5.2.
 2. `outputs/calibration/a17_residual_placement_20260912_173211/A17_RESIDUAL_PLACEMENT.md` — especially Step 1 and its `raw/step1_yearly_log_ratio.csv`.
 3. `outputs/calibration/b8_deterministic_target_level_comparison_20260911_032028/` — the gap.
 4. `transmission_corrected.py` — where the deterministic/stochastic fork in transmission actually lives.

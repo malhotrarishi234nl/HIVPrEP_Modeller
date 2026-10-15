@@ -45,7 +45,7 @@ And, per seed (A-2 §6.2, `run_full/step1_births_debut_channel.csv`):
 
 ## 3. Read first
 
-1. `PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A, and the A-4 entry.
+1. `documentation/archive/historical_workstreams/phase2/PHASE2_AGENT_HANDOFF_2026-09-09.md` §1A, and the A-4 entry.
 2. `outputs/hta_results/a4_common_random_numbers_20260910_170048/A4_COMMON_RANDOM_NUMBERS.md` — how CRN was keyed, and `null_perturbation_hashes.csv`.
 3. `outputs/hta_results/a2_estimator_decomposition_20260913_235517/A2_ESTIMATOR_DECOMPOSITION.md` §4.3, §6.2, §8; and `a2_decomposition.py` — **reuse its paired-run harness and controls; do not rebuild them.**
 4. `counter_based_rng.py` — `CounterBasedRNG._reserve_call`, `_uniforms`, `poisson`, `binomial`.
