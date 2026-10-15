@@ -8,7 +8,7 @@
   integrated branch must repeat the guarded repository suite before retaining
   the earlier code-acceptance verdict.
 - **Production readiness: NOT READY.** The exact current plan hash is
-  `532b1500096b2835e2d24a5b3d0c66db1f07e6e5cde823fba197fb0949658db3`
+  `e2a9f4e50ce155be88dacfc161d6ae391bcdbfec70a7613f4914c7fa418d7d02`
   and validation reports 45 unsigned required decisions: 39 proposal-backed
   and 6 budget/seed decisions that correctly remain evidence-dependent.
 - No identity gate, pilot, positive-p confirmation, or production simulation was

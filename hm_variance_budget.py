@@ -25,8 +25,11 @@ V_obs
       ``explicit_sigma``      -- a sigma supplied directly by the register.
       ``underivable``         -- no source exists.  Contributes 0.0 and is
         flagged.  A zero contribution SHRINKS the denominator and therefore
-        RULES OUT MORE, so the resulting NROY is a subset of the true NROY:
-        an under-estimate, never an over-estimate.  See ``BudgetTerm.direction``.
+        RULES OUT MORE. Conditional on the omitted observation-variance term
+        being positive and every other input remaining fixed, the resulting
+        NROY can only be smaller than or equal to the set from that otherwise
+        identical positive-variance budget. This is an over-exclusion bias; it
+        does not identify a knowable “true NROY”. See ``BudgetTerm.direction``.
 
 V_code
     Emulator variance.  STRUCTURAL ZERO in this build: the simulator is run

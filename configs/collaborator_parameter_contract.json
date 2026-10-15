@@ -2,7 +2,7 @@
   "schema": "collaborator_parameter_contract/1.0.0",
   "canonical_config": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
   "canonical_config_without_approval_sha256": "d88e0ff837b6495508ce9af75d6dc20c09f609e11e6f4c300b5008446bc89175",
-  "approval_scope": "This file is an unapproved code-safety contract until the canonical config and the complete editable domain receive scientific review. A future production approval bound to this file's exact SHA-256 authorizes collaborator edits only at the listed JSON paths and only inside the listed closed intervals. It does not approve any other config edit, calibration claim, model variant, run design, or compute dispatch.",
+  "approval_scope": "This file is an unapproved code-safety contract until the canonical config and the complete editable domain receive scientific review. A future production approval bound to this file's exact SHA-256 authorizes collaborator edits only at the listed active runtime-effect JSON paths and only inside the listed closed intervals. Schedule-shadowed oral PrEP rates and disabled lenacapavir inputs are intentionally excluded because changing them would not affect this canonical route. It does not approve any other config edit, calibration claim, model variant, run design, or compute dispatch.",
   "parameters": [
     {
       "path": "population.p_msm.value",
@@ -116,46 +116,6 @@
       "maximum": 0.97,
       "unit": "proportional reduction",
       "notes": "Candidate-config uncertainty interval for the ART mortality effect; verify the scientific source and bound before approval."
-    },
-    {
-      "path": "interventions.oral_prep.uptake_rate.value",
-      "type": "number",
-      "minimum": 0.0,
-      "maximum": 1.0,
-      "unit": "annual probability",
-      "notes": "Oral PrEP initiation probability."
-    },
-    {
-      "path": "interventions.oral_prep.dropout_rate.value",
-      "type": "number",
-      "minimum": 0.0,
-      "maximum": 1.0,
-      "unit": "annual probability",
-      "notes": "Oral PrEP discontinuation probability."
-    },
-    {
-      "path": "interventions.lenacapavir.uptake_rate.value",
-      "type": "number",
-      "minimum": 0.0,
-      "maximum": 1.0,
-      "unit": "annual probability",
-      "notes": "Lenacapavir initiation probability; changing it does not enable a disabled intervention."
-    },
-    {
-      "path": "interventions.lenacapavir.dropout_rate.value",
-      "type": "number",
-      "minimum": 0.0,
-      "maximum": 1.0,
-      "unit": "annual probability",
-      "notes": "Lenacapavir discontinuation probability; changing it does not enable a disabled intervention."
-    },
-    {
-      "path": "interventions.lenacapavir.advanced.efficacy.value",
-      "type": "number",
-      "minimum": 0.843,
-      "maximum": 0.995,
-      "unit": "proportional reduction",
-      "notes": "PURPOSE-2 interval recorded by the canonical candidate; verify the exact source and interpretation before approval."
     }
   ]
 }

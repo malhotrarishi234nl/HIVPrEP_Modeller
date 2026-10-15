@@ -18,7 +18,6 @@
   `reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md`
 - Detailed remediation evidence:
   `reports/calibration/NROY_REMEDIATION_2026-10-14.md`
-- History-matching operating guide: `guides/HISTORY_MATCHING_GUIDE.md`
 - Testing lanes and interpretation: `guides/TESTING.md`
 - Optional environment-specific workbook builders:
   `guides/OPTIONAL_ARTIFACT_BUILDERS.md`
@@ -32,6 +31,11 @@
 Root-level `TASK_BRIEF_*.md`, dated handoffs, and runbooks are preserved because
 scientific artifacts cite them. Treat them as historical snapshots unless a
 current-authority document above explicitly adopts them.
+
+`guides/HISTORY_MATCHING_GUIDE.md` is the historical operating guide for the
+2026-09-15 19-target learning-wave workflow. It remains useful for interpreting
+those artifacts, but it is not the current Option B/robust-NROY calibration
+contract.
 
 `BACKLOG.md` is a provenance pointer to preserved historical backlog editions;
 it is not a reconstructed claim that every old backlog item remains current.

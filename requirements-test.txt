@@ -1,0 +1,7 @@
+# Python 3.11 portable no-engine verification environment.
+# This is a strict superset of the ordinary model-operator environment.
+-r requirements-operator.txt
+matplotlib==3.11.1
+openpyxl==3.1.5
+tabulate==0.10.0
+pytest==9.1.1

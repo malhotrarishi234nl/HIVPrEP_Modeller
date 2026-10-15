@@ -307,7 +307,9 @@ def test_production_approval_contract_rejects_false_or_malformed_claims(
 
 def test_operator_copy_may_change_a_bounded_contract_parameter(tmp_path, capsys):
     config = json.loads(SHARED.read_text())
-    config["interventions"]["oral_prep"]["uptake_rate"]["value"] = 0.2
+    config["transmission_model"]["disease"]["transmission"]["advanced"][
+        "msm_versatility"
+    ]["value"] = 0.6
     path = _write_copy(tmp_path, config)
     assert run_model.main([
         "--config", str(path), "--model", "M0", "--validate-only",
@@ -371,18 +373,64 @@ def test_operator_copy_rejects_unlisted_fixed_enum_and_engine_schema_edits(
     assert f"forbidden config edit at {forbidden_path}" in capsys.readouterr().out
 
 
-def test_operator_copy_rejects_probability_outside_approved_contract(
+def test_operator_copy_rejects_probability_outside_declared_contract(
     tmp_path, capsys,
 ):
     config = json.loads(SHARED.read_text())
-    config["interventions"]["oral_prep"]["uptake_rate"]["value"] = 999.0
+    config["transmission_model"]["disease"]["transmission"]["advanced"][
+        "msm_versatility"
+    ]["value"] = 999.0
     path = _write_copy(tmp_path, config)
     assert run_model.main([
         "--config", str(path), "--model", "M0", "--validate-only",
     ]) == 2
     message = capsys.readouterr().out
-    assert "interventions.oral_prep.uptake_rate.value=999.0" in message
-    assert "approved collaborator interval [0.0, 1.0]" in message
+    assert "transmission_model.disease.transmission.advanced.msm_versatility.value=999.0" in message
+    assert "declared bounds [0.25, 0.75]" in message
+
+
+def test_contract_only_interval_error_does_not_claim_scientific_approval():
+    canonical = json.loads(SHARED.read_text())
+    candidate = copy.deepcopy(canonical)
+    path = (
+        "transmission_model", "disease", "transmission", "advanced",
+        "msm_versatility", "value",
+    )
+    candidate["transmission_model"]["disease"]["transmission"]["advanced"][
+        "msm_versatility"
+    ]["value"] = 0.7
+    problem = run_model._first_parameter_contract_problem(
+        candidate, canonical, {path: {"minimum": 0.4, "maximum": 0.6}},
+    )
+    assert "declared collaborator contract interval [0.4, 0.6]" in problem
+    assert "approved" not in problem
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("interventions", "oral_prep", "uptake_rate", "value"),
+        ("interventions", "oral_prep", "dropout_rate", "value"),
+        ("interventions", "lenacapavir", "uptake_rate", "value"),
+        ("interventions", "lenacapavir", "dropout_rate", "value"),
+        ("interventions", "lenacapavir", "advanced", "efficacy", "value"),
+    ],
+)
+def test_operator_contract_rejects_schedule_shadowed_or_disabled_inputs(
+    tmp_path, capsys, path,
+):
+    config = json.loads(SHARED.read_text())
+    node = config
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = float(node[path[-1]]) + 0.001
+    config_path = _write_copy(tmp_path, config)
+
+    assert run_model.main([
+        "--config", str(config_path), "--model", "M0", "--validate-only",
+    ]) == 2
+    dotted = ".".join(path)
+    assert f"forbidden config edit at {dotted}" in capsys.readouterr().out
 
 
 def test_coupled_msm_proportions_must_change_together(tmp_path, capsys):
@@ -414,7 +462,9 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     approved = _write_approved_canonical(tmp_path)
     monkeypatch.setattr(run_model, "DEFAULT_CONFIG", approved)
     operator_payload = json.loads(approved.read_text())
-    operator_payload["interventions"]["oral_prep"]["uptake_rate"]["value"] = 0.2
+    operator_payload["transmission_model"]["disease"]["transmission"]["advanced"][
+        "msm_versatility"
+    ]["value"] = 0.6
     operator_copy = _write_copy(tmp_path, operator_payload)
     seen = {}
 
@@ -476,7 +526,9 @@ def test_run_writes_bound_effective_config_and_manifest_with_fake_engine(
     ]
     assert node["enabled"]["value"] is True
     assert node["aids_symptom_annual_probability"]["value"] == pytest.approx(0.2)
-    assert effective["interventions"]["oral_prep"]["uptake_rate"]["value"] == 0.2
+    assert effective["transmission_model"]["disease"]["transmission"]["advanced"][
+        "msm_versatility"
+    ]["value"] == 0.6
     assert effective["production_approval"] == {
         "schema": run_model.PRODUCTION_APPROVAL_SCHEMA,
         "status": "APPROVED",

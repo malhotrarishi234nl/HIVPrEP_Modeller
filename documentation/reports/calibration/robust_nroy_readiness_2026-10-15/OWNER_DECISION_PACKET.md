@@ -2,9 +2,9 @@
 
 **Status: CURRENT decision support as of 2026-10-15.** This packet is bound to
 plan SHA-256
-`532b1500096b2835e2d24a5b3d0c66db1f07e6e5cde823fba197fb0949658db3` and
+`e2a9f4e50ce155be88dacfc161d6ae391bcdbfec70a7613f4914c7fa418d7d02` and
 decision-register SHA-256
-`fc04be805505b445ddfa3a935cd27e8510e668c02a336a2ca5d1c8e5ddb6c53d`.
+`dfa15eba805548c5f232f9c584c3402faa8b61ad2e932423bea3f0e369053f46`.
 It recommends decisions; it does not edit or sign the plan and does not
 authorize an engine run.
 

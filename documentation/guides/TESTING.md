@@ -16,16 +16,34 @@ Purpose: source contracts, deterministic preparation, recovery logic,
 provenance validation, and synthetic/mock calculations. It must not require
 `outputs/`, sibling raw data, literature PDFs, or the real engine.
 
-The robust-NROY subset is listed in the root README. The handoff pass will
-expand and mark this lane so it can run from a source-only clone.
+Use Python 3.11 and the pinned test environment. This is deliberately separate
+from `requirements-operator.txt`: an operator validating or running M0/M1 does
+not need pytest, workbook, plotting, or table-rendering dependencies.
+
+```bash
+python3.11 --version
+python3.11 -m venv .venv-test
+.venv-test/bin/python -m pip install -r requirements-test.txt
+.venv-test/bin/python -m pip check
+```
+
+The first command must report Python `3.11.x`. `requirements-test.txt` is a
+strict, pinned superset of the operator runtime contract. The robust-NROY
+focused subset is listed in the root README.
 
 The configuration-inventory drift check belongs to this lane and runs no
 engine:
 
 ```bash
-.venv/bin/python tools/build_config_registry.py --check
-.venv/bin/python -m pytest -q -p pytest_no_engine_guard tests/test_config_registry.py
+.venv-test/bin/python tools/build_config_registry.py --check
+.venv-test/bin/python -m pytest -p pytest_no_engine_guard -W error -q
 ```
+
+That second command is the complete guarded repository gate. In a source-only
+clone, tests whose declared external-data or retained-artifact mounts are
+absent must skip with an explicit reason; they are not counted as passed. Real
+engine construction is also skipped by the guard. Report the exact pass/skip
+counts and the tested Git commit or bundle hash.
 
 ## Lane 2: external-data integration
 

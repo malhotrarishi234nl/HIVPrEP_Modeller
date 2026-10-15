@@ -1,11 +1,13 @@
 # Environments / caches
 .venv/
+.venv-test/
 .venv-snpe/
 venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 node_modules/
+operator_configs/
 .idea/
 .claude/
 .DS_Store

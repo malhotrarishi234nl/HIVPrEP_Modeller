@@ -540,8 +540,9 @@ def _first_parameter_contract_problem(
         upper = float(rule["maximum"])
         if not lower <= float(value) <= upper:
             return (
-                f"edited {_format_path(path)}={value!r} is outside its approved "
-                f"collaborator interval [{rule['minimum']!r}, {rule['maximum']!r}]"
+                f"edited {_format_path(path)}={value!r} is outside its declared "
+                f"collaborator contract interval "
+                f"[{rule['minimum']!r}, {rule['maximum']!r}]"
             )
     for path, rule in rules.items():
         if "must_equal" not in rule:

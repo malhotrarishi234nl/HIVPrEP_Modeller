@@ -1501,6 +1501,30 @@ def test_a_declared_source_that_cannot_contribute_is_refused():
             neighbour_rule="k_nearest_in_normalised_metric",
             confirmed_difference_rule="nearest_in_normalised_metric_then_candidate_id",
         )
+
+
+def test_a_declared_source_with_only_zero_differences_is_refused():
+    space = fx.m0_space()
+    params = fx.interior_vector(space)
+    anchor = nd.Anchor.build("A0", params, space)
+
+    with pytest.raises(ContractError, match="no usable nonzero direction"):
+        nd.correlation_following_directions(
+            anchor, space, source_pool=[nd.SOURCE_LOW_J_ARCHIVE],
+            archive=[params], archive_ids=["ARCHIVE_DUPLICATE"], archive_j=[0.1],
+            neighbour_count=1, max_directions=1,
+            neighbour_rule="lowest_j_then_distance",
+            confirmed_difference_rule="nearest_in_normalised_metric_then_candidate_id",
+        )
+
+    with pytest.raises(ContractError, match="no usable nonzero direction"):
+        nd.correlation_following_directions(
+            anchor, space, source_pool=[nd.SOURCE_CONFIRMED_DIFFERENCES],
+            confirmed=[params, dict(params)], confirmed_ids=["A0", "A1"],
+            neighbour_count=1, max_directions=1,
+            neighbour_rule="k_nearest_in_normalised_metric",
+            confirmed_difference_rule="nearest_in_normalised_metric_then_candidate_id",
+        )
     with pytest.raises(ContractError, match="no other confirmed vector"):
         nd.correlation_following_directions(
             anchor, space, source_pool=[nd.SOURCE_CONFIRMED_DIFFERENCES],

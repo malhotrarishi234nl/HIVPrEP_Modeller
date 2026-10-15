@@ -5,8 +5,10 @@ Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
 
 ## Current status
 
-- **Code status:** robust-NROY implementation accepted after isolated guarded
-  review, subject to the active production-readiness corrections below.
+- **Code status:** final integrated revision undergoing guarded full-suite and
+  clean-clone handoff re-verification. The earlier robust-NROY baseline passed
+  isolated guarded review; that result is not being reused as proof for newer
+  collaborator, methods-contract, and vault-portability changes.
 - **Scientific production status:** **not yet production-ready**. Do not launch
   production calibration, identity, pilot, M1 confirmation, PSA, or policy
   runs without the explicit gate described in the current readiness package.
@@ -133,9 +135,17 @@ No-engine guarded tests patch real `SimulationEngineV3` construction to skip,
 so a green guarded run does **not** prove engine identity or production
 readiness.
 
+From a source-only clone, create the pinned Python 3.11 test environment before
+running any gate:
+
+```bash
+python3.11 -m venv .venv-test
+.venv-test/bin/python -m pip install -r requirements-test.txt
+```
+
 ```bash
 # Current robust-NROY source gate; no scientific engine construction.
-.venv/bin/python -m pytest -p pytest_no_engine_guard -q \
+.venv-test/bin/python -m pytest -p pytest_no_engine_guard -W error -q \
   tests/test_nroy_contract_design.py \
   tests/test_nroy_pipeline_stages.py \
   tests/test_nroy_execution_sharding.py \
@@ -143,6 +153,11 @@ readiness.
   tests/test_nroy_graph_report.py \
   tests/test_nroy_identity_gate_artifact.py \
   tests/test_prepare_robust_nroy_acceptance_inputs.py
+
+# Complete guarded repository gate; external/artifact tests report skips when
+# their separately documented mounted inputs are absent.
+.venv-test/bin/python tools/build_config_registry.py --check
+.venv-test/bin/python -m pytest -p pytest_no_engine_guard -W error -q
 ```
 
 See [documentation/guides/TESTING.md](documentation/guides/TESTING.md) before

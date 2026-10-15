@@ -44,17 +44,32 @@ Next confirm that both M0 and M1 pass the validation commands below before
 requesting permission for a run.
 
 Use the shared candidate as the source and give each analysis its own named
-copy. Do not edit the canonical file in place.
+copy. Operator copies live outside the controlled `configs/` registry so that
+creating one cannot make the repository verification gate fail. Do not edit
+the canonical file in place and do not put an analysis copy under `configs/`.
 
 ```bash
+mkdir -p operator_configs
 cp configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json \
-  configs/my_analysis_config.json
+  operator_configs/my_analysis_config.json
 ```
+
+`operator_configs/` is intentionally ignored by Git. Preserve each reviewed
+analysis config together with its run record and result package; do not treat
+the ignored working copy as the only archival copy.
 
 The named file is the current Option B **recalibration starting point**, not an
 approved fitted model. It is suitable for mechanical validation and for a
 separately authorized calibration workflow; it is not yet eligible for real
 collaborator simulations.
+
+The candidate's protected `calibration_metadata` preserves an absolute
+`source_config_path` from the workstation where the earlier calibration was
+recorded. That string is inert provenance: `run_model.py` does not open or
+depend on it, and source-only validation works without that path. Do not edit
+it in an operator copy. The maintainer must replace it with portable provenance
+when the newly recalibrated config is reviewed and promoted; the current draft
+must not be promoted unchanged.
 
 The exact editable surface is the short, machine-readable
 `configs/collaborator_parameter_contract.json`. Edit only a listed `path`, keep
@@ -76,7 +91,7 @@ M0 uses the ordinary diagnosis route:
 
 ```bash
 .venv/bin/python run_model.py \
-  --config configs/my_analysis_config.json \
+  --config operator_configs/my_analysis_config.json \
   --model M0 \
   --validate-only
 ```
@@ -86,7 +101,7 @@ probability:
 
 ```bash
 .venv/bin/python run_model.py \
-  --config configs/my_analysis_config.json \
+  --config operator_configs/my_analysis_config.json \
   --model M1 \
   --p 0.20 \
   --validate-only
@@ -132,7 +147,7 @@ as declared by that run sheet and give every trajectory a new output directory.
 
 ```bash
 .venv/bin/python run_model.py \
-  --config configs/my_analysis_config.json \
+  --config operator_configs/my_analysis_config.json \
   --model M0 \
   --seed 42001 \
   --output-dir outputs/collaborator_runs/my_analysis_m0_seed42001
@@ -142,7 +157,7 @@ For M1:
 
 ```bash
 .venv/bin/python run_model.py \
-  --config configs/my_analysis_config.json \
+  --config operator_configs/my_analysis_config.json \
   --model M1 \
   --p 0.20 \
   --seed 42001 \
@@ -207,6 +222,15 @@ a different config invalidates the approval. The current contract is a
 fail-closed code contract, not scientific approval; it must be reviewed again
 after recalibration changes the canonical parameter vector.
 
+This JSON block is a provenance record and an accidental-run guard, not a
+cryptographic authentication mechanism. Someone with write access to the
+canonical repository can fabricate its text. For a real collaborator release,
+the maintainer must distribute the reviewed canonical config from the named
+reviewed commit/bundle and supply a separately approved analysis run sheet.
+Reviewers must reconcile the run manifest's config and Git hashes to that
+release. Neither the block alone nor possession of a runnable copy proves
+scientific acceptance or dispatch authorization.
+
 ## Editable and protected inputs
 
 Only numeric paths in `configs/collaborator_parameter_contract.json` may change
@@ -245,7 +269,8 @@ the output directory, or rerun with a different seed to make the failure
 disappear. Send the **Model Maintainer** this concise handoff:
 
 1. the exact command you ran, from the repository root;
-2. the config path and its hash (`shasum -a 256 configs/my_analysis_config.json`);
+2. the config path and its hash
+   (`shasum -a 256 operator_configs/my_analysis_config.json`);
 3. the complete `ERROR:` text or traceback;
 4. the requested output path, whether `run_reproducibility_manifest.json`
    exists there, and its `status` (`PREPARED`, `FAILED`, or `COMPLETE`), attaching

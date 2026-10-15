@@ -108,7 +108,7 @@
       "v_disc": {
         "method": "default"
       },
-      "notes": "CORRECTED 2026-09-14 (C-1 landed). The previous note said these two series 'diverge once the exogenous non-MSM stream enters new_diagnoses'. That is BACKWARDS. Post-C-1 they are EXACTLY COLLINEAR: verified against SHM Table 1.1, Total Adjusted (No <15) = MSM+Trans + Men + Women with residual 0.0 in all 29 years 1996-2024. Since new_diagnoses now carries the injected series and new_diagnoses_msm does not, the two carry the same residual under different denominators - ONE CONSTRAINT COUNTED TWICE under the non-compensatory max rule. Worse, shm_new_diagnoses_total (role: calibration) now scores a quantity that is partly the model's own INPUT. ACTION REQUIRED before the next wave: demote one to cross_validation, or treat the pair as a single target. Not done here because it changes the scored target set."
+      "notes": "RESOLVED 2026-09-16 after the 2026-09-14 C-1 correction. Post-C-1, SHM total and MSM diagnosis residuals are exactly collinear: Total Adjusted (No <15) = MSM+Trans + Men + Women with residual 0.0 in all 29 years 1996-2024, while the non-MSM contribution is injected as an observed exogenous input. To avoid counting one residual twice under the non-compensatory max rule, shm_new_diagnoses_total is cross_validation and this MSM series is the calibration target."
     },
     {
       "series_name": "ecdc_aids_confirmed_cases",
@@ -168,7 +168,7 @@
       "v_disc": {
         "method": "default"
       },
-      "notes": "DECISION REQUIRED. This series measures the same quantity as shm_new_diagnoses_total for 1996-2017. Under a maximum rule, two targets for one quantity double the exclusion pressure on that quantity relative to every other, which is a weighting decision smuggled in through target selection. Default here restricts it to 1990-1995, the window where SHM publishes only a '<=1995' lump and so provides no annual constraint. CORRECTION 2026-09-14: this note previously said that lump was 1,280. It is not -- 1,280 is the NON-MSM lump (Other men 719 + Women 561) that C-1 uses. SHM Table 1.1 '<=1995' reads MSM 2,095 / Other men 719 / Women 561 / Trans 15 / <15y 53 / TOTAL 3,443. ECDC 1990-95 verified from source: 2,602 total, 1,542 'Sex between men'. The two sources are consistent, not conflicting (implied MSM <=1989 = 553). Set role to 'calibration' to score the full overlap, or 'cross_validation' to drop it from I_max; both are one-line changes and both must be declared before the wave runs. 2026-09-16: cross-validation only, one-sided (survivor-restricted observation)."
+      "notes": "RESOLVED 2026-09-16 as cross-validation only and therefore excluded from I_max. This series overlaps shm_new_diagnoses_total for 1996-2017; counting both under a maximum rule would duplicate exclusion pressure on one quantity. The restricted 1990-1995 window is retained as a one-sided, survivor-restricted observation because SHM publishes only a <=1995 lump there. The earlier note incorrectly called the 1,280 non-MSM lump the total; SHM Table 1.1 <=1995 is MSM 2,095 / Other men 719 / Women 561 / Trans 15 / <15y 53 / total 3,443, while ECDC 1990-1995 is 2,602 total and 1,542 sex-between-men."
     },
     {
       "series_name": "unaids_plhiv_all_ages",

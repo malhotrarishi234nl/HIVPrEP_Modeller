@@ -880,11 +880,19 @@ def correlation_following_directions(
                     "archive_following.source_pool; the design may not silently drop a "
                     "declared source."
                 )
-            out.extend(archive_directions(
+            source_directions = archive_directions(
                 anchor, model, archive=archive, archive_ids=archive_ids,
                 archive_j=archive_j, neighbour_count=neighbour_count,
                 max_directions=max_directions, neighbour_rule=neighbour_rule,
-            ))
+            )
+            if not source_directions:
+                raise ContractError(
+                    f"the declared source pool includes {kind!r}, but its signed "
+                    f"selection rule produced no usable nonzero direction for anchor "
+                    f"{anchor.anchor_id!r}; the design may not silently drop a "
+                    "declared source"
+                )
+            out.extend(source_directions)
         elif kind == SOURCE_CONFIRMED_DIFFERENCES:
             others = [
                 identifier for identifier in confirmed_ids
@@ -896,10 +904,17 @@ def correlation_following_directions(
                     f"{anchor.anchor_id!r} has no other confirmed vector to difference "
                     "against. A single-anchor run cannot honour this declared source."
                 )
-            out.extend(confirmed_difference_directions(
+            source_directions = confirmed_difference_directions(
                 anchor, model, confirmed=confirmed, confirmed_ids=confirmed_ids,
                 max_directions=max_directions, selection_rule=confirmed_difference_rule,
-            ))
+            )
+            if not source_directions:
+                raise ContractError(
+                    f"the declared source pool includes {kind!r}, but it produced no "
+                    f"usable nonzero direction for anchor {anchor.anchor_id!r}; the "
+                    "design may not silently drop a declared source"
+                )
+            out.extend(source_directions)
     return out
 
 

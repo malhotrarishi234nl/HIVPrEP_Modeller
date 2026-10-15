@@ -41,7 +41,13 @@ lifecycle: no external location, backup policy, destination verification, or
 owner cleanup approval exists yet. Source-only collaborator handoff does not
 require this historical artifact; full artifact-vault handoff remains blocked.
 
-## Immediate blockers
+## Original blockers recorded at audit start
+
+The numbered inventory below is preserved as the audit baseline, not as a
+claim that every item remains open. The implementation update above and the
+current gated checklist control present status. Items involving the README,
+machine-local symlink, test lanes, and config/artifact inventories have been
+remediated; final integrated-suite and clean-bundle verification remain open.
 
 1. The active branch is 20 commits ahead of `main`, with 40 modified tracked
    files and 24 untracked files, and no configured Git remote.

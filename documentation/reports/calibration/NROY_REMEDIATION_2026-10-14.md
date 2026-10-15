@@ -6,7 +6,7 @@
 > package is
 > `robust_nroy_readiness_2026-10-15/README.md`. The current unsigned plan has
 > SHA-256
-> `532b1500096b2835e2d24a5b3d0c66db1f07e6e5cde823fba197fb0949658db3`
+> `e2a9f4e50ce155be88dacfc161d6ae391bcdbfec70a7613f4914c7fa418d7d02`
 > and 45 unsigned decisions (39 proposal-backed and 6 evidence-dependent),
 > plus the separate signature gate. Code acceptance for the integrated
 > revision requires a fresh guarded full-suite and clean-clone handoff audit;

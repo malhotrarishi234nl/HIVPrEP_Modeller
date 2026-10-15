@@ -1,9 +1,15 @@
 # History matching: concepts, operation, and interpretation
 
 **Updated:** 2026-09-15  
-**Current status:** two post-fix stochastic learning waves complete; stochastic confirmation prepared but not run.
+**Status:** **HISTORICAL SNAPSHOT** of the September 15 learning-wave workflow;
+two post-fix stochastic waves completed and stochastic confirmation was
+prepared but not run.
 
-This is the practical guide to the repository's current calibration method. The
+This is the practical guide to the repository's 2026-09-15 calibration method.
+It is retained to interpret that workflow and its artifacts; it is not the
+current Option B/robust-NROY production contract. Current status, target and
+discrepancy assumptions, and launch gates are in
+`../reports/calibration/robust_nroy_readiness_2026-10-15/README.md`. The
 methodological build history and literature rationale remain in
 `HISTORY_MATCHING_BUILD_SPEC.md`. Run-specific declarations remain in the
 dated `HM_*_RUN_*.md` files.
@@ -75,9 +81,9 @@ weight. Consequently, an output that appears numerically distant from its
 target may remain NROY if the prespecified uncertainty budget is large. That is
 why the component variance table must always accompany an NROY count.
 
-## 4. Current estimator and target contract
+## 4. Historical September estimator and target contract
 
-The current learning waves use:
+The September learning waves used:
 
 - stochastic simulation, not deterministic calibration;
 - three replicate seeds per design point for the search stage;
