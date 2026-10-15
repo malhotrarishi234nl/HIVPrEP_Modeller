@@ -29,6 +29,11 @@ import nroy_execution as ne  # noqa: E402
 
 PRODUCTION_PLAN = ROOT / "configs" / "robust_nroy_freeze_production.json"
 M0_CALIB_SPACE = ROOT / "configs" / "calib_space_v13_25_unordered_orientation_20260921.json"
+SHARED_PRODUCTION_CONFIG = (
+    "configs/"
+    "V13.22_20260604_nearfit_rank001_basecase_onart_two_era_"
+    "stochastic_m0_m1_20261015.json"
+)
 
 P_NAME = "aids_symptom_annual_probability"
 P_CONFIG_PATH = (
@@ -41,7 +46,7 @@ P_CONFIG_PATH = (
 #: deliberately leaves every one of these unsigned.
 TEST_SIGNATURES: dict[str, object] = {
     "models.m0.calib_space": "configs/calib_space_v13_25_unordered_orientation_20260921.json",
-    "models.base_config": ccs.BASE_CONFIG_PATH,
+    "models.base_config": SHARED_PRODUCTION_CONFIG,
     "target_contract.register_path": "configs/hm_target_register_focused_20260916.json",
     "target_contract.n_targets": 13,
     "target_contract.frozen_order": list(ccs.FROZEN_TARGET_ORDER),
@@ -119,7 +124,7 @@ def write_signed_plan(tmp_path: Path, **overrides) -> Path:
     # Production validation correctly refuses the shipped deterministic debug
     # config.  The verification fixture therefore makes an explicit stochastic
     # copy and binds all four non-decision prerequisites to the exact plan.
-    base = json.loads((ROOT / ccs.BASE_CONFIG_PATH).read_text())
+    base = json.loads((ROOT / SHARED_PRODUCTION_CONFIG).read_text())
     base.setdefault("run_control", {})["deterministic_mode"] = {
         "value": False,
         "notes": "verification-suite stochastic fixture",

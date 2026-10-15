@@ -5,7 +5,7 @@
 - **Code acceptance: ACCEPT.** Current robust-NROY fail-closed code remains
   accepted; the path reconciliation is covered by guarded tests.
 - **Production readiness: NOT READY.** The exact current plan hash is
-  `740846e686fde6a932906304a85a4a78c8b169264b33a113f64454cc78adb5ab`
+  `76798841923717b78f7cf2f8f2185b5f5352fa30d545be9339f260f9c0b89e3c`
   and validation reports 42 unsigned required decisions: 28 proposal-backed
   and 14 requiring new decisions.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
@@ -35,6 +35,8 @@
   gaps that must close before signing.
 - `REPOSITORY_HANDOFF_CLEANUP_PLAN.md`: preservation-first repository and
   artifact cleanup sequence for a reproducible researcher handoff.
+- `MODEL_OPERATOR_GUIDE.md`: parameter-focused, no-Python-edit commands for
+  explicit standalone M0/M1 validation and execution, with protected fields.
 
 ## Acceptance-input provenance
 
@@ -63,6 +65,12 @@ After sign-off, regenerate rather than promote the pre-sign draft:
 
 The command refuses an unsigned plan unless `--draft` is explicit and refuses
 to overwrite a non-empty directory.
+
+The preserved `acceptance_inputs_pre_sign/` files remain bound to the earlier
+plan hash `7d113408...` and original deterministic config proposal. The proposal
+change intentionally makes that draft stale; do not relabel or promote it.
+Regenerate into a new empty evidence directory only after the current plan is
+signed.
 
 ## Other evidence-generation commands
 
@@ -97,8 +105,8 @@ bindings and cannot pass the production validator as stored.
 ## Exact remaining approvals
 
 1. Assign owners and decide/sign the 42 register rows.
-2. Approve a reviewed stochastic M1-capable base configuration (the recorded
-   proposal is unsuitable as-is).
+2. Review and approve the prepared minimal stochastic M0/M1 config derivative;
+   code-route tests do not replace the identity gate or scientific review.
 3. Choose whether a full preserved backlog edition should be restored as
    authoritative documentation.
 4. Approve retirement-only versus current-code rerun for the two stale

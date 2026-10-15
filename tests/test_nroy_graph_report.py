@@ -647,8 +647,10 @@ def test_validate_subcommand_rejects_signed_plan_with_placeholder_readiness_evid
     assert "not production-ready" in out
     assert "placeholder/fixture evidence" in out
     assert "no current evidence schema" in out
-    assert "production M1 config route failed" in out
-    assert "stage_structured_diagnosis" in out
+    # The shared-config fixture now exercises a valid explicit M0/M1 route.
+    # Readiness still fails on the deliberately placeholder external evidence,
+    # not on a config defect that production no longer carries.
+    assert "production M1 config route failed" not in out
 
 
 def test_prepare_refuses_an_unsigned_plan(tmp_path):

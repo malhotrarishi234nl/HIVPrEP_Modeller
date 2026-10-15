@@ -81,8 +81,8 @@
 
   "models": {
     "base_config": "UNSIGNED",
-    "base_config_proposal": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_20260916.json",
-    "base_config_note": "The frozen production model config that parameter vectors are injected into. This is the production spec's 'freeze configs' step and is the ONLY config run_robust_nroy_freeze's production evaluator will run. The proposal is coupled_calibration_search.BASE_CONFIG_PATH, the config the established production calibration runner already uses, so the two cannot silently diverge. Whether it is the frozen production build is still a decision, not an inheritance.",
+    "base_config_proposal": "configs/V13.22_20260604_nearfit_rank001_basecase_onart_two_era_stochastic_m0_m1_20261015.json",
+    "base_config_note": "The frozen production model config that parameter vectors are injected into. The proposal is a minimal derivative of coupled_calibration_search.BASE_CONFIG_PATH: calibrated scientific values are unchanged, stochastic mode is explicit, and a complete stage-structured diagnosis block defaults off for safe standalone M0 use. ProductionEvaluator explicitly removes the block for M0 and enables it for M1 on a runtime copy. This remains UNSIGNED and is not scientific identity evidence; select it only after review and bind its exact hash in the config registry.",
     "m0": {
       "calib_space": "UNSIGNED",
       "calib_space_proposal": "configs/calib_space_v13_25_unordered_orientation_20260921.json",

@@ -21,6 +21,7 @@ adapter is tested up to, but deliberately not including, the engine call.
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -1636,6 +1637,8 @@ def test_m1_injection_fails_loudly_if_the_config_lacks_the_p_block(tmp_path):
     """
     harness = Harness(tmp_path, model=nc.MODEL_M1)
     adapter = runner.ProductionEvaluator(harness.plan, root=ROOT)
+    diagnosis = adapter.base_config["transmission_model"]["disease"]["diagnosis"]
+    diagnosis.pop("stage_structured_diagnosis")
     assert fx.P_CONFIG_PATH.endswith("aids_symptom_annual_probability")
     space = fx.m1_space()
     vector = nc.embed_m0_in_m1(
@@ -1647,7 +1650,7 @@ def test_m1_injection_fails_loudly_if_the_config_lacks_the_p_block(tmp_path):
         parent_ids=("A0",), params=vector, parent_manifest_sha256="p",
         code_sha256="c", config_sha256="g", target_schema=TARGETS,
     )
-    with pytest.raises(KeyError, match="stage_structured_diagnosis"):
+    with pytest.raises(ContractError, match="missing.*stage_structured_diagnosis"):
         adapter.config_for(unit, vector)
 
 
@@ -1655,12 +1658,7 @@ def test_m1_injection_lands_p_at_the_signed_path_when_the_block_exists(tmp_path)
     """With the block present, ``p`` lands exactly where the plan says."""
     harness = Harness(tmp_path, model=nc.MODEL_M1)
     adapter = runner.ProductionEvaluator(harness.plan, root=ROOT)
-    node = adapter.base_config["transmission_model"]["disease"]["diagnosis"]
-    node["stage_structured_diagnosis"] = {
-        "enabled": {"value": True},
-        "routine_hazard_scale": {"value": 1.0},
-        "aids_symptom_annual_probability": {"value": 0.0},
-    }
+    base_before = copy.deepcopy(adapter.base_config)
     space = fx.m1_space()
     vector = nc.embed_m0_in_m1(
         fx.m0_space(), space, fx.interior_vector(fx.m0_space()), p_value=0.25
@@ -1672,7 +1670,12 @@ def test_m1_injection_lands_p_at_the_signed_path_when_the_block_exists(tmp_path)
         code_sha256="c", config_sha256="g", target_schema=TARGETS,
     )
     config = adapter.config_for(unit, vector)
+    assert adapter.base_config == base_before
     assert _dig(config, fx.P_CONFIG_PATH) == pytest.approx(0.25)
+    assert _dig(
+        config,
+        "transmission_model.disease.diagnosis.stage_structured_diagnosis.enabled.value",
+    ) is True
     # And the routine hazard scale the identity depends on is still pinned.
     assert _dig(
         config,
@@ -1728,13 +1731,7 @@ def test_production_config_route_removes_m1_block_from_m0_but_injects_it_for_m1(
     node = base
     for key in runner.nig.PROFILE_PATH[:-1]:
         node = node[key]
-    node[runner.nig.PROFILE_PATH[-1]] = {
-        "enabled": {"value": True},
-        "routine_hazard_scale": {"value": 1.0},
-        fx.P_NAME: {"value": 0.2},
-        "symptom_start_year": {"value": 1985},
-    }
-    base_path.write_text(json.dumps(base))
+    assert node[runner.nig.PROFILE_PATH[-1]]["enabled"]["value"] is False
 
     plan = nc.FrozenPlan.load(plan_path, root=ROOT)
     adapter = runner.ProductionEvaluator(plan, root=ROOT)

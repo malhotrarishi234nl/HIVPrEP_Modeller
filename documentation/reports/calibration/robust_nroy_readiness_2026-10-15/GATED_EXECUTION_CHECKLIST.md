@@ -17,9 +17,10 @@ engine-running gate.
 - [x] The promotion variance formula is a direct one-sided 95% upper bound at
   proposed `alpha=0.05`, used only for allocation. Final nominal acceptance is
   unchanged; alpha remains unsigned scientific/methods input.
-- [ ] One canonical stochastic config supports standalone M0 and optional M1;
+- [x] One canonical stochastic config supports standalone M0 and optional M1;
   the production adapter sets the model switch explicitly and its no-engine
-  config-route tests pass.
+  config-route tests pass. This is code acceptance only; the identity and pilot
+  gates below remain open.
 - [ ] All 42 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
 - [ ] A stochastic M1-capable base configuration is selected and hashed.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.

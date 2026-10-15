@@ -80,6 +80,7 @@ import nroy_execution as ne
 import nroy_graph as ng
 import nroy_identity_gate as nig
 import nroy_report as nrp
+import stage_structured_diagnosis as ssd
 from coupled_calibration_search import ContractError
 
 ROOT = Path(__file__).resolve().parent
@@ -115,6 +116,10 @@ def _production_readiness_problems(plan: nc.FrozenPlan) -> list[str]:
             deterministic = deterministic.get("value", False)
         if bool(deterministic):
             problems.append("base config has deterministic_mode=true")
+        try:
+            ssd.validate_shared_base_config(payload)
+        except ssd.StageStructuredDiagnosisConfigError as exc:
+            problems.append(f"base config is not a safe shared M0/M1 config: {exc}")
 
     m0_space = Path(str(plan.require("models.m0.calib_space")))
     if not m0_space.is_absolute():
@@ -1608,20 +1613,7 @@ class ProductionEvaluator:
         """
         from run_lhs_calibration import inject_params  # noqa: PLC0415
 
-        config = inject_params(
-            self.base_config,
-            {name: float(value) for name, value in params.items()},
-            self.calib_space_for(unit.model),
-        )
-        if unit.model == nc.MODEL_M0:
-            # M0 is the legacy diagnosis model.  The shared production base
-            # must contain the M1 block so the p coordinate has a real
-            # injection target, but carrying that block into M0 would silently
-            # turn the supposedly nested base model into M1.  Remove it on the
-            # exact production route rather than relying on a hand-shaped gate
-            # configuration.
-            config = nig.without_stage_block(config)
-        else:
+        if unit.model == nc.MODEL_M1:
             # M1 pins the routine hazard scale; without it the engine's p=0
             # identity dispatch does not hold and M1 would not nest M0.
             nc.assert_m1_identity_preconditions(
@@ -1629,13 +1621,42 @@ class ProductionEvaluator:
                     "p_parameter.routine_hazard_scale_identity_value")),
                 required_value=1.0,
             )
+        try:
+            # The tracked file is a safe standalone M0 config (block present
+            # but disabled).  Both production variants are chosen explicitly
+            # on a deep-copied runtime config: M0 removes the block and M1
+            # enables it.  No stored enabled state is trusted.
+            config = ssd.route_shared_config(self.base_config, model=unit.model)
+        except ssd.StageStructuredDiagnosisConfigError as exc:
+            raise ContractError(f"invalid shared M0/M1 production config: {exc}") from exc
+        try:
+            config = inject_params(
+                config,
+                {name: float(value) for name, value in params.items()},
+                self.calib_space_for(unit.model),
+            )
+        except KeyError as exc:
+            raise ContractError(
+                f"the shared production config cannot accept the complete "
+                f"{unit.model} vector: {exc}"
+            ) from exc
+
+        if unit.model == nc.MODEL_M1:
             node = config
-            for key in nig.PROFILE_PATH:
+            for key in ssd.PROFILE_PATH:
                 if key not in node:
                     raise ContractError(
-                        f"the injected M1 config has no {'.'.join(nig.PROFILE_PATH)} block"
+                        f"the injected M1 config has no {'.'.join(ssd.PROFILE_PATH)} block"
                     )
                 node = node[key]
+            enabled = node.get("enabled")
+            if isinstance(enabled, Mapping):
+                enabled = enabled.get("value")
+            if enabled is not True:
+                raise ContractError(
+                    "the production M1 route did not explicitly enable "
+                    "stage_structured_diagnosis"
+                )
             actual = node.get("routine_hazard_scale")
             if isinstance(actual, Mapping):
                 actual = actual.get("value")

@@ -16,6 +16,7 @@ explicitly (1985) and refuses a configuration without it.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 import math
 from typing import Mapping, Any
@@ -25,6 +26,12 @@ from config_utils import extract_value
 
 class StageStructuredDiagnosisConfigError(ValueError):
     """Raised when the diagnostic-only block is invalid."""
+
+
+PROFILE_PATH = (
+    "transmission_model", "disease", "diagnosis", "stage_structured_diagnosis"
+)
+SHARED_CONFIG_SYMPTOM_START_YEAR = 1985.0
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,107 @@ def load_stage_structured_diagnosis(config: Mapping[str, Any] | None) \
     )
     start = _optional_year(block.get("symptom_start_year"), "symptom_start_year")
     return StageStructuredDiagnosis(bool(enabled), rho, symptom, start)
+
+
+def route_shared_config(
+    config: Mapping[str, Any], *, model: str, p: float | None = None
+) -> dict:
+    """Return an explicit M0 or M1 runtime copy of the shared base config.
+
+    The tracked shared config is safe for ordinary standalone use: it must
+    carry a complete but disabled identity block.  M0 removes that optional
+    block and therefore exercises the legacy diagnosis route.  M1 explicitly
+    enables it and may inject ``p``.  The input mapping is never mutated.
+
+    This is deliberately a small config-shaping function, not calibration
+    machinery.  It lets the production adapter and the operator-facing model
+    command use exactly the same M0/M1 switch.
+    """
+    if model not in {"M0", "M1"}:
+        raise StageStructuredDiagnosisConfigError(
+            f"model must be 'M0' or 'M1', got {model!r}"
+        )
+    out = copy.deepcopy(dict(config))
+    block, profile = _shared_base_profile(out)
+
+    if profile.enabled:
+        raise StageStructuredDiagnosisConfigError(
+            "the shared base config must default stage_structured_diagnosis.enabled "
+            "to false; choose M1 explicitly at runtime"
+        )
+    if model == "M0":
+        diagnosis = out["transmission_model"]["disease"]["diagnosis"]
+        diagnosis.pop("stage_structured_diagnosis")
+        return out
+
+    if p is not None:
+        probability = _probability_like(p, "aids_symptom_annual_probability")
+        _set_value(block, "aids_symptom_annual_probability", probability)
+    _set_value(block, "enabled", True)
+    return out
+
+
+def validate_shared_base_config(config: Mapping[str, Any]) \
+        -> StageStructuredDiagnosis:
+    """Return the validated safe standalone profile without changing config."""
+    _, profile = _shared_base_profile(config)
+    return profile
+
+
+def _shared_base_profile(config: Mapping[str, Any]) \
+        -> tuple[dict, StageStructuredDiagnosis]:
+    """Validate the complete, disabled, identity-preserving shared block."""
+    node: Any = config
+    for key in PROFILE_PATH:
+        if not isinstance(node, Mapping) or key not in node:
+            raise StageStructuredDiagnosisConfigError(
+                f"shared base config is missing {'.'.join(PROFILE_PATH)}"
+            )
+        node = node[key]
+    if not isinstance(node, dict):
+        raise StageStructuredDiagnosisConfigError(
+            f"{'.'.join(PROFILE_PATH)} must be an object"
+        )
+    required = {
+        "enabled", "routine_hazard_scale", "aids_symptom_annual_probability",
+        "symptom_start_year",
+    }
+    missing = sorted(required.difference(node))
+    if missing:
+        raise StageStructuredDiagnosisConfigError(
+            f"shared stage_structured_diagnosis block is missing {missing}"
+        )
+    profile = load_stage_structured_diagnosis({
+        "disease": {"diagnosis": {"stage_structured_diagnosis": node}}
+    })
+    if profile.routine_hazard_scale != 1.0:
+        raise StageStructuredDiagnosisConfigError(
+            "shared stage_structured_diagnosis.routine_hazard_scale must equal 1.0 "
+            "so M1 can nest M0 at p=0"
+        )
+    if profile.aids_symptom_annual_probability != 0.0:
+        raise StageStructuredDiagnosisConfigError(
+            "shared stage_structured_diagnosis.aids_symptom_annual_probability "
+            "must default to 0.0; inject positive p only after choosing M1"
+        )
+    if profile.symptom_start_year != SHARED_CONFIG_SYMPTOM_START_YEAR:
+        raise StageStructuredDiagnosisConfigError(
+            "shared stage_structured_diagnosis.symptom_start_year must equal 1985"
+        )
+    return node, profile
+
+
+def _set_value(block: dict, key: str, value: Any) -> None:
+    """Set a required config value without discarding its human-facing notes."""
+    current = block[key]
+    if isinstance(current, dict):
+        if "value" not in current:
+            raise StageStructuredDiagnosisConfigError(
+                f"stage_structured_diagnosis.{key} must contain a value field"
+            )
+        current["value"] = value
+    else:
+        block[key] = value
 
 
 def _optional_year(raw: Any, name: str) -> float | None:
