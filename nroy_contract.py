@@ -327,8 +327,7 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "archive_following.scales": "correlation-following probe scales",
     "archive_following.neighbour_rule": "archive neighbour rule",
     "archive_following.neighbour_count": (
-        "how many archive neighbours each anchor consults; a frozen design choice "
-        "distinct from the graph's neighbour count, which governs candidate edges"
+        "how many archive neighbours each anchor consults; a frozen local-design choice"
     ),
     "archive_following.rank_truncation": "rank truncation for archive directions",
     "archive_following.source_pool": "declared source pool for archive directions",
@@ -337,11 +336,12 @@ REQUIRED_DECISIONS: dict[str, str] = {
     "separation.min_anchor_neighbour": "minimum anchor-neighbour separation",
     "separation.min_neighbour_neighbour": "minimum neighbour-neighbour separation",
     "separation.min_direction_classes": "independent direction classes required for ridge support",
-    "promotion.variance_alpha": "alpha for the process-variance upper confidence bound",
+    "promotion.variance_alpha": (
+        "alpha for the direct one-sided 1-alpha process-variance upper confidence bound"
+    ),
     "support.min_confirming_neighbours": "neighbours required to declare support",
     # ---- NROY freeze spec, section 4: graph ----
-    "graph.neighbour_rule": "candidate-edge rule for the provisional graph",
-    "graph.neighbour_count": "neighbour count for the provisional graph",
+    "graph.edge_proposal_rule": "candidate-edge rule for the provisional graph",
     "graph.tie_breaking": "deterministic tie-breaking rule",
     "graph.minimal_edge_algorithm": "minimal auditable edge-set algorithm",
     "graph.bridge_fractions": "frozen bridge interpolation fractions",
@@ -1133,7 +1133,7 @@ def predictive_variance(
 #: comparable even when every input file is byte-identical.  **Bump this
 #: whenever that arithmetic changes**, which deliberately invalidates every
 #: parent/child pair that straddles the change.
-SCORING_VERSION = "nroy_scoring/1.0.0"
+SCORING_VERSION = "nroy_scoring/1.1.0"
 
 #: The complete acceptance-input identity.  Every field is part of "what it
 #: means for a candidate to pass", so a child stage that differs from its
@@ -1167,7 +1167,8 @@ def acceptance_rule_text(*, cutoff: float, variance_alpha: float | None) -> str:
     text = f"I_max <= {float(cutoff)!r} on nominal variance B_i + s_i^2 (1 + 1/K)"
     if variance_alpha is not None:
         text += (
-            f"; promotion may also use the chi-square upper bound at "
+            f"; promotion may also use the direct one-sided chi-square "
+            f"{1.0 - float(variance_alpha):.6g} upper variance bound at "
             f"alpha={float(variance_alpha)!r}, which is not acceptance"
         )
     return text
@@ -1281,10 +1282,10 @@ def variance_bound_factor(k: int, alpha: float) -> float:
     """Upper ``1-alpha`` confidence factor for ``sigma^2`` from ``K`` replicates.
 
     ``(K-1) s^2 / sigma^2 ~ chi^2_{K-1}``, so the upper bound multiplies ``s^2``
-    by ``(K-1)/chi2.ppf(alpha/2, K-1)``.  This is the same construction as
-    ``run_history_matching.predictive_variance_stability``, reused rather than
-    reinvented so the promotion safeguard and the published variance-stability
-    diagnostic cannot disagree.
+    by ``(K-1)/chi2.ppf(alpha, K-1)``.  This is the direct one-sided bound:
+    ``alpha=0.05`` means a one-sided 95% upper confidence bound, not the 97.5%
+    one-sided endpoint obtained from a two-sided 95% interval.  It is used only
+    to allocate additional confirmation compute; nominal acceptance is unchanged.
     """
     from scipy.stats import chi2  # noqa: PLC0415 - optional-at-import, as elsewhere in the repo
 
@@ -1295,7 +1296,7 @@ def variance_bound_factor(k: int, alpha: float) -> float:
     if not (0.0 < a < 1.0):
         raise ContractError(f"alpha must be in (0, 1), got {alpha!r}")
     df = k_int - 1
-    return float(df / chi2.ppf(a / 2.0, df))
+    return float(df / chi2.ppf(a, df))
 
 
 @dataclass(frozen=True)
@@ -1853,7 +1854,6 @@ class FrozenPlan:
             "ambient.max_attempts_per_anchor",
             "archive_following.neighbour_count",
             "archive_following.rank_truncation",
-            "graph.neighbour_count",
         )
         for path in positive_integer_paths:
             if int(self.require(path)) <= 0:

@@ -49,13 +49,13 @@ Decisions that gained a genuine consumer in this pass:
 
 | decision | consumer | what it now changes |
 |---|---|---|
-| `graph.neighbour_rule`, `graph.neighbour_count`, `graph.tie_breaking` | `ng.candidate_edges` via bridges `prepare` | which edges are proposed at all |
+| `graph.edge_proposal_rule`, `graph.tie_breaking` | `ng.candidate_edges` via bridges `prepare` | complete pairwise distances and their deterministic order; the obsolete graph neighbour count was removed |
 | `graph.minimal_edge_algorithm` | `ng.minimal_edge_set` | which edges get paid for |
 | `graph.bridge_pass_rule` | `ng.classify_edge` — **checked**, not assumed; any other declared rule is refused rather than silently given this behaviour | whether an edge can be supported |
 | `representative_selection.rule` / `n_per_component` | `ng.select_representatives` via `regions` | which vectors enter the forecast ensemble |
 | `archive_following.source_pool` | `nd.assert_source_pool`, `correlation_following_directions`, `assert_cross_block_declared` | a declared source that cannot contribute is a **contract error**, not a quietly shorter direction list; an undeclared source contributes nothing; `cross_block.quota` must agree (>0 iff declared) |
 | `archive_following.neighbour_rule` | `nd.archive_directions` | the low-J rule **requires** a `j` column and refuses to fall back to a distance-only ordering |
-| `archive_following.neighbour_count` | `nd.correlation_following_directions` | **new decision.** The kernel was reading `graph.neighbour_count`, which is a different frozen choice. That was a defect, not a convention |
+| `archive_following.neighbour_count` | `nd.correlation_following_directions` | **new decision.** This affects only local direction estimation; the complete-pairwise graph has no neighbour-count setting |
 | `budget.wall_time_cap_seconds` | `ne.WallClockCap` via `evaluate` | when dispatch stops |
 
 ### 1.3 Wall-clock cap
@@ -224,6 +224,11 @@ FAIL CLOSED: 43 required value(s) are unsigned.
 No production simulation may start.
 ```
 
+This is the preserved 2026-10-14 transcript. After the 2026-10-15 graph
+simplification removed the non-load-bearing graph neighbour count, current
+validation reports 42 unsigned values (28 proposal-backed, 14 without a
+proposal).
+
 ```bash
 # 2. The production-relevant suite. No engine, no trajectories.
 .venv/bin/python -m pytest \
@@ -379,8 +384,8 @@ diagnosis mechanism carries production results, and the M0/M1 gate's
 
 Stated as gaps, not as work in progress.
 
-1. **43 required decisions are unsigned.** `validate` splits them: **27 have a
-   proposal** recorded in one of the specifications, and **16 have none** —
+1. **42 required decisions are unsigned.** Current `validate` splits them:
+   **28 have a proposal** recorded in one of the specifications, and **14 have none** —
    those need a decision, not a transcription. Both specifications are still
    DRAFT and the sign-off table in the production spec is blank. Five further
    decisions become required if the correlated-output diagnostic is enabled.

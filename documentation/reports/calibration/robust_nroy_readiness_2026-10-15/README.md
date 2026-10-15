@@ -5,9 +5,9 @@
 - **Code acceptance: ACCEPT.** Current robust-NROY fail-closed code remains
   accepted; the path reconciliation is covered by guarded tests.
 - **Production readiness: NOT READY.** The exact current plan hash is
-  `7d113408058fda7832f9037227a6653b0d5f85a286c20dc2c52e230525fd09ea`
-  and validation reports 43 unsigned required decisions: 27 proposal-backed
-  and 16 requiring new decisions.
+  `740846e686fde6a932906304a85a4a78c8b169264b33a113f64454cc78adb5ab`
+  and validation reports 42 unsigned required decisions: 28 proposal-backed
+  and 14 requiring new decisions.
 - No identity gate, pilot, positive-p confirmation, or production simulation was
   run. No historical result was resealed.
 - Final isolated no-engine suite: **2589 passed, 29 failed, 284 skipped, 0
@@ -15,7 +15,7 @@
 
 ## Package contents
 
-- `DECISION_REGISTER.csv`: all 43 decisions, split 27/16, with ranges,
+- `DECISION_REGISTER.csv`: all 42 decisions, split 28/14, with ranges,
   dependencies, consequences, evidence needs, suggested owner role and status.
 - `EXTERNAL_INPUT_RECONCILIATION.md`: exact locations/hashes and path fixes.
 - `HISTORICAL_ARTIFACT_DISPOSITION.md`: old/current code-map hashes,
@@ -96,7 +96,7 @@ bindings and cannot pass the production validator as stored.
 
 ## Exact remaining approvals
 
-1. Assign owners and decide/sign the 43 register rows.
+1. Assign owners and decide/sign the 42 register rows.
 2. Approve a reviewed stochastic M1-capable base configuration (the recorded
    proposal is unsuitable as-is).
 3. Choose whether a full preserved backlog edition should be restored as

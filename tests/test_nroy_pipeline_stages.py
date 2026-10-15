@@ -573,6 +573,7 @@ def test_bridges_prepare_freezes_the_graph_and_its_probes(tmp_path):
         "the node table must carry the normalised geometry selection will see"
     )
     assert not edges.empty
+    assert len(edges) == len(nodes) * (len(nodes) - 1) // 2
     assert edges["in_minimal_edge_set"].any()
     # Kruskal on three nodes keeps exactly two edges.
     minimal = edges[edges["in_minimal_edge_set"].astype(bool)]
@@ -1374,9 +1375,10 @@ def test_the_low_j_rule_consults_in_j_order(tmp_path):
 
 
 def test_the_archive_neighbour_count_is_its_own_decision():
-    """It is not the graph's neighbour count, which an earlier version reused."""
+    """It remains local-design input; the complete graph needs no neighbour count."""
     assert "archive_following.neighbour_count" in nc.REQUIRED_DECISIONS
-    assert "graph.neighbour_count" in nc.REQUIRED_DECISIONS
+    assert "graph.neighbour_count" not in nc.REQUIRED_DECISIONS
+    assert "graph.edge_proposal_rule" in nc.REQUIRED_DECISIONS
     source = (ROOT / "run_robust_nroy_freeze.py").read_text()
     archive_block = source[
         source.index("directions = nd.correlation_following_directions"):

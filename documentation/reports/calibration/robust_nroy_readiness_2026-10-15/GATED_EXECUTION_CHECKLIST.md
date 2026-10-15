@@ -8,15 +8,18 @@ engine-running gate.
 - [ ] The misleading `rank_truncation` decision is replaced by an honestly
   named `max_directions` contract, unless a genuine rank-revealing algorithm is
   separately specified and tested.
-- [ ] The graph contract uses a reviewed connectivity proposal rule; the
-  preferred simple rule is a complete-distance deterministic MST rather than
-  an arbitrary unvalidated `k=3` graph.
-- [ ] The promotion variance bound's formula and confidence label agree; the
-  preferred rule is a one-sided 95% upper bound at `alpha=0.05`.
+- [ ] The graph implementation uses complete pairwise distances followed by a
+  deterministic Kruskal MST; no arbitrary graph neighbour count remains. The
+  code and no-engine tests are complete, but this gate stays open until its
+  plan values receive scientific review/sign-off.
+- [ ] The promotion variance formula is a direct one-sided 95% upper bound at
+  proposed `alpha=0.05`, used only for allocation. The code is complete and
+  final nominal acceptance is unchanged, but this gate stays open until the
+  alpha receives scientific review/sign-off.
 - [ ] One canonical stochastic config supports standalone M0 and optional M1;
   the production adapter sets the model switch explicitly and its no-engine
   config-route tests pass.
-- [ ] All 43 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
+- [ ] All 42 decisions reviewed and signed; decision register has no `UNSIGNED` rows.
 - [ ] A stochastic M1-capable base configuration is selected and hashed.
 - [x] External inputs located and stale path assumptions corrected; the full legacy backlog edition remains an explicit documentation-owner decision.
 - [ ] Historical artifacts have an approved disposition; current claims exclude unrepeated stale lineages.

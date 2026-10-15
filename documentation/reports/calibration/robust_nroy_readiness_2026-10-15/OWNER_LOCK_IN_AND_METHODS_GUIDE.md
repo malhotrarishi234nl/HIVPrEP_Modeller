@@ -140,34 +140,36 @@ Required correction: rename the concept to `max_directions` and retain the
 existing explicit collinearity/support checks. Do not add rank-revealing linear
 algebra unless a real analysis later requires it.
 
-### 3. `k = 3` is not a literature standard
+### 3. `k = 3` is not a literature standard — corrected in code
 
 A fixed k-nearest proposal graph can create apparent components simply because
 an inter-component edge was never proposed.
 
-Preferred simplification: compute all pairwise normalized distances over the
-confirmed anchors, build a deterministic minimum spanning tree, and test its
-`n - 1` edges. A failed sampled edge is unresolved, not proof of disconnection.
-Only search bounded alternate paths when the unresolved edge would change
-representative allocation.
+Implemented simplification: compute all pairwise normalized distances over the
+confirmed anchors, build a deterministic Kruskal minimum spanning tree, and
+test its `n - 1` edges. The unsigned graph-neighbour-count decision was removed
+because it is no longer load-bearing. A failed sampled edge is unresolved, not
+proof of disconnection. Only search bounded alternate paths when the unresolved
+edge would change representative allocation.
 
 The permitted claim is "sampled straight-path support under the declared
 bridge design," not continuous connectivity.
 
-### 4. The variance-bound formula and label disagree
+### 4. The variance-bound formula and label disagreed — corrected in code
 
-The current code uses `chi2.ppf(alpha / 2)`, which at `alpha = 0.05` is the
+The prior code used `chi2.ppf(alpha / 2)`, which at `alpha = 0.05` was the
 upper endpoint of a two-sided 95% interval, equivalently a 97.5% one-sided
 upper bound. The documentation calls it a one-sided `1 - alpha` bound.
 
-Preferred correction: use the direct one-sided 95% formula
+The promotion calculation now uses the direct one-sided 95% formula
 
 ```text
 sigma_upper^2 = (K - 1) * s^2 / chi2.ppf(alpha, K - 1)
 ```
 
-and keep it exclusively as a promotion/compute-allocation safeguard. The
-pilot must report how many candidates are promoted only by this bound.
+and keeps it exclusively as a promotion/compute-allocation safeguard. Final
+nominal acceptance is unchanged. The pilot must report how many candidates are
+promoted only by this bound.
 
 ## Reading guide
 

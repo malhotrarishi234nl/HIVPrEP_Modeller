@@ -28,10 +28,12 @@ import nroy_contract as nc
 from coupled_calibration_search import ContractError
 
 #: Declared minimal-edge algorithms.  The plan names one; nothing is inferred.
-EDGE_ALGORITHMS = ("kruskal_min_spanning_forest", "all_candidate_edges")
+EDGE_ALGORITHMS = ("kruskal_minimum_spanning_tree",)
 
-#: Declared candidate-edge rules.
-NEIGHBOUR_RULES = ("k_nearest", "mutual_k_nearest")
+#: Declared candidate-edge rules.  Complete pairwise proposal is deliberate:
+#: a sparse nearest-neighbour prefilter can omit the only edge between two
+#: groups before the auditable minimum-spanning-tree selection even begins.
+EDGE_PROPOSAL_RULES = ("complete_pairwise_distances",)
 
 #: Declared bridge pass rules.  Only the specification's own rule exists: spec
 #: sec. 4 requires "the exact rule that all 25/50/75% probes must pass".  The
@@ -120,24 +122,24 @@ def _edge_id(left: str, right: str) -> str:
 def candidate_edges(
     points: Mapping[str, Sequence[float]],
     *,
-    neighbour_rule: str,
-    neighbour_count: int,
+    proposal_rule: str,
     tie_breaking: str = "candidate_id_ascending",
 ) -> list[CandidateEdge]:
-    """Build the provisional nearest-neighbour graph in normalised space.
+    """Build every pairwise edge in normalised space.
 
     Deterministic by construction: distances are computed in the frozen
     normalised metric and ties are broken by the declared rule (candidate id),
     so the proposal set never depends on dictionary or file ordering.
 
-    ``mutual_k_nearest`` keeps an edge only when each endpoint is within the
-    other's ``k`` nearest, which proposes fewer and better-justified edges in a
-    space of uneven density.
+    No nearest-neighbour prefilter is applied.  Kruskal therefore sees the
+    complete graph and returns exactly ``n-1`` edges for ``n>=2`` finite
+    points.  Distance only proposes which straight paths to test; it never
+    establishes NROY connectivity.
     """
-    if neighbour_rule not in NEIGHBOUR_RULES:
+    if proposal_rule not in EDGE_PROPOSAL_RULES:
         raise ContractError(
-            f"unknown neighbour rule {neighbour_rule!r}; the plan must declare one of "
-            f"{NEIGHBOUR_RULES}"
+            f"unknown edge-proposal rule {proposal_rule!r}; the plan must declare one of "
+            f"{EDGE_PROPOSAL_RULES}"
         )
     if tie_breaking not in TIE_BREAKING_RULES:
         raise ContractError(
@@ -147,32 +149,19 @@ def candidate_edges(
     ids = sorted(points)
     if len(ids) < 2:
         return []
-    matrix = np.asarray([np.asarray(points[i], dtype=float) for i in ids], dtype=float)
-    k = int(neighbour_count)
-    if k < 1:
-        raise ContractError(f"neighbour count must be >= 1, got {neighbour_count!r}")
+    try:
+        matrix = np.asarray([np.asarray(points[i], dtype=float) for i in ids], dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("graph points must be a rectangular finite matrix") from exc
+    if matrix.ndim != 2 or not np.all(np.isfinite(matrix)):
+        raise ContractError("graph points must be a rectangular finite matrix")
 
-    nearest: dict[str, list[str]] = {}
-    distances: dict[tuple[str, str], float] = {}
-    for position, identifier in enumerate(ids):
-        deltas = np.linalg.norm(matrix - matrix[position], axis=1)
-        # Sort by (distance, candidate id) so ties are deterministic.
-        order = sorted(
-            (p for p in range(len(ids)) if p != position),
-            key=lambda p: (float(deltas[p]), ids[p]),
-        )
-        nearest[identifier] = [ids[p] for p in order[:k]]
-        for p in order:
-            distances[(identifier, ids[p])] = float(deltas[p])
-
-    proposed: set[tuple[str, str]] = set()
-    for identifier, neighbours in nearest.items():
-        for other in neighbours:
-            if neighbour_rule == "mutual_k_nearest" and identifier not in nearest[other]:
-                continue
-            proposed.add(tuple(sorted((identifier, other))))  # type: ignore[arg-type]
-
-    ordered = sorted(proposed, key=lambda pair: (distances[pair], pair[0], pair[1]))
+    distances = {
+        (ids[left], ids[right]): float(np.linalg.norm(matrix[left] - matrix[right]))
+        for left in range(len(ids))
+        for right in range(left + 1, len(ids))
+    }
+    ordered = sorted(distances, key=lambda pair: (distances[pair], pair[0], pair[1]))
     return [
         CandidateEdge(
             edge_id=_edge_id(left, right),
@@ -216,7 +205,7 @@ def minimal_edge_set(
 ) -> list[CandidateEdge]:
     """Choose the minimal auditable edge set needed to establish components.
 
-    ``kruskal_min_spanning_forest`` walks the proposed edges in ascending
+    ``kruskal_minimum_spanning_tree`` walks the proposed edges in ascending
     distance (ties by candidate id) and keeps an edge only when it would join
     two currently-separate groups.  That is the smallest set of bridges whose
     evaluation can establish the component structure, which keeps the
@@ -230,8 +219,6 @@ def minimal_edge_set(
             f"unknown minimal-edge algorithm {algorithm!r}; the plan must declare one of "
             f"{EDGE_ALGORITHMS}"
         )
-    if algorithm == "all_candidate_edges":
-        return list(edges)
     forest = _DisjointSet(sorted(node_ids))
     kept: list[CandidateEdge] = []
     for edge in sorted(edges, key=lambda e: (e.distance, e.left, e.right)):

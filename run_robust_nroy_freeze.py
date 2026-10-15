@@ -876,8 +876,8 @@ def build_bridge_designs(
            list[ng.CandidateEdge]]:
     """Freeze the candidate-edge graph and its bridge probes (spec sec. 4).
 
-    Every graph decision is read from the signed plan: the candidate-edge rule,
-    the neighbour count, the tie-breaking rule, the minimal-edge algorithm and
+    Every graph decision is read from the signed plan: the complete-pairwise
+    candidate-edge rule, the tie-breaking rule, the minimal-edge algorithm and
     the interpolation fractions.  None of them has a default here.
 
     Only the **minimal** edge set receives probes.  That is the smallest set of
@@ -888,8 +888,7 @@ def build_bridge_designs(
     geometry = nas.node_geometry(nodes)
     edges = ng.candidate_edges(
         geometry,
-        neighbour_rule=str(plan.require("graph.neighbour_rule")),
-        neighbour_count=int(plan.require("graph.neighbour_count")),
+        proposal_rule=str(plan.require("graph.edge_proposal_rule")),
         tie_breaking=str(plan.require("graph.tie_breaking")),
     )
     minimal = ng.minimal_edge_set(
@@ -897,6 +896,12 @@ def build_bridge_designs(
         algorithm=str(plan.require("graph.minimal_edge_algorithm")),
         node_ids=sorted(geometry),
     )
+    expected_minimal_edges = max(0, len(geometry) - 1)
+    if len(minimal) != expected_minimal_edges:
+        raise ContractError(
+            "the complete-pairwise Kruskal graph must yield exactly n-1 bridge edges; "
+            f"got {len(minimal)} for {len(geometry)} nodes"
+        )
     fractions = plan.bridge_fractions()
     validator = nd.Validator(space=model.space, model=model, injection_check=injection_check)
     by_id = {anchor.anchor_id: anchor for anchor in anchors}

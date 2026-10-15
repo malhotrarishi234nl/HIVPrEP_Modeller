@@ -148,7 +148,7 @@
     "neighbour_rule_proposal": "k_nearest_low_J_archive_vectors",
     "neighbour_rule_note": "Must be one of nroy_design.ARCHIVE_NEIGHBOUR_RULES. 'k_nearest_low_J_archive_vectors' orders consultation by J ascending and REQUIRES a 'j' column in the archive table supplied to prepare --archive; nroy_design.archive_directions refuses to fall back to a distance-only ordering, because that would mean the signed rule is not the rule that ran.",
     "neighbour_count": "UNSIGNED",
-    "neighbour_count_note": "How many archive neighbours each anchor consults. A frozen design choice DISTINCT from graph.neighbour_count, which governs candidate edges. An earlier implementation read graph.neighbour_count here; that was a defect, not a convention. No proposal in either specification.",
+    "neighbour_count_note": "How many archive neighbours each anchor consults. This is a local direction-estimation choice; the graph now uses complete pairwise distances and has no neighbour-count setting. No proposal in either specification.",
     "rank_truncation": "UNSIGNED",
     "source_pool": "UNSIGNED",
     "source_pool_proposal": [
@@ -182,24 +182,25 @@
 
   "promotion": {
     "variance_alpha": "UNSIGNED",
-    "variance_alpha_note": "Alpha for the upper confidence bound on process variance, used ONLY as a conservative compute-allocation safeguard against five-seed false negatives. It is not acceptance. run_history_matching.predictive_variance_stability uses alpha=0.05 as a diagnostic default; reusing that value here is a decision, not an inheritance.",
+    "variance_alpha_proposal": 0.05,
+    "variance_alpha_note": "Alpha for the direct one-sided 1-alpha upper confidence bound on process variance, used ONLY as a conservative compute-allocation safeguard against five-seed false negatives. At the proposed alpha=0.05 this is a one-sided 95% upper bound. It is not final acceptance, which always uses nominal variance on the reserved confirmation block.",
     "rule": "promote if nominal five-seed I_max <= cutoff OR if rescoring with the upper confidence bound for process variance gives I_max <= cutoff; final acceptance is always recomputed nominally from the reserved 20-seed confirmation block"
   },
 
   "graph": {
-    "neighbour_rule": "UNSIGNED",
-    "neighbour_rule_proposal": "k_nearest",
-    "neighbour_count": "UNSIGNED",
+    "edge_proposal_rule": "UNSIGNED",
+    "edge_proposal_rule_proposal": "complete_pairwise_distances",
+    "edge_proposal_rule_note": "Compute every finite pairwise distance before deterministic Kruskal selection. No k-nearest prefilter may silently omit the only candidate edge between groups.",
     "tie_breaking": "UNSIGNED",
     "tie_breaking_proposal": "candidate_id_ascending",
     "minimal_edge_algorithm": "UNSIGNED",
-    "minimal_edge_algorithm_proposal": "kruskal_min_spanning_forest",
+    "minimal_edge_algorithm_proposal": "kruskal_minimum_spanning_tree",
     "bridge_fractions": "UNSIGNED",
     "bridge_fractions_proposal": [0.25, 0.5, 0.75],
     "bridge_pass_rule": "UNSIGNED",
     "bridge_pass_rule_proposal": "all_declared_probes_must_confirm",
     "distance_metric": "euclidean_normalised",
-    "distance_metric_role": "edge proposal only; never establishes a region and never asserts continuous connectivity"
+    "distance_metric_role": "orders Kruskal edge proposals only; never establishes a region and never asserts continuous connectivity"
   },
 
   "representative_selection": {

@@ -55,15 +55,15 @@ These are forecast-ensemble eligibility labels, not replacements for epidemiolog
 
 Euclidean distance is used only to propose candidate edges. It never establishes a region by itself.
 
-1. Build a provisional nearest-neighbour graph in normalised parameter space.
-2. Choose a minimal auditable edge set needed to establish components.
+1. Compute the complete set of pairwise distances in normalised parameter space.
+2. Apply deterministic Kruskal selection to freeze exactly `n - 1` minimum-spanning-tree edges for `n >= 2` confirmed anchors.
 3. Freeze interpolation probes at 25%, 50% and 75% of each proposed straight bridge.
 4. Evaluate and confirm bridge probes under the same contracts.
 5. Mark an edge **sampled-path supported** only when both endpoints and every declared bridge probe confirm. A failed straight bridge is **unresolved**, not proof of disconnection, because a correlated region may curve.
 
 If unresolved connectivity would change which groups receive representatives, run a bounded archive-informed path search. An emulator is considered only if direct paths remain inefficient or ambiguous. Representatives are selected across sampled-path-supported components using parameter/baseline geometry; policy outcomes are unavailable to selection.
 
-The graph construction is frozen in the run plan: neighbour count or candidate-edge rule, tie-breaking, minimal-edge algorithm and the exact rule that all 25/50/75% probes must pass. A three-point bridge supplies discrete evidence along the proposed path; neither "sampled-path supported" nor a graph component claims continuous topological connectivity. This stage reports eligible components and their geometry but does not choose the final number of representatives.
+The graph construction is frozen in the run plan: the complete-pairwise candidate-edge rule, deterministic tie-breaking, Kruskal minimum-spanning-tree algorithm and the exact rule that all 25/50/75% probes must pass. There is no graph neighbour-count setting: prefiltering to an arbitrary `k` could omit the only candidate edge between groups. A three-point bridge supplies discrete evidence along the proposed path; neither "sampled-path supported" nor a graph component claims continuous topological connectivity. A failed tree edge is unresolved, not proof of disconnection. This stage reports eligible components and their geometry but does not choose the final number of representatives.
 
 ## 5. Handoff, sharding and resume contract
 

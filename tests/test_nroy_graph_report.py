@@ -55,42 +55,52 @@ def two_basins() -> dict[str, list[float]]:
 
 def test_candidate_edges_are_deterministic_and_tie_broken_by_id():
     points = {"a": [0.0, 0.0], "b": [1.0, 0.0], "c": [-1.0, 0.0]}  # b and c equidistant
-    first = ng.candidate_edges(points, neighbour_rule="k_nearest", neighbour_count=1)
+    first = ng.candidate_edges(points, proposal_rule="complete_pairwise_distances")
     shuffled = {k: points[k] for k in ("c", "b", "a")}
-    second = ng.candidate_edges(shuffled, neighbour_rule="k_nearest", neighbour_count=1)
+    second = ng.candidate_edges(shuffled, proposal_rule="complete_pairwise_distances")
     assert [e.edge_id for e in first] == [e.edge_id for e in second]
+    assert [e.edge_id for e in first] == ["a--b", "a--c", "b--c"]
 
 
 def test_unknown_graph_rules_are_refused():
     points = two_basins()
-    with pytest.raises(ContractError, match="unknown neighbour rule"):
-        ng.candidate_edges(points, neighbour_rule="whatever", neighbour_count=2)
+    with pytest.raises(ContractError, match="unknown edge-proposal rule"):
+        ng.candidate_edges(points, proposal_rule="whatever")
     with pytest.raises(ContractError, match="unknown tie-breaking"):
         ng.candidate_edges(
-            points, neighbour_rule="k_nearest", neighbour_count=2, tie_breaking="random"
+            points, proposal_rule="complete_pairwise_distances", tie_breaking="random"
         )
     with pytest.raises(ContractError, match="unknown minimal-edge algorithm"):
         ng.minimal_edge_set([], algorithm="magic", node_ids=list(points))
 
 
-def test_minimal_edge_set_is_smaller_than_all_candidate_edges():
+@pytest.mark.parametrize(
+    "points",
+    (
+        {"a": [0.0], "b": [float("nan")]},
+        {"a": [0.0], "b": [1.0, 2.0]},
+    ),
+)
+def test_pairwise_graph_refuses_nonfinite_or_ragged_geometry(points):
+    with pytest.raises(ContractError, match="rectangular finite matrix"):
+        ng.candidate_edges(points, proposal_rule="complete_pairwise_distances")
+
+
+def test_complete_pairwise_kruskal_freezes_exactly_n_minus_one_edges():
     points = two_basins()
-    edges = ng.candidate_edges(points, neighbour_rule="k_nearest", neighbour_count=3)
+    edges = ng.candidate_edges(points, proposal_rule="complete_pairwise_distances")
     minimal = ng.minimal_edge_set(
-        edges, algorithm="kruskal_min_spanning_forest", node_ids=list(points)
+        edges, algorithm="kruskal_minimum_spanning_tree", node_ids=list(points)
     )
-    assert 0 < len(minimal) < len(edges)
-    everything = ng.minimal_edge_set(
-        edges, algorithm="all_candidate_edges", node_ids=list(points)
-    )
-    assert len(everything) == len(edges)
+    assert len(edges) == len(points) * (len(points) - 1) // 2
+    assert len(minimal) == len(points) - 1
 
 
-def test_mutual_k_nearest_proposes_no_more_edges_than_k_nearest():
+def test_complete_pairwise_proposal_does_not_drop_cross_group_edges():
     points = two_basins()
-    plain = ng.candidate_edges(points, neighbour_rule="k_nearest", neighbour_count=2)
-    mutual = ng.candidate_edges(points, neighbour_rule="mutual_k_nearest", neighbour_count=2)
-    assert len(mutual) <= len(plain)
+    edges = ng.candidate_edges(points, proposal_rule="complete_pairwise_distances")
+    pairs = {(edge.left[0], edge.right[0]) for edge in edges}
+    assert ("A", "B") in pairs
 
 
 # ==========================================================================
@@ -166,9 +176,9 @@ def test_an_unconfirmed_endpoint_blocks_support():
 
 def test_disconnected_basins_yield_two_components():
     points = two_basins()
-    edges = ng.candidate_edges(points, neighbour_rule="k_nearest", neighbour_count=2)
+    edges = ng.candidate_edges(points, proposal_rule="complete_pairwise_distances")
     minimal = ng.minimal_edge_set(
-        edges, algorithm="kruskal_min_spanning_forest", node_ids=list(points)
+        edges, algorithm="kruskal_minimum_spanning_tree", node_ids=list(points)
     )
     confirmed = {k: True for k in points}
     verdicts = [

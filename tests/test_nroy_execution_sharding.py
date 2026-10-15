@@ -175,6 +175,31 @@ def test_recomputed_scores_are_identical_across_shard_counts():
         pd.testing.assert_frame_equal(scores, reference_scores)
 
 
+def test_variance_bound_changes_only_promotion_allocation_not_nominal_acceptance():
+    space, _, proposals, _ = build_design()
+    observed, base_variance = fx.observed_and_variance(TARGETS)
+    _, seed_rows, _ = reference_merge(proposals, space)
+    nominal = ne.recompute_candidate_scores(
+        seed_rows, targets=CONTRACT, observed=observed, base_variance=base_variance,
+        cutoff=3.0, variance_alpha=None,
+    )
+    allocated = ne.recompute_candidate_scores(
+        seed_rows, targets=CONTRACT, observed=observed, base_variance=base_variance,
+        cutoff=3.0, variance_alpha=0.05,
+    )
+    nominal_columns = [
+        "design_id", "vector_hash", "n_replicates", "i_max", "i_second",
+        "i_third", "binding_target", "nominal_pass",
+    ]
+    pd.testing.assert_frame_equal(
+        nominal[nominal_columns], allocated[nominal_columns]
+    )
+    assert {
+        "i_max_variance_bound", "bound_pass", "variance_bound_factor",
+        "promoted", "variance_unstable",
+    }.issubset(allocated.columns)
+
+
 def test_changing_worker_count_does_not_change_the_design():
     """Assignment is a pure function of the key and the shard count."""
     space, _, proposals, _ = build_design()

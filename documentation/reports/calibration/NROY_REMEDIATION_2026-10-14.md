@@ -7,12 +7,18 @@
   additional findings below. This accepts the fail-closed implementation, not
   the absent scientific inputs or any proposed production decision.
 - **Production readiness:** **not ready**. The production plan still contains
-  43 unsigned decisions, proposes a deterministic and non-M1-capable base
+  42 unsigned decisions, proposes a deterministic and non-M1-capable base
   configuration, and has no plan-bound config registry, measured pilot,
   priced-budget artifact, production seed-disjointness audit, independently
   confirmed positive-`p` M1 anchor evidence, or production observed/base-
   variance evidence.
 - **Production simulations run during remediation:** none.
+
+Historical validation transcripts below retain the 43-decision count observed
+before the 2026-10-15 complete-pairwise graph correction. The current plan has
+42 unsigned decisions (28 proposal-backed, 14 without proposals) because the
+non-load-bearing graph neighbour-count decision was removed and the direct
+one-sided `alpha=0.05` variance rule now has an explicit proposal.
 
 ## Closed review findings
 
@@ -372,7 +378,7 @@ Result: both passed with no output.
 These require scientific/user decisions or missing external evidence and were
 not fabricated during code remediation:
 
-1. Sign all 43 production-plan decisions.
+1. Sign all 42 production-plan decisions.
 2. Select and freeze a stochastic M1-capable production base configuration.
 3. Produce a plan-bound `CONFIG_REGISTRY.md` and schema-valid measured-pilot,
    priced-budget and production seed-disjointness artifacts. Placeholder or
@@ -510,7 +516,7 @@ hash and exact 43-decision fail-closed result.
 
 - **Code acceptance: ACCEPT.** The current fail-closed robust-NROY code and the
   input/evidence preparation additions pass focused verification.
-- **Production readiness: NOT READY.** The 43 decisions remain unsigned; the
+- **Production readiness: NOT READY.** The 42 decisions remain unsigned; the
   proposed base config remains deterministic and lacks the M1 diagnosis block;
   no plan-bound registry, seed audit, identity evidence, measured pilot, priced
   approval or independently confirmed positive-`p` M1 anchors exist. The

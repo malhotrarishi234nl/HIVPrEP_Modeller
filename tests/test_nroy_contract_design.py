@@ -103,7 +103,6 @@ def test_missing_signature_block_is_refused(tmp_path):
         ({"separation.min_neighbour_neighbour": float("nan")}, "must be positive"),
         ({"budget.wall_time_cap_seconds": float("inf")}, "finite and positive"),
         ({"ambient.max_attempts_per_anchor": 0}, "must be positive"),
-        ({"graph.neighbour_count": 0}, "must be positive"),
         ({"archive_following.scales": [0.025, float("nan")]}, "finite positive"),
     ],
 )
@@ -653,9 +652,20 @@ def test_a_non_conservative_variance_bound_is_a_contract_error():
 def test_variance_bound_factor_matches_the_repository_formula():
     from scipy.stats import chi2
     for k, alpha in ((5, 0.05), (20, 0.05), (5, 0.1)):
-        expected = (k - 1) / chi2.ppf(alpha / 2.0, k - 1)
+        expected = (k - 1) / chi2.ppf(alpha, k - 1)
         assert nc.variance_bound_factor(k, alpha) == pytest.approx(expected, rel=1e-12)
         assert nc.variance_bound_factor(k, alpha) > 1.0
+
+
+def test_alpha_point_zero_five_is_direct_one_sided_95_percent_not_97_point_five():
+    from scipy.stats import chi2
+
+    k = 5
+    direct_95 = (k - 1) / chi2.ppf(0.05, k - 1)
+    two_sided_95_upper_endpoint = (k - 1) / chi2.ppf(0.025, k - 1)
+    actual = nc.variance_bound_factor(k, 0.05)
+    assert actual == pytest.approx(direct_95, rel=1e-12)
+    assert actual != pytest.approx(two_sided_95_upper_endpoint, rel=1e-12)
 
 
 def test_predictive_variance_uses_one_plus_one_over_k():
