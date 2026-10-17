@@ -1558,7 +1558,11 @@ class HTAReportWriter:
                         source, references, status,
                     ])
             elif mode == "additional_target_stock":
-                for variant in pathway.get("additional_target_stock", {}).get("value", []):
+                variants = pathway.get("additional_target_stock", {}).get("value", [])
+                if isinstance(variants, dict):
+                    # Single-case pathways store the schedule directly, as run_scenarios expects.
+                    variants = [{"label": "schedule", "target_stock": variants}]
+                for variant in variants:
                     label = variant.get("label", "variant")
                     for year, stock in variant.get("target_stock", {}).items():
                         rows.append([

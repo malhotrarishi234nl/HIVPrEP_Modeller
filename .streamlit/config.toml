@@ -1,0 +1,19 @@
+# Workbench look: light, high-contrast, one accent colour. Data colours live in
+# workbench_ui/app.py so charts and status cues stay consistent with this file.
+[theme]
+base = "light"
+primaryColor = "#0b5c7a"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f4f8"
+textColor = "#17202e"
+borderColor = "#c9d2de"
+font = "sans-serif"
+baseRadius = "8px"
+headingFontSizes = ["2rem", "1.5rem", "1.2rem"]
+
+[client]
+toolbarMode = "minimal"
+showSidebarNavigation = true
+
+[browser]
+gatherUsageStats = false
