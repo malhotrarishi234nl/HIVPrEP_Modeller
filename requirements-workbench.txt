@@ -1,0 +1,7 @@
+# Install this in a separate .venv-workbench. It includes the exact scientific
+# runtime because model checks and runs use the same Python process as Streamlit.
+-r requirements-operator.txt
+altair==6.3.0
+matplotlib==3.11.1
+openpyxl==3.1.5
+streamlit==1.66.0

@@ -3,6 +3,37 @@
 Discrete-time stochastic HIV transmission and prevention model for the
 Netherlands, developed for Rishi Malhotra's MSc thesis and publication work.
 
+## Quick start for supervisors and collaborators
+
+The public repository is
+[malhotrarishi234nl/HIVPrEP_Modeller](https://github.com/malhotrarishi234nl/HIVPrEP_Modeller).
+Download it with GitHub's **Code > Download ZIP** button, or clone it:
+
+```bash
+git clone https://github.com/malhotrarishi234nl/HIVPrEP_Modeller.git
+cd HIVPrEP_Modeller
+```
+
+Install [Python 3.11](https://www.python.org/downloads/),
+then use the included one-time setup and launcher:
+
+- macOS: double-click `Setup Workbench.command`, then `Launch Workbench.command`;
+- Windows: double-click `Setup Workbench.bat`, then `Launch Workbench.bat`.
+
+The browser workbench includes a preserved historical example that can be
+reviewed without running a new simulation. Start on **Home**, open the
+historical 2008 result, and use **Model guide** for the scientific structure.
+See the [local workbench guide](documentation/guides/LOCAL_MODEL_WORKBENCH.md)
+for supported analyses, result exports, and command-line alternatives.
+
+The setup downloads pinned Python packages and creates a local
+`.venv-workbench`; it does not install system-wide software. Large/raw input
+data and full historical run archives are intentionally not distributed in
+Git. Their availability and hash requirements are shown on the workbench's
+**Data and targets** page and documented under [External inputs](#external-inputs).
+The included example is for review; new scientific or production runs remain
+subject to the approval gates described below.
+
 ## Current status
 
 - **Bounded Option-B research rehearsal:** **COMPLETE** on clean commit
@@ -54,8 +85,9 @@ Start with:
 7. [model operator guide](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/MODEL_OPERATOR_GUIDE.md)
 8. [repository handoff cleanup plan](documentation/reports/calibration/robust_nroy_readiness_2026-10-15/REPOSITORY_HANDOFF_CLEANUP_PLAN.md)
 9. [scientific artifact storage and restoration](documentation/guides/ARTIFACT_STORAGE_20261016.md)
-10. [configuration guide](configs/README.md)
-11. local workspace directory map and storage rules at sibling path
+10. [local browser workbench](documentation/guides/LOCAL_MODEL_WORKBENCH.md)
+11. [configuration guide](configs/README.md)
+12. local workspace directory map and storage rules at sibling path
     `../README.md` (when using the full local workspace)
 
 Historical task briefs and runbooks are retained under `documentation/archive/`
@@ -83,6 +115,14 @@ and a SHA-bound `collaborator_analysis_run_sheet/1.1.0` carrying both scientific
 approval and separate dispatch authorization; no current candidate has these,
 and the collaborator CLI has no bypass. This leaves mechanical validation
 usable while calibration and scientific acceptance are completed.
+
+For collaborators who do not want to work in a terminal, the
+[local model workbench](documentation/guides/LOCAL_MODEL_WORKBENCH.md) provides
+historical-fit review, bounded parameter-sensitivity runs, result comparison,
+Excel review workbooks, input-hash checks, and target-review screens.
+Double-click setup and launch files are included for macOS and Windows. The
+interface uses the same guarded runner and does not widen its scientific or
+production authorization.
 The runner seals a byte-exact fixed-name copy of that sheet beside every
 prepared run so later loss of the operator's source path cannot erase the
 approval and dispatch record.

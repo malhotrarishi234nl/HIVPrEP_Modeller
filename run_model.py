@@ -636,6 +636,94 @@ def _first_parameter_contract_problem(
     return None
 
 
+def _apply_parameter_assignments(
+    base: dict[str, Any], assignments: Sequence[str],
+) -> dict[str, float]:
+    """Apply bounded ``PATH=VALUE`` edits declared by the collaborator contract.
+
+    The ordinary runner remains closed to arbitrary configuration edits. Coupled
+    parameters are updated together so one conceptual assumption is one control.
+    """
+    if not assignments:
+        return {}
+    try:
+        canonical_raw = DEFAULT_CONFIG.read_bytes()
+    except OSError as exc:
+        raise OperatorConfigError(
+            f"canonical config is unavailable or unreadable: {DEFAULT_CONFIG}"
+        ) from exc
+    canonical = _strict_json_loads(
+        canonical_raw, label=f"canonical config {DEFAULT_CONFIG}"
+    )
+    if not isinstance(canonical, dict):
+        raise OperatorConfigError("canonical config must contain one JSON object")
+    rules, _ = _load_parameter_contract(canonical)
+
+    requested: dict[tuple[str, ...], float] = {}
+    for assignment in assignments:
+        if "=" not in assignment:
+            raise OperatorConfigError("--set values must use CONFIG.PATH=NUMBER")
+        raw_path, raw_value = assignment.split("=", 1)
+        path = _contract_path(raw_path.strip(), field="--set path")
+        if path not in rules:
+            raise OperatorConfigError(
+                f"--set path is not editable in this runner: {_format_path(path)}"
+            )
+        if path in requested:
+            raise OperatorConfigError(f"--set repeats {_format_path(path)}")
+        try:
+            value = float(raw_value)
+        except ValueError as exc:
+            raise OperatorConfigError(
+                f"--set {_format_path(path)} must be a number"
+            ) from exc
+        if not math.isfinite(value):
+            raise OperatorConfigError(
+                f"--set {_format_path(path)} must be finite"
+            )
+        requested[path] = value
+
+    expanded = dict(requested)
+    changed = True
+    while changed:
+        changed = False
+        for path, rule in rules.items():
+            linked_raw = rule.get("must_equal")
+            if not linked_raw:
+                continue
+            linked = _contract_path(linked_raw, field="must_equal")
+            if path in expanded and linked in expanded:
+                if expanded[path] != expanded[linked]:
+                    raise OperatorConfigError(
+                        f"--set {_format_path(path)} must equal {_format_path(linked)}"
+                    )
+            elif path in expanded:
+                expanded[linked] = expanded[path]
+                changed = True
+            elif linked in expanded:
+                expanded[path] = expanded[linked]
+                changed = True
+
+    for path, value in expanded.items():
+        node: Any = base
+        for part in path[:-1]:
+            if not isinstance(node, dict) or part not in node:
+                raise OperatorConfigError(
+                    f"config is missing editable path {_format_path(path)}"
+                )
+            node = node[part]
+        if not isinstance(node, dict) or path[-1] not in node:
+            raise OperatorConfigError(
+                f"config is missing editable path {_format_path(path)}"
+            )
+        node[path[-1]] = value
+
+    problem = _first_parameter_contract_problem(base, canonical, rules)
+    if problem is not None:
+        raise OperatorConfigError(problem)
+    return {_format_path(path): value for path, value in expanded.items()}
+
+
 def _validate_seed(seed: Any, *, required: bool) -> int | None:
     if seed is None:
         if required:
@@ -1410,6 +1498,13 @@ def parser() -> argparse.ArgumentParser:
         "--validate-only", action="store_true",
         help="validate the config and route without constructing the engine",
     )
+    out.add_argument(
+        "--set", action="append", default=[], metavar="CONFIG.PATH=NUMBER",
+        help=(
+            "change one bounded parameter declared in the collaborator parameter "
+            "contract; repeat for additional parameters"
+        ),
+    )
     return out
 
 
@@ -1427,6 +1522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         args.seed = _validate_seed(args.seed, required=not args.validate_only)
         base, input_config_sha256 = _load_shared_config_and_hash(args.config)
+        _apply_parameter_assignments(base, args.set)
         output_path = (
             None if args.output_dir is None else Path(args.output_dir).resolve()
         )

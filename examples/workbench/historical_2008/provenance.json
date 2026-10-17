@@ -1,0 +1,26 @@
+{
+  "schema": "hiv_prep_workbench_example/1.0.0",
+  "title": "Confirmed 2008-break calibration candidate 1787",
+  "classification": "HISTORICAL_RETAINED",
+  "scientific_status": "VALID_FOR_RECORDED_2026_09_29_LINEAGE_ONLY_NOT_CURRENT_OPTION_B_EVIDENCE",
+  "current_code_compatibility": "INCOMPATIBLE_WITH_CURRENT_OPTION_B_PRODUCTION_ROUTE",
+  "selected_candidate_id": 1787,
+  "replicates": 20,
+  "confirmation_primary_pass": true,
+  "confirmation_primary_i_max": 2.5385477355491948,
+  "confirmation_j": 2.335831714118806,
+  "source_artifact": "artifact://conference_scaleway_20260929",
+  "source_archive": "calibration_suite_2008_vs_2010.tgz and provenance_config_final.tgz",
+  "source_archive_sha256": {
+    "calibration_suite_2008_vs_2010.tgz": "0a221ff0bed920ed238db94f9bfb6c6e5e631cd0971eeee401addd375f543d87",
+    "provenance_config_final.tgz": "887d9d07ba433fae892f43d1539f15685e654f1244af0ee5df013f5880e2b220"
+  },
+  "files": {
+    "candidate_1787.json": "c4302ad036b67d8dba3974cdc172dd61e0e677bb6b0a7e87ab5efdab0baa8513",
+    "confirmation_summary.csv": "b73477a63449f6345e0d633095e28689368bf6d1f43ab36ba1f93b1404fed9a2",
+    "manifest.json": "0875f15d2246bf3702ef69c9a779c52c30c990cc62cdd5b932d65dfb576712a8",
+    "selected_model_break_2008.json": "9845b4ef8838cd782ae3a30056a49a814c696fba7bbb8858678763f377fdd311",
+    "target_fit_candidate_1787.csv": "6782ddfc88b08b8bc743abef2f85a3b7d55a3111b88940a6cba93a3f51048929",
+    "TARGET_FIT_PROVENANCE.md": "2407255bc06dd5db1c3ca021918e4024e611295f62b82a6f9a71844f9e23588b"
+  }
+}

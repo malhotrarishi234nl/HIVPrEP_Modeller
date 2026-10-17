@@ -1,0 +1,52 @@
+{
+  "schema": "model_workbench_recipe/1.0",
+  "id": "basic-stochastic-m1",
+  "title": "Basic stochastic M1",
+  "category": "Simulation",
+  "description": "Run M1 with the current shared stochastic configuration and an explicit p value. The output is labelled research-only.",
+  "adapter": {
+    "id": "simulation.m0_m1",
+    "version": "1"
+  },
+  "inputs": {
+    "config": {
+      "path": "configs/V13.22_1980_recalibration_candidate_stochastic_m0_m1_20261015.json",
+      "sha256": "49c3953683fac96aafdecdfb54c3195102984a0a29cc32ed3a423238a6498b30"
+    }
+  },
+  "controls": {
+    "model": {
+      "type": "enum",
+      "default": "M1",
+      "label": "Model",
+      "choices": ["M1"],
+      "help": "Fixed by this recipe."
+    },
+    "p": {
+      "type": "number",
+      "default": 0.0,
+      "label": "AIDS-symptom annual probability",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "help": "M1 coordinate p. The zero default is the nesting check; choose a nonzero research value intentionally."
+    },
+    "seed": {
+      "type": "integer",
+      "default": 42001,
+      "label": "Random seed",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "help": "First explicit seed. Additional replicates use consecutive seeds."
+    },
+    "replicates": {
+      "type": "integer",
+      "default": 1,
+      "label": "Replicates",
+      "minimum": 1,
+      "maximum": 20,
+      "help": "Number of independent seed runs."
+    }
+  },
+  "environment_profile": "operator",
+  "report_profile": "simulation_timeseries_v1"
+}

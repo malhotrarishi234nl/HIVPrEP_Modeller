@@ -3,6 +3,7 @@
 .venv
 .venv-test/
 .venv-snpe/
+.venv-workbench/
 venv/
 __pycache__/
 *.pyc
@@ -11,6 +12,7 @@ node_modules/
 operator_configs/
 .idea/
 .claude/
+.agents/
 .DS_Store
 
 # Data & outputs -- regenerable or too large for git.

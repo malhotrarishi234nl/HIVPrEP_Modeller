@@ -1,0 +1,163 @@
+{
+  "design": "coupled_calibration_break_2008_20260928",
+  "seed_comparison_group": "on_art_break_year_2008_vs_2010_crn_v1",
+  "status": "CONFIRMATION_COMPLETE",
+  "stage": "confirmation",
+  "n_candidates": 10,
+  "n_confirmation_primary_pass": 5,
+  "confirmed_primary_pass_ids": [
+    1787,
+    1638,
+    1193,
+    1522,
+    1840
+  ],
+  "budget": {
+    "cap": 200,
+    "launched": 200,
+    "finished": 200,
+    "failed": 0,
+    "lost_in_flight": 0,
+    "remaining": 0,
+    "by_stage": {
+      "confirmation": 200
+    }
+  },
+  "elapsed_seconds": 420.0712170600891,
+  "workers_requested": 64,
+  "workers_used": 10,
+  "execution_mode": "hpc_override",
+  "seeds": [
+    210100,
+    210101,
+    210102,
+    210103,
+    210104,
+    210105,
+    210106,
+    210107,
+    210108,
+    210109,
+    210110,
+    210111,
+    210112,
+    210113,
+    210114,
+    210115,
+    210116,
+    210117,
+    210118,
+    210119
+  ],
+  "replicates": 20,
+  "source_search": "/home/ubuntu/hiv-prep-model/outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6/cases/break_2008/calibration/search",
+  "source_search_manifest_sha256": "49fd16ebdf731035f492356500f49fe526a707f7e0e7402c670889f7cfc73e41",
+  "prepared_sha256": "c76f02a441026417237a8023ca9ea38c45a7305eb48144421104c7f0d6388b82",
+  "input_sha256": {
+    "base_config": "1c9e21b51b1bee233af4c3b1228cb1f9172c92630e53e344f1cd39157de7391e",
+    "calib_space": "118ff5af3544e50e3aeeb780babf90b0b433f6b7ac719d8d774f12e7aee84217",
+    "target_register": "87db68409e1a3e0c6ede762b37fd7f8c64008a1ba289b4965eb7a7be645e7a03",
+    "wave_plan": "a75fc8656aad6c25996c96be940c20874948b9bf0e09c4635c85e562cfd877ef"
+  },
+  "module_sha256": {
+    "coupled_calibration_search.py": "8117b13bdbab45b69fbb4420cb53009011b77c1824025bcbfc8530a3e5d4831b",
+    "run_coupled_calibration.py": "e67afcc0c0bf72d864856d2dc2623d500cff4044657ce17f575a2ce13c1e981a",
+    "run_history_matching.py": "2e078c13ff5c3035579b60f2575a31ed3e5ec29d65e1914920fa1d0a1da82563",
+    "hm_target_register.py": "b53c0c4e08124268eac96ca4853df2d6420e600c33bd348ff4f15ed80b78ebc6",
+    "hm_variance_budget.py": "3cafde41b2f8c4ca40dd2310855e85e566e9dfced03a539bd0e14d667a02b70d",
+    "hm_implausibility.py": "715a2115e310d3e7875aa603d35ace972746beff8ed65aa04357346fa94b223e",
+    "hm_diagnostics.py": "f07fd9ae5256861cdfdb00d30567cf5638051d1addec44cb3cf3d8797aff5159",
+    "run_lhs_calibration.py": "4e71d68472b34600f21d66df796774f76712f9284a961e398ea41775e1688d38",
+    "calib_extractor.py": "1fa517da172996f463668c252d8aa99da6389adbf38ff958d221b1d9dec119c0",
+    "run_v3.py": "83b86147a7e03a7b79dd06ca6bf68c1d3dd84b27b3ff00c14050f846e5c19b77",
+    "engine_v3.py": "0cd7e3143ce9a6b0ad61a886b638485827015b6ba310df369918fb8ee985d21b",
+    "demography.py": "f8eaee0a9074950fb9057a3691e2d8ef00692d761202cf1294b7bc5065152001",
+    "migration.py": "b1c6fa00967cc803c406dacd0d8b56e581a0dfdd9a67249d01790b795b4266f7",
+    "transmission_corrected.py": "f0eeb78658b784f94cd9192974cb447f009f2a35f3210f6c3c08c6475d8275e4",
+    "exogenous_diagnoses.py": "0af99a816bb7f050c73c2048ad66ec8e3b93e1f7d61b6c5813ef91c89baa06f4",
+    "counter_based_rng.py": "d27904491273cfc0aff553a0a7295e0443330363d7c31bcbe3b5e6146f7f65c9",
+    "stochastic_allocation.py": "2dc844affa94568ca51bb1db081c898025f7857905a8f3bc01cc91f3a9983366",
+    "schedule_utils.py": "a19dd1be8c595f7936784992cd4e8d4ed8c5c542fe1788aea3c4b4904b16b0cb",
+    "config_reader.py": "b1df46e3bbbd94b1280edc9265211bd29bb95a9633e6b96496b51e1d9304bdf0",
+    "config_utils.py": "22139e8ff37823d819602efa137a46af8e0e7b54fc837e4129fc03522f6f5d24",
+    "aids_observation.py": "93d746d09200fc3fd452070d5f90d18b0f1db14df4fb12eccdefbe0b4ab3ef64"
+  },
+  "diagnosis_test_gate": {
+    "ok": true,
+    "n_passed": 38,
+    "n_failed": 1,
+    "n_errors": 0,
+    "n_skipped": 0,
+    "tolerated_failures": [
+      {
+        "classname": "tests.test_msm_relative_diagnosis_v13_10.TestStepDiagnosisBehavior",
+        "name": "test_enabled_with_multiplier_one_matches_baseline"
+      }
+    ],
+    "unexpected_failures": [],
+    "errors": [],
+    "skipped": [],
+    "tolerated_failure_still_fails": true,
+    "suite_fully_passing": false,
+    "command": "-m pytest -q -p no:cacheprovider --junitxml=/tmp/tmpruax0th8/junit.xml tests/test_diagnosis_year_bands.py tests/test_msm_relative_diagnosis_v13_10.py",
+    "pytest_exit_code": 1,
+    "disclosure": "The deterministic MSM multiplier-one neutrality test still fails (KNOWN_TEST_EXCEPTIONS E-2026-09-17-01). The suite is NOT fully passing. Every evaluation in this search is stochastic on the enabled MSM path."
+  },
+  "variance_stability": {
+    "replicates": 20,
+    "alpha": 0.05,
+    "s_lower_factor": 0.5783456398680078,
+    "s_upper_factor": 2.133269504235973,
+    "n_nroy_s_lower_bound": 2,
+    "n_nroy_s_upper_bound": 8,
+    "n_variance_unstable": 6,
+    "candidate_ids_variance_unstable": [
+      1638,
+      1193,
+      1840,
+      2039,
+      1947,
+      1942
+    ],
+    "note": "Diagnostic only: it is reported, never used to change the primary accepted set."
+  },
+  "cross_validation": {
+    "status": "scored",
+    "n_targets": 331,
+    "declared_year_holdouts": {
+      "rivm_aids_msm": [
+        1990,
+        1995
+      ]
+    },
+    "unresolved": [],
+    "note": "Cross-validation comparators are reported, never added to or removed from the frozen 13-target acceptance rule."
+  },
+  "environment": {
+    "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "platform": "Linux-6.8.0-88-generic-x86_64-with-glibc2.39",
+    "argv": [
+      "run_coupled_calibration.py",
+      "--confirm",
+      "--source",
+      "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6/cases/break_2008/calibration/search",
+      "--output-dir",
+      "outputs/suites/on_art_break_year_2008_vs_2010_20260928_rev6/cases/break_2008/calibration/confirmation",
+      "--workers",
+      "64",
+      "--allow-hpc-workers"
+    ],
+    "git": {
+      "error": "CalledProcessError: Command '['git', 'rev-parse', 'HEAD']' returned non-zero exit status 128."
+    },
+    "cwd": "/home/ubuntu/hiv-prep-model",
+    "generated_utc": "2026-09-29T04:00:50.837121+00:00"
+  },
+  "generated_utc": "2026-09-29T04:00:50.837149+00:00",
+  "limitations": [
+    "These candidates are a frozen shortlist, not a representative uncertainty ensemble and not a ready HTA baseline.",
+    "Confirmation replicates are scored separately from discovery; seeds are never pooled and no favourable subset is selected.",
+    "The AIDS observation proxy remains unvalidated; a good numerical fit cannot validate its definition.",
+    "Saved 2025 tensors are diagnostic states with restart_safe=false, not restart checkpoints."
+  ]
+}
